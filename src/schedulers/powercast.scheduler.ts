@@ -46,10 +46,6 @@ export function startPowerCastScheduler(): void {
         } catch (error) {
             console.error("Narada scheduler crashed", error);
 
-            if (getPowerCastHealth()) {
-                setPowerCastHealth(false);
-                await sendTelegramMessage("🔴 Halahal detected\nPowerCast unreachable");
-            }
         }
     });
 }
