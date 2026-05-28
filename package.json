@@ -1,18 +1,29 @@
 {
   "name": "narada",
   "version": "1.0.0",
-  "description": "> Messenger of the Homelab",
-  "main": "index.js",
+  "description": "Messenger of the Homelab",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vipulism/narada.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "homelab",
+    "monitoring",
+    "alerts",
+    "telegram",
+    "docker",
+    "home-assistant",
+    "observability",
+    "nodejs"
+  ],
+  "author": "Vipul Sharma",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/vipulism/narada/issues"
