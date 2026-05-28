@@ -1,5 +1,5 @@
 import axios from "axios";
-import { EndpointState, setEndpointState } from "../state/powercast.state";
+import { EndpointState } from "../state/powercast.state";
 
 
 export type EndpointCheckResult = {
@@ -26,7 +26,6 @@ export async function checkPowerCast(): Promise<EndpointCheckResult[]> {
                 const duration = Date.now() - start;
                 const status: EndpointState =
                     duration > SLOW_THRESHOLD_MS ? "slow" : "healthy";
-                setEndpointState(endpoint, status);
                 if (status === "slow") {
                     console.warn("🟡 Slow endpoint detected", {
                         endpoint,
@@ -45,7 +44,6 @@ export async function checkPowerCast(): Promise<EndpointCheckResult[]> {
                     responseTimeMs: duration,
                 };
             } catch (error) {
-                setEndpointState(endpoint, "failed");
                 console.error("🔴 Endpoint failed", { endpoint });
                 return {
                     endpoint,

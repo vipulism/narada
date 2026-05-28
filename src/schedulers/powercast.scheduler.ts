@@ -7,12 +7,19 @@ export function startPowerCastScheduler(): void {
     cron.schedule("*/1 * * * *", async () => {
         console.log("📡 Narada observes the Ksheer Sagar");
 
+        const results = await checkPowerCast();
+
         try {
-            const results = await checkPowerCast();
 
             for (const result of results) {
                 const oldState = getEndpointState(result.endpoint);
                 const newState = result.status;
+
+                if (newState === "failed") {
+                    await sendTelegramMessage(
+                        `🔴 Halahal detected\n${result.endpoint} failed`
+                    );
+                }
 
                 if (oldState !== newState) {
                     if (newState === "slow") {
@@ -30,7 +37,6 @@ export function startPowerCastScheduler(): void {
                     setEndpointState(result.endpoint, newState);
                 }
 
-
                 if (!getPowerCastHealth()) {
                     setPowerCastHealth(true);
                     await sendTelegramMessage("🟢 Amrit restored\nPowerCast recovered");
@@ -38,6 +44,8 @@ export function startPowerCastScheduler(): void {
             }
 
         } catch (error) {
+            console.error("Narada scheduler crashed", error);
+
             if (getPowerCastHealth()) {
                 setPowerCastHealth(false);
                 await sendTelegramMessage("🔴 Halahal detected\nPowerCast unreachable");
