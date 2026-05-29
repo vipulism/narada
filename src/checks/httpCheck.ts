@@ -3,11 +3,24 @@ import { EndpointCheckResult } from './runService.check';
 import axios from 'axios';
 import { EndpointState } from '../state/service.state';
 
-export async function httpsChecker(serviceConfig: ServicesConfig) {
+export async function runHttpChecks(serviceConfig: ServicesConfig) {
+
+    const httpServices = serviceConfig.services.filter(service => {
+        if (service.type !== "http") {
+            console.warn("⚠️ Unsupported service type skipped", {
+                service: service.name,
+                type: service.type,
+            });
+            return false;
+        }
+
+        return true;
+    });
+
+
 
     return await Promise.all(
-        serviceConfig
-            .services
+        httpServices
             .map(service => {
                 if (service.type === "http") {
                     return getHttpServiceResult(service, serviceConfig.defaults);

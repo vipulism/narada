@@ -3,7 +3,7 @@ import { checkPowerCast } from "../checks/runService.check";
 import { getEndpointState, getPowerCastHealth, setEndpointState, setPowerCastHealth } from "../state/service.state";
 import { sendTelegramMessage } from "../notifiers/telegram.notifier";
 import { loadServiceConfig } from "../config/loadServices.config";
-import { httpsChecker } from "../checks/httpCheck";
+import { runHttpChecks } from "../checks/httpCheck";
 
 export function startPowerCastScheduler(): void {
 
@@ -16,7 +16,7 @@ export function startPowerCastScheduler(): void {
 
         console.log("📡 Narada observes the Ksheer Sagar");
 
-        const results = await httpsChecker(serviceConfig);
+        const results = await runHttpChecks(serviceConfig);
 
         try {
 
