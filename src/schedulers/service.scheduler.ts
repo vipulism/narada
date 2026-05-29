@@ -1,7 +1,7 @@
 import cron from "node-cron";
-import { checkPowerCast } from "../checks/powercast.check";
-import { getEndpointState, getPowerCastHealth, setEndpointState, setPowerCastHealth } from "../state/powercast.state";
-import { sendTelegramMessage } from "../notifiers/telegram";
+import { checkPowerCast } from "../checks/runService.check";
+import { getEndpointState, getPowerCastHealth, setEndpointState, setPowerCastHealth } from "../state/service.state";
+import { sendTelegramMessage } from "../notifiers/telegram.notifier";
 
 export function startPowerCastScheduler(): void {
     cron.schedule("*/1 * * * *", async () => {

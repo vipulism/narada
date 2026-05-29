@@ -1,5 +1,5 @@
 import axios from "axios";
-import { EndpointState } from "../state/powercast.state";
+import { EndpointState } from "../state/service.state";
 
 
 export type EndpointCheckResult = {

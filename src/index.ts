@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { startPowerCastScheduler } from "./schedulers/powercast.scheduler";
+import { startPowerCastScheduler } from "./schedulers/service.scheduler";
 
 dotenv.config();
 
