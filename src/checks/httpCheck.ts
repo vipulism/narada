@@ -13,21 +13,14 @@ export async function runHttpChecks(serviceConfig: ServicesConfig) {
             });
             return false;
         }
-
         return true;
     });
 
-
-
     return await Promise.all(
         httpServices
-            .map(service => {
-                if (service.type === "http") {
-                    return getHttpServiceResult(service, serviceConfig.defaults);
-                }
-
-                throw new Error(`Unsupported service type: ${service.type}`);
-            })
+            .map(service =>
+                getHttpServiceResult(service, serviceConfig.defaults)
+            )
     );
 }
 
