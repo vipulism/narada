@@ -2,12 +2,21 @@ import cron from "node-cron";
 import { checkPowerCast } from "../checks/runService.check";
 import { getEndpointState, getPowerCastHealth, setEndpointState, setPowerCastHealth } from "../state/service.state";
 import { sendTelegramMessage } from "../notifiers/telegram.notifier";
+import { loadServiceConfig } from "../config/loadServices.config";
+import { httpsChecker } from "../checks/httpCheck";
 
 export function startPowerCastScheduler(): void {
+
+
+
+
     cron.schedule("*/1 * * * *", async () => {
+
+        const serviceConfig = await loadServiceConfig()
+
         console.log("📡 Narada observes the Ksheer Sagar");
 
-        const results = await checkPowerCast();
+        const results = await httpsChecker(serviceConfig);
 
         try {
 

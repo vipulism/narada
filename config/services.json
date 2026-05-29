@@ -9,21 +9,21 @@
             "name": "PowerCast Health",
             "id": "powercast-health",
             "type": "http",
-            "url": "http://192.168.1.32:61209/health",
+            "url": "http://192.168.1.32:61209/api/health",
             "critical": true
         },
         {
             "name": "PowerCast Home Assistant",
             "id": "powercast-ha",
             "type": "http",
-            "url": "http://192.168.1.32:61209/status/home-assistant",
+            "url": "http://192.168.1.32:61209/api/status/home-assistant",
             "critical": true
         },
         {
             "name": "PowerCast Usage Today",
             "id": "powercast-usage-today",
             "type": "http",
-            "url": "http://192.168.1.32:61209/usage/today",
+            "url": "http://192.168.1.32:61209/api/usage/today",
             "critical": false,
             "slowThresholdMs": 3000
         }
