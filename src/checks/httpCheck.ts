@@ -3,22 +3,29 @@ import { EndpointCheckResult } from './runService.check';
 import axios from 'axios';
 import { EndpointState } from '../state/service.state';
 
-export async function httpsCheck(serviceConfig: ServicesConfig) {
+export async function httpsChecker(serviceConfig: ServicesConfig) {
 
     return await Promise.all(
         serviceConfig
             .services
-            .map(service => getServiceResult(service, serviceConfig.defaults))
+            .map(service => {
+                if (service.type === "http") {
+                    return getHttpServiceResult(service, serviceConfig.defaults);
+                }
+
+                throw new Error(`Unsupported service type: ${service.type}`);
+            })
     );
 }
 
-const getServiceResult = async (service: ServiceDefinition, config: ServicesDefaults): Promise<EndpointCheckResult> => {
+const getHttpServiceResult = async (service: ServiceDefinition, config: ServicesDefaults): Promise<EndpointCheckResult> => {
     console.log(`📡 Narada observes ${service.name}`);
     const start = Date.now();
 
     try {
 
-        const response = await axios.get(service.url, { timeout: config.timeoutMs })
+        const timeoutMs = service.timeoutMs || config.timeoutMs;
+        const response = await axios.get(service.url, { timeout: timeoutMs })
         const duration = Date.now() - start;
         const thresholdMs = (service.slowThresholdMs || config.slowThresholdMs);
         const status: EndpointState = duration > thresholdMs ? "slow" : "healthy";
@@ -37,9 +44,13 @@ const getServiceResult = async (service: ServiceDefinition, config: ServicesDefa
         }
 
         return {
+            serviceId: service.id,
+            serviceName: service.name,
             endpoint: service.url,
             status,
-            responseTimeMs: duration
+            responseTimeMs: duration,
+            critical: service.critical,
+            checkedAt: new Date()
         }
 
     } catch (error) {
@@ -47,7 +58,11 @@ const getServiceResult = async (service: ServiceDefinition, config: ServicesDefa
         return {
             endpoint: service.url,
             status: "failed",
-            error,
+            error: error instanceof Error ? error.message : String(error),
+            serviceId: service.id,
+            serviceName: service.name,
+            critical: service.critical,
+            checkedAt: new Date()
         };
     }
 

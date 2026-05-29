@@ -9,6 +9,7 @@ export type ServiceDefinition = {
     url: string;
     critical: boolean;
     slowThresholdMs?: number;
+    timeoutMs?: number;
 };
 
 export type ServicesDefaults = {

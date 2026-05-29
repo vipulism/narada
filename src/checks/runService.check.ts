@@ -6,7 +6,11 @@ export type EndpointCheckResult = {
     endpoint: string;
     status: EndpointState;
     responseTimeMs?: number;
-    error?: any
+    error?: any;
+    serviceId: string;
+    serviceName: string;
+    critical: boolean;
+    checkedAt: Date
 };
 
 export async function checkPowerCast(): Promise<EndpointCheckResult[]> {
