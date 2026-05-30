@@ -1,7 +1,7 @@
+import { NaradaEventType } from "../events/naradaEvent";
 
 export let isPowerCastHealthy = true;
-export type EndpointState = "healthy" | "slow" | "failed";
-const endpointStates = new Map<string, EndpointState>();
+const endpointStates = new Map<string, NaradaEventType>();
 
 
 export function getPowerCastHealth(): boolean {
@@ -13,10 +13,10 @@ export function setPowerCastHealth(value: boolean): void {
 }
 
 
-export function getEndpointState(endpoint: string): EndpointState {
-    return endpointStates.get(endpoint) ?? "healthy";
+export function getEndpointState(endpoint: string): NaradaEventType {
+    return endpointStates.get(endpoint) ?? "SERVICE_HEALTHY";
 }
 
-export function setEndpointState(endpoint: string, state: EndpointState): void {
+export function setEndpointState(endpoint: string, state: NaradaEventType): void {
     endpointStates.set(endpoint, state);
 }

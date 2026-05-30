@@ -7,9 +7,6 @@ import { runHttpChecks } from "../checks/httpCheck";
 
 export function startPowerCastScheduler(): void {
 
-
-
-
     cron.schedule("*/1 * * * *", async () => {
 
         const serviceConfig = await loadServiceConfig()
@@ -21,29 +18,14 @@ export function startPowerCastScheduler(): void {
         try {
 
             for (const result of results) {
-                const oldState = getEndpointState(result.endpoint);
-                const newState = result.status;
+                const oldState = getEndpointState(result.metadata.endpoint as string);
+                const severity = result.type;
 
-                if (newState === "failed") {
-                    await sendTelegramMessage(
-                        `🔴 Halahal detected\n${result.endpoint} failed`
-                    );
-                }
+                await sendTelegramMessage(result.message);
 
-                if (oldState !== newState) {
-                    if (newState === "slow") {
-                        await sendTelegramMessage(
-                            `🟡 Manthan Warning\n${result.endpoint} is slow: ${result.responseTimeMs}ms`
-                        );
-                    }
+                if (oldState !== severity) {
 
-                    if (newState === "healthy") {
-                        await sendTelegramMessage(
-                            `🟢 Amrit restored\n${result.endpoint} recovered`
-                        );
-                    }
-
-                    setEndpointState(result.endpoint, newState);
+                    setEndpointState(result.metadata.endpoint, severity);
                 }
 
                 if (!getPowerCastHealth()) {

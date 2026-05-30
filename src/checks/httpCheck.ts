@@ -1,7 +1,10 @@
 import { ServicesConfig, ServicesDefaults, ServiceDefinition } from './../config/loadServices.config';
 import { EndpointCheckResult } from './runService.check';
 import axios from 'axios';
-import { EndpointState } from '../state/service.state';
+import { NaradaEvent, NaradaEventType } from '../events/naradaEvent';
+import crypto from "node:crypto";
+import { createHttpEvent } from './httpEventFactory';
+
 
 export async function runHttpChecks(serviceConfig: ServicesConfig) {
 
@@ -24,7 +27,7 @@ export async function runHttpChecks(serviceConfig: ServicesConfig) {
     );
 }
 
-const getHttpServiceResult = async (service: ServiceDefinition, config: ServicesDefaults): Promise<EndpointCheckResult> => {
+const getHttpServiceResult = async (service: ServiceDefinition, config: ServicesDefaults): Promise<NaradaEvent> => {
     console.log(`📡 Narada observes ${service.name}`);
     const start = Date.now();
 
@@ -34,42 +37,44 @@ const getHttpServiceResult = async (service: ServiceDefinition, config: Services
         const response = await axios.get(service.url, { timeout: timeoutMs })
         const duration = Date.now() - start;
         const thresholdMs = (service.slowThresholdMs || config.slowThresholdMs);
-        const status: EndpointState = duration > thresholdMs ? "slow" : "healthy";
+        const status = duration > thresholdMs ? "slow" : "healthy";
+        const type = status === "slow" ? "SERVICE_SLOW" : "SERVICE_HEALTHY";
+        const severity = status === "slow" ? "warning" : "info";
 
-        if (status === "slow") {
-            console.warn("🟡 Slow endpoint detected", {
-                endpoint: service.url,
-                responseTime: `${duration}ms`,
-            });
-        } else {
-            console.log("✅ Endpoint healthy", {
-                endpoint: service.url,
-                statusCode: response.status,
-                responseTime: `${duration}ms`,
-            });
-        }
-
-        return {
-            serviceId: service.id,
-            serviceName: service.name,
-            endpoint: service.url,
-            status,
+        return createHttpEvent({
+            service: {
+                id: service.id,
+                name: service.name,
+                critical: service.critical,
+                url: service.url,
+                type:'http',
+            },
+            type: type,
+            severity: severity,
             responseTimeMs: duration,
-            critical: service.critical,
-            checkedAt: new Date()
-        }
+            statusCode: response.status,
+            thresholdMs: duration,
+        })
 
     } catch (error) {
-        console.error("🔴 Endpoint failed", { endpoint: service.url });
-        return {
-            endpoint: service.url,
-            status: "failed",
-            error: error instanceof Error ? error.message : String(error),
-            serviceId: service.id,
-            serviceName: service.name,
-            critical: service.critical,
-            checkedAt: new Date()
-        };
+
+        const severity = service.critical ? "critical" : "warning";
+        const type = "SERVICE_FAILED";
+
+        return createHttpEvent({
+            service: {
+                id: service.id,
+                name: service.name,
+                critical: service.critical,
+                url: service.url,
+                type:'http',
+            },
+            type: type,
+            severity: severity,
+            error:'error aagai'
+        })
     }
 
 }
+
+

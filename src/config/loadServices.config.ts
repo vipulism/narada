@@ -5,7 +5,7 @@ import path from "path";
 export type ServiceDefinition = {
     name: string;
     id: string;
-    type: "http";
+    type: 'http';
     url: string;
     critical: boolean;
     slowThresholdMs?: number;
