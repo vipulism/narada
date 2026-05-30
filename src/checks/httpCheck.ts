@@ -1,8 +1,6 @@
 import { ServicesConfig, ServicesDefaults, ServiceDefinition } from './../config/loadServices.config';
-import { EndpointCheckResult } from './runService.check';
 import axios from 'axios';
-import { NaradaEvent, NaradaEventType } from '../events/naradaEvent';
-import crypto from "node:crypto";
+import { NaradaEvent } from '../events/naradaEvent';
 import { createHttpEvent } from './httpEventFactory';
 
 
@@ -38,22 +36,17 @@ const getHttpServiceResult = async (service: ServiceDefinition, config: Services
         const duration = Date.now() - start;
         const thresholdMs = (service.slowThresholdMs || config.slowThresholdMs);
         const status = duration > thresholdMs ? "slow" : "healthy";
-        const type = status === "slow" ? "SERVICE_SLOW" : "SERVICE_HEALTHY";
-        const severity = status === "slow" ? "warning" : "info";
+
+        const type: NaradaEvent["type"] = status === "slow" ? "SERVICE_SLOW" : "SERVICE_HEALTHY";
+        const severity: NaradaEvent["severity"] =  status === "slow" ? "warning" : "info";
 
         return createHttpEvent({
-            service: {
-                id: service.id,
-                name: service.name,
-                critical: service.critical,
-                url: service.url,
-                type:'http',
-            },
+            service,
             type: type,
             severity: severity,
             responseTimeMs: duration,
             statusCode: response.status,
-            thresholdMs: duration,
+            thresholdMs,
         })
 
     } catch (error) {
@@ -62,16 +55,10 @@ const getHttpServiceResult = async (service: ServiceDefinition, config: Services
         const type = "SERVICE_FAILED";
 
         return createHttpEvent({
-            service: {
-                id: service.id,
-                name: service.name,
-                critical: service.critical,
-                url: service.url,
-                type:'http',
-            },
+            service,
             type: type,
             severity: severity,
-            error:'error aagai'
+            error:error instanceof Error ? error.message : String(error)
         })
     }
 

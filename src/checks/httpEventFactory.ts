@@ -1,6 +1,8 @@
 import { ServiceDefinition } from "../config/loadServices.config";
 import { createServiceMessage } from "../events/eventMessage";
 import { NaradaEvent } from "../events/naradaEvent";
+import crypto from "node:crypto";
+
 
 export const  createHttpEvent = (params: {
     service: ServiceDefinition;

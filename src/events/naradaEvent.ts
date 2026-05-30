@@ -1,4 +1,3 @@
-import { ServiceDefinition } from "../config/loadServices.config";
 
 export type NaradaEventType =
   | "SERVICE_HEALTHY"
@@ -31,12 +30,13 @@ export type NaradaEventSource =
       name:string,
       critical:boolean
     };
-    metadata: {
-      endpoint: string,
-      responseTimeMs?: number,
-      statusCode?: number,
-      thresholdMs?: number,
-      error?:any,
+    metadata?: {
+      endpoint?: string;
+      responseTimeMs?: number;
+      statusCode?: number;
+      thresholdMs?: number;
+      error?:any;
+      [key: string]: unknown;
     };
   }
 
