@@ -1,15 +1,36 @@
 import { ServicesConfig } from "../config/loadServices.config";
-import { runScheduledChecks } from "./service.scheduler";
+import { runScheduledChecks } from "./runScheduledChecks";
 
 export function startScheduler(config: ServicesConfig) {
-  const intervalSeconds = config.defaults.intervalSeconds ?? 60;
-  const intervalMs = intervalSeconds * 1000;
+    const intervalSeconds = config.defaults.intervalSeconds ?? 60;
+    const intervalMs = intervalSeconds * 1000;
 
-  console.log(`🌀 Narada scheduler started: every ${intervalSeconds}s`);
+    console.log(`🌀 Narada scheduler started. Interval: ${intervalSeconds}s`);
 
-  runScheduledChecks(config);
+    let isRunning = false;
 
-  setInterval(() => {
-    runScheduledChecks(config);
-  }, intervalMs);
+
+    const run = async () => {
+        if (isRunning) {
+            console.warn("🟡 Previous Narada check still running, skipping this cycle");
+            return;
+        }
+
+        isRunning = true;
+
+        try {
+            await runScheduledChecks(config);
+        } catch (error) {
+            console.error("🔴 Narada check failed", error);
+        } finally {
+            isRunning = false;
+        }
+    };
+
+    runScheduledChecks(config).catch((error) => {
+        console.error("🔴 Initial Narada check failed", error);
+    });
+
+    run();
+    setInterval(run, intervalMs);
 }

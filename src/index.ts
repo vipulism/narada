@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { runScheduledChecks } from "./schedulers/service.scheduler";
+import { runScheduledChecks } from "./schedulers/runScheduledChecks";
 import { startScheduler } from "./schedulers/startScheduler";
 import { loadServiceConfig } from "./config/loadServices.config";
 
