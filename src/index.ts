@@ -6,6 +6,4 @@ dotenv.config();
 
 console.log("📡 Narada is observing the Ksheer Sagar");
 
-
-
 startPowerCastScheduler();
