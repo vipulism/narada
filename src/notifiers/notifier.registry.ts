@@ -1,4 +1,4 @@
-import { Notifier } from "./notifire";
+import { Notifier } from "./notifier";
 
 type NotifierConstructor = new () => Notifier;
 const registeredNotifiers = new Map<string, Notifier>();
@@ -8,13 +8,13 @@ export function getNotifier(notifireName:string){
 }
 
 export function registerNotifier(Notifier:NotifierConstructor){
-    console.log("I amm called and registered!!!!");
     
     const instance = new Notifier();
+    console.log(`🔔 Notifier registered: ${instance.name}`);
     registeredNotifiers.set(instance.name, instance);
 }
 
-export function initNotifications(notifiers:NotifierConstructor[]){
+export function initNotifiers(notifiers:NotifierConstructor[]){
     notifiers.forEach(notifier => registerNotifier(notifier))
 }
 

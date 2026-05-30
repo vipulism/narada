@@ -17,8 +17,7 @@ export async function notifyEvent(event:NaradaEvent, config:ServicesConfig){
         return;
       }
 
-      notifierList.forEach(async notifierName => {
-
+      for(const notifierName of notifierList){
         const notifier = getNotifier(notifierName)
 
         if (!notifier) {
@@ -26,8 +25,5 @@ export async function notifyEvent(event:NaradaEvent, config:ServicesConfig){
           }else {
             await notifier.send(event)
           }
-
-      })
-    
-
+      }
 }
