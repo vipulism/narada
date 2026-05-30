@@ -27,10 +27,6 @@ export function startScheduler(config: ServicesConfig) {
         }
     };
 
-    runScheduledChecks(config).catch((error) => {
-        console.error("🔴 Initial Narada check failed", error);
-    });
-
     run();
     setInterval(run, intervalMs);
 }
