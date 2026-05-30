@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 
 
+export type notifiers = 'Telegram' | 'Email'
+
 export type ServiceDefinition = {
     name: string;
     id: string;
@@ -10,12 +12,14 @@ export type ServiceDefinition = {
     critical: boolean;
     slowThresholdMs?: number;
     timeoutMs?: number;
+    notifiers?:notifiers[];
 };
 
 export type ServicesDefaults = {
     intervalSeconds: number;
     timeoutMs: number;
     slowThresholdMs: number;
+    notifiers?:notifiers[];
 }
 
 export type ServicesConfig = {

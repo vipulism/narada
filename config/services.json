@@ -2,7 +2,8 @@
     "defaults": {
         "intervalSeconds": 60,
         "timeoutMs": 5000,
-        "slowThresholdMs": 2000
+        "slowThresholdMs": 2000,
+        "notifiers": ["telegram"]
     },
     "services": [
         {
@@ -17,7 +18,8 @@
             "id": "powercast-ha",
             "type": "http",
             "url": "http://192.168.1.32:61209/api/status/home-assistant",
-            "critical": true
+            "critical": true,
+            "notifiers":["email"]
         },
         {
             "name": "PowerCast Usage Today",

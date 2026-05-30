@@ -1,6 +1,6 @@
 import { runHttpChecks } from "../checks/httpCheck";
 import { ServicesConfig } from "../config/loadServices.config";
-import { sendTelegramMessage } from "../notifiers/telegram.notifier";
+import { notifyEvent } from "../notifiers/notifier.router";
 import { updateServiceState } from "../state/service.state";
 
 export async function runScheduledChecks(config: ServicesConfig) {
@@ -33,6 +33,6 @@ export async function runScheduledChecks(config: ServicesConfig) {
       to: state.currentState,
     });
 
-    await sendTelegramMessage(event.message);
+    await notifyEvent(event, config);
   }
 }
