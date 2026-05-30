@@ -1,38 +1,38 @@
-import cron from "node-cron";
-import { getEndpointState, getPowerCastHealth, setEndpointState, setPowerCastHealth } from "../state/service.state";
-import { sendTelegramMessage } from "../notifiers/telegram.notifier";
-import { loadServiceConfig } from "../config/loadServices.config";
 import { runHttpChecks } from "../checks/httpCheck";
+import { ServicesConfig } from "../config/loadServices.config";
+import { sendTelegramMessage } from "../notifiers/telegram.notifier";
+import { updateServiceState } from "../state/service.state";
 
-export function startPowerCastScheduler(): void {
+export async function runScheduledChecks(config: ServicesConfig) {
+  console.log("🔄 Running Narada checks");
 
-    cron.schedule("*/1 * * * *", async () => {
+  const events = await runHttpChecks(config);
 
-        const serviceConfig = await loadServiceConfig()
-        console.log("📡 Narada observes the Ksheer Sagar");
-        const results = await runHttpChecks(serviceConfig);
+  for (const event of events) {
+    const state = updateServiceState(event);
 
-        try {
+    if (!state.trackable) {
+      console.log("⚪ Event is not service-trackable", {
+        eventId: event.id,
+        type: event.type,
+      });
+      continue;
+    }
 
-            for (const result of results) {
-                const oldState = getEndpointState(result?.metadata?.endpoint as string);
-                const severity = result.type;
+    if (!state.changed) {
+      console.log("🟢 No state change", {
+        service: event.service?.name,
+        state: event.type,
+      });
+      continue;
+    }
 
-                await sendTelegramMessage(result.message);
-
-                if (oldState !== severity) {
-                    setEndpointState(result?.metadata?.endpoint || "", severity);
-                }
-
-                if (!getPowerCastHealth()) {
-                    setPowerCastHealth(true);
-                    await sendTelegramMessage("🟢 Amrit restored\nPowerCast recovered");
-                }
-            }
-
-        } catch (error) {
-            console.error("Narada scheduler crashed", error);
-
-        }
+    console.log("📣 State changed", {
+      service: event.service?.name,
+      from: state.previousState,
+      to: state.currentState,
     });
+
+    await sendTelegramMessage(event.message);
+  }
 }

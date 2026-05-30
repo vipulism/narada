@@ -1,20 +1,39 @@
-import { NaradaEventType } from "../events/naradaEvent";
+import { NaradaEvent, NaradaEventType } from "../events/naradaEvent";
 
-export let isPowerCastHealthy = true;
-const endpointStates = new Map<string, NaradaEventType>();
+type ServiceStateUpdateResult = {
+  trackable: boolean;
+  changed: boolean;
+  serviceId?: string;
+  previousState?: NaradaEventType;
+  currentState?: NaradaEventType;
+};
 
-export function getPowerCastHealth(): boolean {
-    return isPowerCastHealthy;
-}
+const serviceStates = new Map<string, NaradaEventType>();
 
-export function setPowerCastHealth(value: boolean): void {
-    isPowerCastHealthy = value;
-}
+export function updateServiceState(
+  event: NaradaEvent
+): ServiceStateUpdateResult {
+  if (!event.service) {
+    return {
+      trackable: false,
+      changed: false,
+    };
+  }
 
-export function getEndpointState(endpoint: string): NaradaEventType {
-    return endpointStates.get(endpoint) ?? "SERVICE_HEALTHY";
-}
+  const serviceId = event.service.id;
+  const previousState = serviceStates.get(serviceId);
+  const currentState = event.type;
 
-export function setEndpointState(endpoint: string, state: NaradaEventType): void {
-    endpointStates.set(endpoint, state);
+  const changed =
+    previousState !== undefined && previousState !== currentState;
+
+  serviceStates.set(serviceId, currentState);
+
+  return {
+    trackable: true,
+    changed,
+    serviceId,
+    previousState,
+    currentState,
+  };
 }

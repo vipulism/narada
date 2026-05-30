@@ -4,7 +4,7 @@ import { NaradaEvent } from '../events/naradaEvent';
 import { createHttpEvent } from './httpEventFactory';
 
 
-export async function runHttpChecks(serviceConfig: ServicesConfig) {
+export async function runHttpChecks(serviceConfig: ServicesConfig): Promise<NaradaEvent[]> {
 
     const httpServices = serviceConfig.services.filter(service => {
         if (service.type !== "http") {
@@ -51,8 +51,8 @@ const getHttpServiceResult = async (service: ServiceDefinition, config: Services
 
     } catch (error) {
 
-        const severity = service.critical ? "critical" : "warning";
-        const type = "SERVICE_FAILED";
+        const severity: NaradaEvent["severity"] = service.critical ? "critical" : "warning";
+        const type: NaradaEvent["type"] = "SERVICE_FAILED";
 
         return createHttpEvent({
             service,

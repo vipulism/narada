@@ -1,8 +1,12 @@
 import dotenv from "dotenv";
-import { startPowerCastScheduler } from "./schedulers/service.scheduler";
+import { runScheduledChecks } from "./schedulers/service.scheduler";
+import { startScheduler } from "./schedulers/startScheduler";
+import { loadServiceConfig } from "./config/loadServices.config";
 
 dotenv.config();
 
+const config = loadServiceConfig();
+
 console.log("📡 Narada is observing the Ksheer Sagar");
 
-startPowerCastScheduler();
+startScheduler(config);

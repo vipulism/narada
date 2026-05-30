@@ -4,7 +4,7 @@ import { NaradaEvent } from "../events/naradaEvent";
 import crypto from "node:crypto";
 
 
-export const  createHttpEvent = (params: {
+export const createHttpEvent = (params: {
     service: ServiceDefinition;
     type: NaradaEvent["type"];
     severity: NaradaEvent["severity"];
