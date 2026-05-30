@@ -9,6 +9,6 @@ const config = loadServiceConfig();
 
 console.log("📡 Narada is observing the Ksheer Sagar");
 
-const notifires = [TelegramNotifier];
-initNotifiers(notifires);
+const notifiers = [TelegramNotifier];
+initNotifiers(notifiers);
 startScheduler(config);
