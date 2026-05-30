@@ -1,7 +1,6 @@
 import axios from "axios";
 import { Notifier } from "./notifier";
 import { NaradaEvent } from "../events/naradaEvent";
-import { registerNotifier } from "./notifier.registry";
 
 export class TelegramNotifier implements Notifier {
 

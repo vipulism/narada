@@ -3,8 +3,8 @@ import { Notifier } from "./notifier";
 type NotifierConstructor = new () => Notifier;
 const registeredNotifiers = new Map<string, Notifier>();
 
-export function getNotifier(notifireName:string){
-    return registeredNotifiers.get(notifireName);
+export function getNotifier(notifierName:string){
+    return registeredNotifiers.get(notifierName);
 }
 
 export function registerNotifier(Notifier:NotifierConstructor){
