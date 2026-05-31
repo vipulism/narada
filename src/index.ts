@@ -6,13 +6,22 @@ import { initNotifiers } from "./notifiers/notifier.registry";
 import { startServer } from "./server/startServer";
 import { connectRmq } from "./queue/rabbitConnection";
 
-dotenv.config();
-const config = loadServiceConfig();
 
-console.log("📡 Narada is observing the Ksheer Sagar");
-
-const notifiers = [TelegramNotifier];
-connectRmq();
-initNotifiers(notifiers);
-startScheduler(config);
-startServer(config);
+async function bootstrap() {
+    dotenv.config();
+  
+    const config = loadServiceConfig();
+  
+    console.log("📡 Narada is observing the Ksheer Sagar");
+  
+    await connectRmq();
+  
+    initNotifiers([TelegramNotifier]);
+    startScheduler(config);
+    startServer(config);
+  }
+  
+  bootstrap().catch((error) => {
+    console.error("🔴 Narada failed to start", error);
+    process.exit(1);
+  });

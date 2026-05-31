@@ -2,6 +2,10 @@ import amqplib from "amqplib";
 
 export const connectRmq = async () => {
 
+    if (!process.env.RABBITMQ_URL) {
+        throw new Error("Missing RABBITMQ_URL");
+    }
+
     const rabbitMQ_url = process.env.RABBITMQ_URL as string;
 
     const connection = await amqplib.connect(rabbitMQ_url, {
@@ -11,12 +15,12 @@ export const connectRmq = async () => {
           factor: 2,
           jitter: 0.2,
           maxRetries: Infinity,
-          async setup(model:any) {
+        //   async setup(model:any) {
             // Called after every successful (re)connect.
             // Recreate topology/consumers here.
-            const ch = await model.createChannel();
-            await ch.assertQueue('tasks', {durable: true});
-          },
+            // const ch = await model.createChannel();
+            // await ch.assertQueue('tasks', {durable: true});
+        //   },
         },
       });
       
@@ -25,6 +29,6 @@ export const connectRmq = async () => {
       });
       
       connection.on('disconnect', (err) => {
-        console.warn('disconnected', err.message);
+        console.warn('🐰 RabbitMQ disconnected', err.message);
       });
 }
