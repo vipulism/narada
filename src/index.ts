@@ -6,6 +6,7 @@ import { initNotifiers } from "./notifiers/notifier.registry";
 import { startServer } from "./server/startServer";
 import { connectRmq } from "./queue/rabbitConnection";
 import { setupRabbitTopology } from "./queue/rabbitTopology";
+import { eventConsumer } from "./queue/eventConsumer";
 
 
 async function bootstrap() {
@@ -17,6 +18,7 @@ async function bootstrap() {
   
     await connectRmq();
     await setupRabbitTopology();
+    eventConsumer(config)
 
     initNotifiers([TelegramNotifier]);
     startScheduler(config);
