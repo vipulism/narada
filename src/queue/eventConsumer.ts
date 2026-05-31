@@ -13,6 +13,8 @@ export const eventConsumer = async (config:ServicesConfig) => {
             await processEvent(event, config)
             channel.ack(data);
             console.log("🐰 consume", data.content.toString());
+        }else {
+            console.log('🐰 Consumer cancelled by server');
         }
         
     })
