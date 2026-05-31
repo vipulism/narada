@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
-import { NaradaEventMetadata, NaradaEventService, NaradaEventSource, NaradaEventType, NaradaSeverity } from "./naradaEvent";
+import { NaradaEvent, NaradaEventMetadata, NaradaEventService, NaradaEventSource, NaradaEventType, NaradaSeverity } from "./naradaEvent";
 
-interface webhookRequest {
+interface WebhookRequest {
     source:NaradaEventSource;
     type:NaradaEventType;
     severity:NaradaSeverity;
@@ -10,16 +10,12 @@ interface webhookRequest {
     metadata?:NaradaEventMetadata;
 }
 
-export function createWebhookEvent(reqData:webhookRequest){
-
-    const data = {
-        id: crypto.randomUUID(),
-        timestamp: new Date(),
-    }
+export function createWebhookEvent(reqData:WebhookRequest):NaradaEvent{
 
     return {
-        ...data,
-        ...reqData
+        ...reqData,
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
     }
 
 }

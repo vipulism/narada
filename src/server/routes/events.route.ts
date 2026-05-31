@@ -1,5 +1,4 @@
 import {  Router } from 'express';
-import { NaradaEvent } from '../../events/naradaEvent';
 import { processEvent } from '../../events/processEvent';
 import { ServicesConfig } from '../../config/loadServices.config';
 import { createWebhookEvent } from '../../events/createWebhookEvent';
@@ -19,7 +18,8 @@ export function createEventsRouter(config: ServicesConfig) {
       res.status(202).json({ 
         accepted: true,
         eventId: event.id,
-        mode: "dummy", 
+        source: event.source,
+        type: event.type,
       });
     });
   
