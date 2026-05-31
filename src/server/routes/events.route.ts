@@ -26,7 +26,3 @@ export function createEventsRouter(config: ServicesConfig) {
     return router;
   }
 
-
-
-
-
