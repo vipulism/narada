@@ -1,4 +1,6 @@
-import amqplib from "amqplib";
+import amqplib, { Channel, ChannelModel } from "amqplib";
+
+let channel: Channel;
 
 export const connectRmq = async () => {
 
@@ -15,12 +17,10 @@ export const connectRmq = async () => {
           factor: 2,
           jitter: 0.2,
           maxRetries: Infinity,
-        //   async setup(model:any) {
-            // Called after every successful (re)connect.
-            // Recreate topology/consumers here.
-            // const ch = await model.createChannel();
+          async setup(model: ChannelModel) {
+          channel = await model.createChannel();
             // await ch.assertQueue('tasks', {durable: true});
-        //   },
+          },
         },
       });
       
@@ -31,4 +31,10 @@ export const connectRmq = async () => {
       connection.on('disconnect', (err) => {
         console.warn('🐰 RabbitMQ disconnected', err.message);
       });
+}
+
+
+export const getChannel = () => {
+
+    return channel;
 }
