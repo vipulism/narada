@@ -14,8 +14,6 @@ export function createEventsRouter(config: ServicesConfig) {
 
       const event = createWebhookEvent(req.body);
 
-      await processEvent(event, config);
-
       publishEvent(event);
 
       res.status(202).json({ 

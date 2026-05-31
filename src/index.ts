@@ -18,7 +18,7 @@ async function bootstrap() {
   
     await connectRmq();
     await setupRabbitTopology();
-    eventConsumer(config)
+    await eventConsumer(config)
 
     initNotifiers([TelegramNotifier]);
     startScheduler(config);
