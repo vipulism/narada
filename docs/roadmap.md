@@ -8,6 +8,10 @@
 * Telegram notifications
 * State tracking
 * Docker deployment
+* Config-driven service monitoring
+* Narada event model
+* Notifier abstraction
+* Webhook ingestion
 
 ---
 
@@ -18,8 +22,8 @@
 * Docker container monitoring
 * Docker lifecycle events
 * Backup failure detection
-* Webhook ingestion
-* Multi-service configuration
+* Multi-service configuration improvements
+* Dozzle webhook/event integration
 
 ---
 
@@ -28,10 +32,26 @@
 ### Planned
 
 * RabbitMQ integration
-* Event processor
-* Event persistence
+* Event processor workers
+* Event persistence using the existing MariaDB Docker service
 * Retry mechanisms
 * Notification queueing
+
+### Persistence Note
+
+Narada will use the existing MariaDB instance already running in the homelab Docker stack for event persistence. SQLite is not the preferred target for this setup.
+
+Potential persisted data:
+
+* Event ID
+* Source
+* Event type
+* Severity
+* Service ID/name
+* Message
+* Metadata JSON
+* Created timestamp
+* Notification status
 
 ---
 
