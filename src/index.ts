@@ -22,7 +22,7 @@ async function bootstrap() {
 
     initNotifiers([TelegramNotifier]);
     startScheduler(config);
-    startServer(config);
+    startServer();
   }
   
   bootstrap().catch((error) => {
