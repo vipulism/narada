@@ -17,6 +17,25 @@ export type NaradaEventSource =
   | "backup-script"
   | "manual";
 
+
+
+export interface NaradaEventMetadata  {
+    endpoint?: string;
+    responseTimeMs?: number;
+    statusCode?: number;
+    thresholdMs?: number;
+    error?:string;
+    [key: string]: unknown;
+  }
+
+  
+
+export interface NaradaEventService  {
+  id:string;
+  name:string;
+  critical:boolean;
+}
+
 export interface NaradaEvent {
   id: string;
   source: NaradaEventSource;
@@ -24,18 +43,7 @@ export interface NaradaEvent {
   severity: NaradaSeverity;
   message: string;
   timestamp: Date;
-  service?: {
-    id:string;
-    name:string;
-    critical:boolean;
-  };
-  metadata?: {
-    endpoint?: string;
-    responseTimeMs?: number;
-    statusCode?: number;
-    thresholdMs?: number;
-    error?:string;
-    [key: string]: unknown;
-  };
+  service?: NaradaEventService;
+  metadata?: NaradaEventMetadata;
 }
 

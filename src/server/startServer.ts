@@ -5,7 +5,7 @@ import { createEventsRouter } from './routes/events.route';
 export function startServer(config:ServicesConfig) {
    
     const app = express();
-    const port = process.env.PORT;
+    const port = process.env.PORT || 4000;
 
     app.use(express.json());
     app.get('/health', (_req, res) => res.json({ ok: true }));
