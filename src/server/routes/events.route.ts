@@ -3,7 +3,7 @@ import { NaradaEvent } from '../../events/naradaEvent';
 import { processEvent } from '../../events/processEvent';
 import { ServicesConfig } from '../../config/loadServices.config';
 import { createWebhookEvent } from '../../events/createWebhookEvent';
-import { validateWebhookEventPayload } from '../../validations/webhook.validate';
+import { validateWebhookEventPayload } from '../../middlewares/validateWebhookEventPayload';
 
 
 
