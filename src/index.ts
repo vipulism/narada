@@ -5,6 +5,7 @@ import { TelegramNotifier } from "./notifiers/telegram.notifier";
 import { initNotifiers } from "./notifiers/notifier.registry";
 import { startServer } from "./server/startServer";
 import { connectRmq } from "./queue/rabbitConnection";
+import { setupRabbitTopology } from "./queue/rabbitTopology";
 
 
 async function bootstrap() {
@@ -15,7 +16,8 @@ async function bootstrap() {
     console.log("📡 Narada is observing the Ksheer Sagar");
   
     await connectRmq();
-  
+    await setupRabbitTopology();
+
     initNotifiers([TelegramNotifier]);
     startScheduler(config);
     startServer(config);

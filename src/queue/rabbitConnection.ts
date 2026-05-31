@@ -24,11 +24,11 @@ export const connectRmq = async () => {
     channel = await connection.createChannel();
       
     connection.on('connect', () => {
-    console.log('🐰 rabbitMQ connected');
+        console.log('🐰 rabbitMQ connected');
     });
     
     connection.on('disconnect', (err) => {
-    console.warn('🐰 RabbitMQ disconnected', err.message);
+        console.warn('🐰 RabbitMQ disconnected', err.message);
     });
 }
 
