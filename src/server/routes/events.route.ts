@@ -3,7 +3,7 @@ import { processEvent } from '../../events/processEvent';
 import { ServicesConfig } from '../../config/loadServices.config';
 import { createWebhookEvent } from '../../events/createWebhookEvent';
 import { validateWebhookEventPayload } from '../../middlewares/validateWebhookEventPayload';
-import { eventPublisher } from '../../queue/eventPublisher';
+import { publishEvent } from '../../queue/eventPublisher';
 
 
 
@@ -16,7 +16,7 @@ export function createEventsRouter(config: ServicesConfig) {
 
       await processEvent(event, config);
 
-      eventPublisher(event);
+      publishEvent(event);
 
       res.status(202).json({ 
         accepted: true,
