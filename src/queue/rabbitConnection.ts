@@ -1,5 +1,6 @@
-import amqplib, { Channel, ChannelModel } from "amqplib";
+import amqplib, { Channel, RecoveringChannelModel } from "amqplib";
 
+let connection: RecoveringChannelModel;
 let channel: Channel;
 
 export const connectRmq = async () => {
@@ -10,31 +11,31 @@ export const connectRmq = async () => {
 
     const rabbitMQ_url = process.env.RABBITMQ_URL as string;
 
-    const connection = await amqplib.connect(rabbitMQ_url, {
+    connection = await amqplib.connect(rabbitMQ_url, {
         recovery: {
           initialDelay: 200, // ms
           maxDelay: 5000, // ms
           factor: 2,
           jitter: 0.2,
           maxRetries: Infinity,
-          async setup(model: ChannelModel) {
-          channel = await model.createChannel();
-            // await ch.assertQueue('tasks', {durable: true});
-          },
         },
       });
+
+    channel = await connection.createChannel();
       
-      connection.on('connect', () => {
-        console.log('🐰 rabbitMQ connected');
-      });
-      
-      connection.on('disconnect', (err) => {
-        console.warn('🐰 RabbitMQ disconnected', err.message);
-      });
+    connection.on('connect', () => {
+    console.log('🐰 rabbitMQ connected');
+    });
+    
+    connection.on('disconnect', (err) => {
+    console.warn('🐰 RabbitMQ disconnected', err.message);
+    });
 }
 
 
 export const getChannel = () => {
-
+    if (!channel) {
+        throw new Error("RabbitMQ channel not initialized");
+      }
     return channel;
 }
