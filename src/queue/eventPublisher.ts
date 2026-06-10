@@ -1,6 +1,8 @@
 import { NaradaEvent } from "../events/naradaEvent";
 import { getChannel } from "./rabbitConnection";
 
+// Publishes events to RabbitMQ channel
+
 export const publishEvent = (event:NaradaEvent) => {
 
     const channel = getChannel();
