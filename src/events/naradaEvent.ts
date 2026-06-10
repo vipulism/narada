@@ -5,7 +5,11 @@ export type NaradaEventType =
   | "SERVICE_FAILED"
   | "SERVICE_RECOVERED"
   | "CONTAINER_STOPPED"
-  | "BACKUP_FAILED";
+  | "BACKUP_FAILED"
+  | "CONTAINER_STARTED"
+  | "CONTAINER_RESTARTED"
+  | "CONTAINER_KILLED"
+  ;
 
 export type NaradaSeverity = "info" | "warning" | "critical";
 
@@ -15,6 +19,7 @@ export type NaradaEventSource =
   | "dozzle"
   | "uptime-kuma"
   | "backup-script"
+  | "docker"
   | "manual";
 
 

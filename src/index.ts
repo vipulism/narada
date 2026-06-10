@@ -9,6 +9,7 @@ import { setupRabbitTopology } from "./queue/rabbitTopology";
 import { eventConsumer } from "./queue/eventConsumer";
 import { connectDb } from "./db/mariaConnection";
 import { migrate } from "./db/migrate";
+import { startDockerSource } from "./sources/docker/dockerSource";
 
 
 async function bootstrap() {
@@ -21,6 +22,7 @@ async function bootstrap() {
     await connectDb();
     await migrate();
     await connectRmq();
+    startDockerSource();
     await setupRabbitTopology();
     await eventConsumer(config)
 
