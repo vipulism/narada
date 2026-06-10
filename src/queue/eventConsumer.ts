@@ -34,7 +34,7 @@ export const eventConsumer = async (config:ServicesConfig) => {
 
             } catch (error) {
                 console.error(error);
-                markEventFailed(event.id, error);
+                await markEventFailed(event.id, error);
                 channel.nack(message, false, false); 
             }
         }else {
