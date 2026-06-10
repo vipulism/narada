@@ -92,7 +92,7 @@ export const getEvents = async (limit:number = 10, offset:number = 0):Promise<Na
 
     const [rows] = await db.query(sql, [limit, offset]);
 
-    return (Array.isArray(rows) ? rows[0] ?? null : null) as NaradaEvent[];
+    return rows as NaradaEvent[];
 
 }
 export const getEventById = async (eventId:string) => {
@@ -106,10 +106,7 @@ export const getEventById = async (eventId:string) => {
             `;
 
     const [rows] = await db.query(sql, [eventId]);
+    const events = rows as NaradaEvent[];
 
-    return rows;
-}
-export const getServices = async () => {
- 
-
+    return events[0] || null;
 }

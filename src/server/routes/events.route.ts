@@ -21,19 +21,17 @@ const createEvent = async (req:Request, res:Response) => {
 
 const getEventList = async (req:Request, res:Response) => {
   const events = await getEvents();
-
-  if (!event) {
-    return res.status(404).json({ message: "Event not found" });
-  }else {
-   return res.status(200).json(events);
-  }
+  return res.status(200).json(events);
 }
 
 const getEvent = async (req:Request, res:Response) => {
   const eventId = req.params.id as string;
-  const events = await getEventById(eventId) as NaradaEvent[];
+  const event = await getEventById(eventId);
 
-  return res.status(200).json(events[0]);
+  if (!event) {
+    return res.status(404).json({ message: "Event not found" });
+  }
+  return res.status(200).json(event);
 }
 
 
