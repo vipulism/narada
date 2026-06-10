@@ -3,8 +3,6 @@ import { createWebhookEvent } from '../../events/createWebhookEvent';
 import { validateWebhookEventPayload } from '../../middlewares/validateWebhookEventPayload';
 import { publishEvent } from '../../queue/eventPublisher';
 import { getEventById, getEvents } from '../../repositories/event.repository';
-import { NaradaEvent } from '../../events/naradaEvent';
-
 
 
 const createEvent = async (req:Request, res:Response) => {
