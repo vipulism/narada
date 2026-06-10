@@ -5,6 +5,9 @@ import { processEvent } from "../events/processEvent";
 import { getChannel } from "./rabbitConnection"
 
 export const eventConsumer = async (config:ServicesConfig) => {
+
+    console.log("🐰 RabbitMQ event consumer started");
+    
     const channel = getChannel();
     const queue = process.env.RABBITMQ_QUEUE || 'narada.events.process';
     await channel.consume(queue, async (message: ConsumeMessage | null) => {
@@ -17,7 +20,7 @@ export const eventConsumer = async (config:ServicesConfig) => {
                 console.log("🐰 consume", message.content.toString());
 
             } catch (error) {
-                console.log(error);
+                console.error(error);
                 channel.nack(message, false, false); 
             }
         }else {

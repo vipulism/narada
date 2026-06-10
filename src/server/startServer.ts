@@ -2,7 +2,7 @@ import express from 'express';
 import { ServicesConfig } from '../config/loadServices.config';
 import { createEventsRouter } from './routes/events.route';
 
-export function startServer(config:ServicesConfig) {
+export function startServer() {
    
     const app = express();
     const port = process.env.PORT || 4000;
@@ -10,7 +10,7 @@ export function startServer(config:ServicesConfig) {
     app.use(express.json());
     app.get('/health', (_req, res) => res.json({ ok: true }));
 
-    app.use(createEventsRouter(config));
+    app.use(createEventsRouter());
     
 
     app.listen(port, () => {

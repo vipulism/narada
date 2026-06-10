@@ -1,5 +1,4 @@
 import {  Router } from 'express';
-import { processEvent } from '../../events/processEvent';
 import { ServicesConfig } from '../../config/loadServices.config';
 import { createWebhookEvent } from '../../events/createWebhookEvent';
 import { validateWebhookEventPayload } from '../../middlewares/validateWebhookEventPayload';
@@ -7,7 +6,7 @@ import { publishEvent } from '../../queue/eventPublisher';
 
 
 
-export function createEventsRouter(config: ServicesConfig) {
+export function createEventsRouter() {
     const router = Router();
 
     router.post("/events", validateWebhookEventPayload, async (req, res) => {
