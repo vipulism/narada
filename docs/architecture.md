@@ -45,7 +45,7 @@ Notifier Router
 TelegramNotifier
 ```
 
-Webhook ingestion is also supported:
+Webhook ingestion is supported:
 
 ```text
 External Source
@@ -58,13 +58,15 @@ createWebhookEvent()
       ↓
 NaradaEvent
       ↓
+RabbitMQ Exchange
+      ↓
+Consumer Worker
+      ↓
+MariaDB Persistence
+      ↓
 processEvent()
       ↓
-State Tracking
-      ↓
 Notifier Router
-      ↓
-TelegramNotifier
 ```
 
 Current capabilities:
@@ -77,7 +79,9 @@ Current capabilities:
 * Notifier abstraction
 * Telegram notifier
 * Webhook ingestion endpoint
-* Shared `processEvent()` pipeline for scheduler and webhook events
+* RabbitMQ event bus
+* MariaDB event persistence
+* Shared `processEvent()` pipeline for scheduler and consumed events
 
 ---
 
@@ -99,11 +103,11 @@ Queues
         ↓
 Narada Worker / Consumer
         ↓
+MariaDB Event Persistence
+        ↓
 processEvent()
         ↓
 State Tracking
-        ↓
-MariaDB Event Persistence
         ↓
 Notifier Router
         ↓
@@ -125,11 +129,11 @@ It should only decouple event ingestion from event processing.
 
 ## Persistence Strategy
 
-Narada will use the existing MariaDB Docker service already available in the homelab stack.
+Narada uses the existing MariaDB Docker service already available in the homelab stack.
 
 SQLite is not the preferred target for this setup.
 
-MariaDB will be used to persist:
+MariaDB is used to persist:
 
 * Event ID
 * Event source
@@ -162,6 +166,13 @@ processEvent()
 processed OR failed
       ↓
 MariaDB Persistence
+```
+
+Current persisted tables:
+
+* schema_migrations
+* narada_events
+* narada_notifications
 
 ---
 
@@ -208,7 +219,7 @@ Narada answers:
 
 ## Event Flow Examples
 
-### Current HTTP Check Flow
+### HTTP Check Flow
 
 ```text
 PowerCast Health Check
@@ -224,7 +235,7 @@ State Tracking
 Telegram Notification only if state changed
 ```
 
-### Current Webhook Flow
+### Webhook Flow
 
 ```text
 External Tool
@@ -235,12 +246,20 @@ validateWebhookEventPayload
       ↓
 createWebhookEvent()
       ↓
+publishEvent()
+      ↓
+RabbitMQ
+      ↓
+Consumer Worker
+      ↓
+saveReceivedEvent()
+      ↓
 processEvent()
       ↓
-Notifier Router
+markEventProcessed() / markEventFailed()
 ```
 
-### Sprint 2 RabbitMQ Flow
+### RabbitMQ Persistence Flow
 
 ```text
 Webhook / Docker / Dozzle / Script
@@ -251,9 +270,13 @@ RabbitMQ
       ↓
 Consumer Worker
       ↓
+saveReceivedEvent()
+      ↓
 processEvent()
       ↓
-MariaDB + Notifiers
+markEventProcessed() or markEventFailed()
+      ↓
+MariaDB
 ```
 
 ---
