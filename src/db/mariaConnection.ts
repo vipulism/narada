@@ -10,7 +10,8 @@ export async function connectDb(){
     }
 
     pool = await mysql.createPool(databaseUrl as string);
-    const result = await pool.query("SELECT 1");
+    
+    await pool.query("SELECT 1");
     
     console.log("🐬 MariaDB Connected");
     
