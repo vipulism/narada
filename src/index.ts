@@ -7,6 +7,8 @@ import { startServer } from "./server/startServer";
 import { connectRmq } from "./queue/rabbitConnection";
 import { setupRabbitTopology } from "./queue/rabbitTopology";
 import { eventConsumer } from "./queue/eventConsumer";
+import { connectDb } from "./db/mariaConnection";
+import { migrate } from "./db/migrate";
 
 
 async function bootstrap() {
@@ -15,7 +17,9 @@ async function bootstrap() {
     const config = loadServiceConfig();
   
     console.log("📡 Narada is observing the Ksheer Sagar");
-  
+
+    await connectDb();
+    await migrate();
     await connectRmq();
     await setupRabbitTopology();
     await eventConsumer(config)
