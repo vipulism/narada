@@ -75,3 +75,41 @@ export const markEventFailed = async (eventId: string, error: unknown) => {
   
     await db.execute(sql, [errorMessage, eventId]);
   };
+
+
+
+
+export const getEvents = async (limit:number = 10, offset:number = 0):Promise<NaradaEvent[]> => {
+
+    const db = getDb();
+
+    const sql = `
+                SELECT *
+            FROM narada_events
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?;
+            `;
+
+    const [rows] = await db.query(sql, [limit, offset]);
+
+    return rows as NaradaEvent[];
+
+}
+export const getEventById = async (eventId:string) => {
+
+    const db = getDb();
+
+    const sql = `
+            SELECT *
+            FROM narada_events
+            WHERE id = ?;
+            `;
+
+    const [rows] = await db.query(sql, [eventId]);
+
+    return rows;
+}
+export const getServices = async () => {
+ 
+
+}
