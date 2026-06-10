@@ -23,21 +23,35 @@
 
 ### Sprint 2
 
-✅ #6 RabbitMQ Event Bus Integration
+✅ Complete
 
-✅ #7 MariaDB Event Persistence
+Completed scope:
 
-⏳ #8 Docker and Dozzle Event Sources
+* ✅ #6 RabbitMQ Event Bus Integration
+* ✅ #7 MariaDB Event Persistence
+* ✅ #8 Docker Event Source
+* ✅ #9 Events Read API
 
-⏳ #9 Events and Services API
+### Sprint 3
 
+Planned focus:
+
+* Services API and service status summaries
+* Events API filtering and pagination polish
+* Notification persistence
+* Dashboard foundation
+
+---
 
 ## Phase 2 — Infrastructure Awareness
 
-### Planned
+### Completed
 
 * Docker container monitoring
 * Docker lifecycle events
+
+### Planned
+
 * Backup failure detection
 * Multi-service configuration improvements
 * Dozzle webhook/event integration
@@ -53,6 +67,7 @@
 * Event persistence using the existing MariaDB Docker service
 * MariaDB migration runner
 * Event lifecycle persistence (received / processed / failed)
+* Events Read API
 
 ### Planned
 
@@ -64,7 +79,7 @@
 
 Narada will use the existing MariaDB instance already running in the homelab Docker stack for event persistence. SQLite is not the preferred target for this setup.
 
-Potential persisted data:
+Persisted event data:
 
 * Event ID
 * Source
@@ -74,7 +89,14 @@ Potential persisted data:
 * Message
 * Metadata JSON
 * Created timestamp
+* Processing status
+* Processed timestamp
+
+Future persisted data:
+
 * Notification status
+* Notification delivery history
+* Dedicated event error message column
 
 ---
 
