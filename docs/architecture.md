@@ -16,20 +16,27 @@ Narada's role is to listen, normalize, decide and deliver.
 
 ---
 
-## Current Architecture — Sprint 1 Complete
+## Current Architecture — Sprint 2 In Progress
 
 ```text
-services.json
-      ↓
-Scheduler
-      ↓
 HTTP Checks
+Webhook Events
       ↓
 NaradaEvent
       ↓
+RabbitMQ Exchange
+      ↓
+Consumer Worker
+      ↓
+saveReceivedEvent()
+      ↓
 processEvent()
       ↓
-State Tracking
+markEventProcessed()
+or
+markEventFailed()
+      ↓
+MariaDB
       ↓
 Notifier Router
       ↓
@@ -134,6 +141,25 @@ MariaDB will be used to persist:
 * Notification status
 
 This persistence layer will support future APIs and dashboard views.
+
+### Current Event Lifecycle
+
+```text
+Event Published
+      ↓
+RabbitMQ
+      ↓
+Consumer
+      ↓
+saveReceivedEvent()
+      ↓
+status = received
+      ↓
+processEvent()
+      ↓
+processed OR failed
+      ↓
+MariaDB Persistence
 
 ---
 

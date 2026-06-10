@@ -15,6 +15,23 @@
 
 ---
 
+## Sprint Progress
+
+### Sprint 1
+
+✅ Complete
+
+### Sprint 2
+
+✅ #6 RabbitMQ Event Bus Integration
+
+✅ #7 MariaDB Event Persistence
+
+⏳ #8 Docker and Dozzle Event Sources
+
+⏳ #9 Events and Services API
+
+
 ## Phase 2 — Infrastructure Awareness
 
 ### Planned
@@ -29,13 +46,19 @@
 
 ## Phase 3 — Event Platform
 
-### Planned
+### Completed
 
 * RabbitMQ integration
 * Event processor workers
 * Event persistence using the existing MariaDB Docker service
+* MariaDB migration runner
+* Event lifecycle persistence (received / processed / failed)
+
+### Planned
+
 * Retry mechanisms
 * Notification queueing
+* Notification persistence
 
 ### Persistence Note
 
