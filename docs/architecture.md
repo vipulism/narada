@@ -30,13 +30,15 @@ Consumer Worker
       ↓
 saveReceivedEvent()
       ↓
+MariaDB status = received
+      ↓
 processEvent()
       ↓
 markEventProcessed()
 or
 markEventFailed()
       ↓
-MariaDB
+MariaDB status = processed/failed
       ↓
 Notifier Router
       ↓
