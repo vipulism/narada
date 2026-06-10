@@ -17,40 +17,28 @@ interface DockerEvent {
   }
 
 
-const actionMap = (action:ActionType):NaradaEventType => {
-    
-    let type =  '' as NaradaEventType;
-
+  const actionMap = (action: ActionType): NaradaEventType | null => {
     switch (action) {
-        case 'start':
-            type = "CONTAINER_STARTED"
-            break;
-        case 'stop':
-            type = "CONTAINER_STOPPED"
-            break;
-        case 'die':
-            type = "CONTAINER_STOPPED"
-            break;
-        case 'restart':
-            type = "CONTAINER_RESTARTED"
-            break;
-        case 'kill':
-            type = "CONTAINER_KILLED"
-            break;
+      case "start": return "CONTAINER_STARTED";
+      case "stop":
+      case "die": return "CONTAINER_STOPPED";
+      case "restart": return "CONTAINER_RESTARTED";
+      case "kill": return "CONTAINER_KILLED";
+      default: return null;
     }
+  };
 
-    return type;
+export const mapDockerEventToNaradaEvent  = (dockerEvent:DockerEvent):NaradaEvent | null => {
 
-}
-
-export const mapDockerEventToNaradaEvent  = (dockerEvent:DockerEvent):NaradaEvent => {
-
+    const type = actionMap(dockerEvent.Action);
+    if (!type) {
+        return null;
+      }
     const isCritical = (currentState:ActionType) => ['die', "kill", "stop"].some(state => state === currentState)
-    
     return {
         id:crypto.randomUUID(),
         source: "docker",
-        type: actionMap(dockerEvent.Action),
+        type,
         severity: "warning",
         message: `Container ${dockerEvent.Actor.Attributes.name} is ${dockerEvent.Action}`,
         service: {

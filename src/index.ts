@@ -22,8 +22,8 @@ async function bootstrap() {
     await connectDb();
     await migrate();
     await connectRmq();
-    startDockerSource();
     await setupRabbitTopology();
+    startDockerSource();
     await eventConsumer(config)
 
     initNotifiers([TelegramNotifier]);
