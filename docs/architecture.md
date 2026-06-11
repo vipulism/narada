@@ -16,11 +16,12 @@ Narada's role is to listen, normalize, decide and deliver.
 
 ---
 
-## Current Architecture — Sprint 2 In Progress
+## Current Architecture — Sprint 3 In Progress
 
 ```text
 HTTP Checks
 Webhook Events
+Docker Events
       ↓
 NaradaEvent
       ↓
@@ -81,18 +82,150 @@ Current capabilities:
 * Webhook ingestion endpoint
 * RabbitMQ event bus
 * MariaDB event persistence
+* Docker event source
+* Events Read API
+* Services API
+* SSE foundation for live service-status updates
 * Shared `processEvent()` pipeline for scheduler and consumed events
+
+---
+
+## API Contracts
+
+### Events API
+
+The Events API exposes persisted `narada_events` data for dashboards, debugging and incident review.
+
+#### List events
+
+```http
+GET /events
+```
+
+Sprint 2 returns the latest events.
+
+Sprint 3 improves this endpoint with pagination and filters.
+
+Supported query parameters:
+
+| Query param | Type | Required | Description |
+| --- | --- | --- | --- |
+| `page` | number | No | Page number. Defaults to `1`. |
+| `limit` | number | No | Page size. Defaults to `10`. Should be capped to a safe maximum such as `100`. |
+| `status` | string | No | Filters by event processing status such as `received`, `processed`, or `failed`. |
+| `type` | string | No | Filters by event type such as `SERVICE_RECOVERED`, `SERVICE_UNHEALTHY`, `CONTAINER_STARTED`, etc. |
+
+Example requests:
+
+```http
+GET /events?page=1&limit=10
+GET /events?status=processed
+GET /events?status=failed&type=CONTAINER_STOPPED&page=2&limit=20
+```
+
+Expected response shape:
+
+```json
+{
+  "items": [
+    {
+      "id": "event-id",
+      "source": "docker",
+      "type": "CONTAINER_STARTED",
+      "severity": "info",
+      "status": "processed",
+      "message": "Container started",
+      "created_at": "2026-06-11T10:30:00.000Z",
+      "processed_at": "2026-06-11T10:30:01.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 42,
+    "totalPages": 5
+  },
+  "filters": {
+    "status": "processed",
+    "type": "CONTAINER_STARTED"
+  }
+}
+```
+
+Implementation notes:
+
+* `GET /events` should return a response object containing `items`, `pagination`, and `filters`.
+* Filters should be applied in SQL using parameterized queries.
+* Total count should be calculated using a separate `COUNT(*)` query with the same filters.
+* `page` must never be lower than `1`.
+* `limit` should be bounded to avoid accidentally returning too much data.
+* Empty result sets should return `items: []`, not `404`.
+
+#### Get event by ID
+
+```http
+GET /events/:id
+```
+
+Expected response:
+
+```json
+{
+  "id": "event-id",
+  "source": "manual",
+  "type": "SERVICE_RECOVERED",
+  "severity": "critical",
+  "status": "processed",
+  "message": "webhook event received",
+  "created_at": "2026-06-11T10:30:00.000Z",
+  "processed_at": "2026-06-11T10:30:01.000Z"
+}
+```
+
+If the event does not exist:
+
+```json
+{
+  "message": "Event not found"
+}
+```
+
+Status code: `404`.
+
+### Services API
+
+```http
+GET /services
+GET /services/stream
+```
+
+`GET /services` returns the latest service snapshot per tracked service.
+
+`GET /services/stream` is an SSE endpoint for one-way live service-status updates.
+
+Initial dashboard flow:
+
+```text
+Dashboard opens
+      ↓
+GET /services
+      ↓
+Render current service cards
+      ↓
+Connect to GET /services/stream
+      ↓
+Apply live service-status updates
+```
 
 ---
 
 ## Sprint 2 Target Architecture
 
-Sprint 2 moves Narada from direct event processing to an event-bus-based platform.
+Sprint 2 moved Narada from direct event processing to an event-bus-based platform.
 
 ```text
 HTTP Checks
 Docker Events
-Dozzle Events
 Webhook Events
 Backup Scripts
 Custom Scripts
@@ -218,88 +351,3 @@ Narada answers:
 ---
 
 ## Event Flow Examples
-
-### HTTP Check Flow
-
-```text
-PowerCast Health Check
-      ↓
-runHttpChecks()
-      ↓
-NaradaEvent
-      ↓
-processEvent()
-      ↓
-State Tracking
-      ↓
-Telegram Notification only if state changed
-```
-
-### Webhook Flow
-
-```text
-External Tool
-      ↓
-POST /events
-      ↓
-validateWebhookEventPayload
-      ↓
-createWebhookEvent()
-      ↓
-publishEvent()
-      ↓
-RabbitMQ
-      ↓
-Consumer Worker
-      ↓
-saveReceivedEvent()
-      ↓
-processEvent()
-      ↓
-markEventProcessed() / markEventFailed()
-```
-
-### RabbitMQ Persistence Flow
-
-```text
-Webhook / Docker / Dozzle / Script
-      ↓
-Publish NaradaEvent
-      ↓
-RabbitMQ
-      ↓
-Consumer Worker
-      ↓
-saveReceivedEvent()
-      ↓
-processEvent()
-      ↓
-markEventProcessed() or markEventFailed()
-      ↓
-MariaDB
-```
-
----
-
-## Design Principles
-
-* Event-driven
-* Lightweight
-* Self-hosted first
-* Homelab friendly
-* Source-agnostic
-* Notification focused
-* Storage-backed when needed
-* Extensible through adapters
-
----
-
-## Non-Goals For Now
-
-* Replacing Uptime Kuma, Dozzle or Glances
-* Building a full observability stack
-* Heavy distributed architecture
-* Kubernetes-first deployment
-* Over-engineered event sourcing
-
-Narada should stay small, practical and useful for a self-hosted homelab.
