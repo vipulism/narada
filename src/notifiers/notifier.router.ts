@@ -28,11 +28,6 @@ export async function notifyEvent(event: NaradaEvent, config: ServicesConfig) {
       try {
         await notifier.send(event);
 
-        await saveNotificationResult({
-          eventId: event.id,
-          notifierType: notifierName,
-          status: "sent",
-        });
       } catch (error) {
         await saveNotificationResult({
           eventId: event.id,
@@ -47,6 +42,12 @@ export async function notifyEvent(event: NaradaEvent, config: ServicesConfig) {
           error,
         });
       }
+
+      await saveNotificationResult({
+        eventId: event.id,
+        notifierType: notifierName,
+        status: "sent",
+      });
     }
   }
 }
