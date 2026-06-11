@@ -1,0 +1,26 @@
+{
+  "defaults": {
+    "intervalSeconds": 60,
+    "timeoutMs": 5000,
+    "slowThresholdMs": 2000,
+    "notifiers": ["Telegram"]
+  },
+  "services": [
+    {
+      "id": "powercast-health",
+      "name": "PowerCast Health",
+      "type": "http",
+      "url": "http://powercast:3000/health",
+      "critical": true,
+      "notifiers": ["Telegram"]
+    },
+    {
+      "id": "home-assistant",
+      "name": "Home Assistant",
+      "type": "http",
+      "url": "http://homeassistant:8123",
+      "critical": true,
+      "notifiers": ["Telegram"]
+    }
+  ]
+}
