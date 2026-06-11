@@ -23,6 +23,7 @@ export const eventConsumer = async (config: ServicesConfig) => {
             }
             catch (error) {
                 console.log("event not saved in DB");
+                channel.nack(message, false, true);
                 return;
             }
 
@@ -44,7 +45,6 @@ export const eventConsumer = async (config: ServicesConfig) => {
                         lastEventAt: new Date().toISOString(),
                     });
                 }
-
 
                 channel.ack(message);
                 console.log("🐰 consume", message.content.toString());
