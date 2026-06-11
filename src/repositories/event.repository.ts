@@ -1,10 +1,18 @@
 import { getDb } from "../db/mariaConnection";
 import { NaradaEvent } from "../events/naradaEvent";
 
+
+export interface GetEventsOptions {
+  page: number;
+  limit: number;
+  status?: string;
+  type?: string;
+}
+
 export const saveReceivedEvent = async (event: NaradaEvent) => {
 
-    const db = getDb();
-    const sql = `
+  const db = getDb();
+  const sql = `
     INSERT INTO narada_events (
       id,
       source,
@@ -21,30 +29,30 @@ export const saveReceivedEvent = async (event: NaradaEvent) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-    const values = [
-        event.id,
-        event.source,
-        event.type,
-        event.severity,
-        event.message,
-        "received",
-        event.metadata ? JSON.stringify(event.metadata) : null,
-        event.timestamp ? new Date(event.timestamp) : new Date(),
-        event.service?.id ?? null,
-        event.service?.name ?? null,
-        event.service?.critical ?? null,
-    ];
+  const values = [
+    event.id,
+    event.source,
+    event.type,
+    event.severity,
+    event.message,
+    "received",
+    event.metadata ? JSON.stringify(event.metadata) : null,
+    event.timestamp ? new Date(event.timestamp) : new Date(),
+    event.service?.id ?? null,
+    event.service?.name ?? null,
+    event.service?.critical ?? null,
+  ];
 
-    await db.execute(sql, values);
+  await db.execute(sql, values);
 
-    return event.id;
+  return event.id;
 }
 
 
 export async function markEventProcessed(eventId: string) {
 
-    const db = getDb();
-    const sql = `
+  const db = getDb();
+  const sql = `
     UPDATE narada_events 
     SET status = 'processed',
         processed_at = NOW()
@@ -52,16 +60,16 @@ export async function markEventProcessed(eventId: string) {
     `;
 
   await db.execute(sql, [eventId]);
- 
+
 }
 
 export const markEventFailed = async (eventId: string, error: unknown) => {
-    const db = getDb();
-  
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
-  
-    const sql = `
+  const db = getDb();
+
+  const errorMessage =
+    error instanceof Error ? error.message : String(error);
+
+  const sql = `
       UPDATE narada_events
       SET status = 'failed',
           processed_at = NOW(),
@@ -72,41 +80,76 @@ export const markEventFailed = async (eventId: string, error: unknown) => {
           )
       WHERE id = ?
     `;
-  
-    await db.execute(sql, [errorMessage, eventId]);
-  };
+
+  await db.execute(sql, [errorMessage, eventId]);
+};
 
 
 
 
-export const getEvents = async (limit:number = 10, offset:number = 0):Promise<NaradaEvent[]> => {
+export const getEvents = async (options: GetEventsOptions): Promise<{ items: NaradaEvent[], total: number }> => {
 
-    const db = getDb();
+  const db = getDb();
 
-    const sql = `
+  const page = options.page ?? 1;
+  const limit = options.limit ?? 10;
+  const offset = (page - 1) * limit;
+
+  const where: string[] = [];
+  const params: unknown[] = [];
+
+  if (options.status) {
+    where.push("status = ?");
+    params.push(options.status);
+  }
+
+  if (options.type) {
+    where.push("type = ?");
+    params.push(options.type);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  const sql = `
                 SELECT *
-            FROM narada_events
-            ORDER BY created_at DESC
-            LIMIT ? OFFSET ?;
+                FROM narada_events
+                ${whereSql}
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?;
             `;
 
-    const [rows] = await db.query(sql, [limit, offset]);
 
-    return rows as NaradaEvent[];
+  const countSql = `
+            SELECT COUNT(*) AS total
+            FROM narada_events
+            ${whereSql};
+          `;
+
+  const [rows] = await db.query(sql, [...params, limit, offset]);
+  const [countRows] = await db.query(countSql, params);
+
+  const total = Array.isArray(countRows)
+    ? Number((countRows as any[])[0]?.total ?? 0)
+    : 0;
+
+  return {
+    items: rows as NaradaEvent[],
+    total,
+  };
 
 }
-export const getEventById = async (eventId:string) => {
+export const getEventById = async (eventId: string) => {
 
-    const db = getDb();
+  const db = getDb();
 
-    const sql = `
+  const sql = `
             SELECT *
             FROM narada_events
             WHERE id = ?;
             `;
 
-    const [rows] = await db.query(sql, [eventId]);
-    const events = rows as NaradaEvent[];
+  const [rows] = await db.query(sql, [eventId]);
+  const events = rows as NaradaEvent[];
 
-    return events[0] || null;
+  return events[0] || null;
 }
