@@ -1,4 +1,3 @@
-import { GetEventsOptions } from './../../repositories/event.repository';
 import { Request, Response, Router } from 'express';
 import { createWebhookEvent } from '../../events/createWebhookEvent';
 import { validateWebhookEventPayload } from '../../middlewares/validateWebhookEventPayload';
@@ -20,8 +19,14 @@ const createEvent = async (req: Request, res: Response) => {
 
 const getEventList = async (req: Request, res: Response) => {
 
-  const page = Number(req.query.page ?? 1);
-  const limit = Number(req.query.limit ?? 10);
+  const rawPage = Number(req.query.page ?? 1);
+  const rawLimit = Number(req.query.limit ?? 10);
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0
+    ? Math.min(rawLimit, 100)
+    : 10;
+
+
   const status = req.query.status as string | undefined;
   const type = req.query.type as string | undefined;
 
