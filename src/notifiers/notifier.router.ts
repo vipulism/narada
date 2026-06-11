@@ -41,6 +41,8 @@ export async function notifyEvent(event: NaradaEvent, config: ServicesConfig) {
           eventId: event.id,
           error,
         });
+
+        continue;
       }
 
       await saveNotificationResult({
