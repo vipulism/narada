@@ -1,7 +1,5 @@
 import { Request, Response, Router } from "express";
-import { getServicesStatus } from "../../repositories/servcie.repository";
-
-
+import { getServicesStatus } from "../../repositories/service.repository";
 
 
 const getServices = async (req: Request, res: Response) => {

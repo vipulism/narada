@@ -1,5 +1,4 @@
 import express from 'express';
-import { ServicesConfig } from '../config/loadServices.config';
 import { createEventsRouter } from './routes/events.route';
 import { createServiceRoutes } from './routes/services.route';
 
