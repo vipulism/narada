@@ -1,12 +1,30 @@
 import { getDb } from "../db/mariaConnection";
+import { NaradaEventSource, NaradaSeverity } from "../events/naradaEvent";
 
-export const getServicesStatus = async () => {
-    const db = getDb();
-    const sql = `
+export interface ServiceStatus {
+  id: string;
+  source: NaradaEventSource;
+  eventStatus: string;
+  serviceStatus: string;
+  severity: NaradaSeverity;
+  name: string;
+  critical: number | boolean;
+  message: string;
+  lastEventAt: Date;
+}
+
+
+/**
+ * Returns the latest event snapshot per tracked service.
+ */
+export const getServicesStatus = async (): Promise<ServiceStatus[]> => {
+  const db = getDb();
+  const sql = `
     SELECT
       e.service_id AS id,
       e.source,
-      e.status,
+      e.status AS eventStatus,
+      e.type AS serviceStatus,
       e.severity,
       e.service_name AS name,
       e.service_critical AS critical,
@@ -24,7 +42,7 @@ export const getServicesStatus = async () => {
     ORDER BY e.processed_at DESC; 
     `;
 
-    const [rows] = await db.execute(sql);
+  const [rows] = await db.execute(sql);
 
-    return rows;
+  return rows as ServiceStatus[];
 }
