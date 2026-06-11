@@ -19,8 +19,11 @@ const VALID_TYPES: readonly NaradaEventType[] = [
   "SERVICE_SLOW",
   "SERVICE_FAILED",
   "SERVICE_RECOVERED",
-  "CONTAINER_STOPPED",
   "BACKUP_FAILED",
+  "CONTAINER_KILLED",
+  "CONTAINER_RESTARTED",
+  "CONTAINER_STARTED",
+  "CONTAINER_STOPPED",
 ];
 
 const VALID_SEVERITIES: readonly NaradaSeverity[] = [
@@ -44,7 +47,7 @@ const isValidSeverity = (severity: unknown): severity is NaradaSeverity =>
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
- 
+
 export const validateWebhookEventPayload = (
   req: Request,
   res: Response,
