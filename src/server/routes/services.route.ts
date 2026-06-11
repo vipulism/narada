@@ -8,6 +8,8 @@ const streamServices = async (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    res.flushHeaders?.();
+
     const removeClient = addServiceStatusClient(res);
 
     req.on("close", removeClient);
@@ -21,7 +23,7 @@ const getServices = async (_req: Request, res: Response) => {
         critical: Boolean(service.critical),
     }));
 
-    return res.status(200).json(response)
+    return res.status(200).json(response);
 }
 
 export const createServiceRoutes = () => {
