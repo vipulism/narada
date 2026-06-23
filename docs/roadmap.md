@@ -49,7 +49,7 @@ Planned focus:
 
 ---
 
-## Phase 2 — Infrastructure Awareness
+## Phase 2 — Event Sources
 
 ### Completed
 
@@ -106,7 +106,7 @@ Future persisted data:
 
 ---
 
-## Phase 4 — Operations Dashboard
+## Phase 4 — Personal Dashboard
 
 ### Planned
 
@@ -128,10 +128,13 @@ Future persisted data:
 * Glances
 * OliveTin
 * Prometheus
+* Paperless-ngx
+* SMS Backup & Restore
+* Email ingestion
 
 ---
 
-## Phase 6 — Automation
+## Phase 6 — Financial Intelligence
 
 ### Planned
 
@@ -142,7 +145,7 @@ Future persisted data:
 
 ---
 
-## Phase 7 — Intelligence
+## Phase 7 — Personal Intelligence
 
 ### Planned
 
@@ -150,6 +153,10 @@ Future persisted data:
 * Failure pattern detection
 * Capacity forecasting
 * Infrastructure recommendations
+* AI Optional
+* Qdrant (self-hosted)
+* Main PC worker
+* Offline-first
 
 ---
 
