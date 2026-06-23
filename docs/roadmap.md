@@ -1,3 +1,9 @@
+Narada is a Personal Event Intelligence Platform.
+
+It is not intended to replace Dockge, Dozzle, Uptime Kuma, Grafana, or other infrastructure monitoring tools.
+
+Its purpose is to collect, normalize, store, correlate, and surface meaningful personal events from self-hosted systems and digital life.
+
 # Narada Roadmap
 
 ## Phase 1 — Foundation
