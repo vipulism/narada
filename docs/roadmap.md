@@ -166,7 +166,17 @@ Future persisted data:
 Mandara provides infrastructure.
 Narada observes events.
 Narada delivers messages.
-Narada assists operations.
 ```
 
-Narada evolves from a monitoring script into an event-driven observability platform for self-hosted infrastructure.
+Narada evolves into a self-hosted personal event intelligence platform.
+
+It collects and correlates events from:
+- SMS
+- Email
+- Paperless
+- Finance
+- Home Assistant
+- Docker
+- Webhooks
+
+AI and RAG are optional enhancements built on top of a fully functional offline-first core.
