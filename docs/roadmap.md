@@ -55,6 +55,56 @@ SMS Backup & Restore XML
 Syncthing Import Pipeline
 Financial Event Extraction
 
+### SMS Architecture
+
+Phone
+→ SMS Backup & Restore
+→ Syncthing
+→ Mandara
+→ Narada Import Pipeline
+
+### SMS Persistence Model
+
+Narada stores SMS in three layers:
+
+1. Raw SMS Messages (source of truth)
+2. Extracted Facts
+3. Narada Events
+
+Initial implementation focuses only on Raw SMS Messages.
+
+### sms_messages
+
+Fields:
+
+* address
+* contact_name
+* body
+* sms_type
+* received_at
+* source_file
+* raw_attributes (JSON)
+* processing_status
+* created_at
+
+raw_attributes stores all original XML attributes to avoid data loss and support future extraction pipelines.
+
+processing_status values:
+
+* PENDING
+* PROCESSED
+* FAILED
+
+### Streaming Import Strategy
+
+Narada will use a streaming XML parser.
+
+Reason:
+
+* Scales to large exports
+* Constant memory usage
+* Future-proof for years of SMS history
+
 ### Completed
 
 * Docker container monitoring
@@ -62,6 +112,7 @@ Financial Event Extraction
 
 ### Planned
 
+* SMS XML ingestion pipeline (#36)
 * Backup failure detection
 * Multi-service configuration improvements
 * Dozzle webhook/event integration
@@ -74,6 +125,22 @@ Financial Event Store
 Expense Timeline
 Upcoming Bills
 
+### Financial Extraction Model
+
+Raw SMS
+→ Extracted Facts
+→ Narada Events
+
+Example extracted payload:
+
+{
+  "amount": 9220,
+  "title": "Insurance Premium",
+  "dueDate": "2026-02-10"
+}
+
+Extraction data is intentionally kept separate from raw SMS storage.
+
 ### Completed
 
 * RabbitMQ integration
@@ -85,6 +152,7 @@ Upcoming Bills
 
 ### Planned
 
+* Financial SMS classifier (#37)
 * Retry mechanisms
 * Notification queueing
 * Notification persistence
