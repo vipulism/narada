@@ -51,6 +51,10 @@ Planned focus:
 
 ## Phase 2 — Event Sources
 
+SMS Backup & Restore XML
+Syncthing Import Pipeline
+Financial Event Extraction
+
 ### Completed
 
 * Docker container monitoring
@@ -65,6 +69,10 @@ Planned focus:
 ---
 
 ## Phase 3 — Event Platform
+
+Financial Event Store
+Expense Timeline
+Upcoming Bills
 
 ### Completed
 
