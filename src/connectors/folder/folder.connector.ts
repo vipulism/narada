@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { FolderFile, FolderWatchConfig } from "./folder.types";
 import { Importer } from "../../importers/import.types";
 
@@ -12,55 +12,84 @@ export class FolderConnector {
   ) {}
 
   async scan(): Promise<void> {
-    const entries = await readdir(this.config.path);
+    
+    try {
 
-    const files: FolderFile[] = [];
+      const SKIPPED_EXTENSIONS = new Set([".temp", ".part", ".swp", ".hidden"]);
+      const entries = await readdir(this.config.path);
+      const files: FolderFile[] = [];
 
-    for (const fileName of entries) {
-      // Ignore hidden files
-      if (fileName.startsWith(".")) {
-        continue;
+      for (const fileName of entries) {
+        // Ignore hidden files
+        if (fileName.startsWith(".")) {
+          continue;
+        }
+
+        const fileExtension = extname(fileName).toLowerCase();
+        if (SKIPPED_EXTENSIONS.has(fileExtension)) {
+          continue;
+        }
+
+        // Pattern filter (*.xml)
+        if (this.config.pattern && !this.config.pattern.test(fileName)) {
+          continue;
+        }
+
+        const fullPath = join(this.config.path, fileName);
+
+        const fileStat = await stat(fullPath);
+
+        // Ignore directories
+        if (!fileStat.isFile()) {
+          continue;
+        }
+
+        if (fileStat.size === 0) {
+          continue;
       }
 
-      // Pattern filter (*.xml)
-      if (this.config.pattern && !this.config.pattern.test(fileName)) {
-        continue;
+
+
+        files.push({
+          name: fileName,
+          fullPath,
+          size: fileStat.size,
+          modifiedAt: fileStat.mtime,
+        });
       }
 
-      const fullPath = join(this.config.path, fileName);
+      // Oldest first
+      files.sort(
+        (a, b) => a.modifiedAt.getTime() - b.modifiedAt.getTime()
+      );
 
-      const fileStat = await stat(fullPath);
-
-      // Ignore directories
-      if (!fileStat.isFile()) {
-        continue;
+      for (const file of files) {
+        await this.processFile(file);
       }
-
-      files.push({
-        name: fileName,
-        fullPath,
-        size: fileStat.size,
-        modifiedAt: fileStat.mtime,
-      });
-    }
-
-    // Oldest first
-    files.sort(
-      (a, b) => a.modifiedAt.getTime() - b.modifiedAt.getTime()
-    );
-
-    for (const file of files) {
-      console.info(`📥 Importing ${file.name}`);
-
-      try {
-        const result:any = await this.importer.import(file.fullPath);
-
-        console.info(
-          `✅ ${file.name}: imported=${result?.imported}, skipped=${result.skipped}`
-        );
-      } catch (err) {
-        console.error(`❌ Failed to import ${file.name}`, err);
-      }
+    
+    } catch (err) {
+      console.warn(
+        `Folder not found: ${this.config.path}`
+      );
+      return;
     }
   }
+
+
+  private async processFile(file: FolderFile){
+    console.info(`📥 Importing ${file.name}`);
+
+    try {
+
+      const result = await this.importer.import(file.fullPath);
+
+      console.info(
+        `✅ ${file.name}: imported=${result?.imported}, skipped=${result.skipped}`
+      );
+
+
+    } catch (err) {
+      console.error(`❌ Failed to import ${file.name}`, err);
+    }
+  } 
 }
