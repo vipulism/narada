@@ -12,6 +12,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./services.json:/app/services.json:ro
+      - /mnt/data/syncthing/data/sms:/imports/sms:ro
     networks:
       - mariadb_homelab
       - rabbitmq_default
