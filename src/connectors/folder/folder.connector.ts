@@ -75,7 +75,6 @@ export class FolderConnector {
     }
   }
 
-
   private async processFile(file: FolderFile){
     console.info(`📥 Importing ${file.name}`);
 
