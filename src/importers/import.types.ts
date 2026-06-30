@@ -10,11 +10,14 @@ export interface ImportResult {
   attempted: number;
   imported: number;
   skipped: number;
-  failed: number;
+  failed?: number;
+  durationMs: number;
 }
 
 /** Routes and executes imports for supported file types. */
 export interface Importer {
-  canHandle(request: ImportRequest): boolean;
-  import(request: ImportRequest): Promise<ImportResult>;
+  // canHandle(request: ImportRequest): boolean;
+  // import(request: ImportRequest): Promise<ImportResult>;
+  import(filePath:string):Promise<ImportResult>;
 }
+

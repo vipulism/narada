@@ -10,6 +10,7 @@ import { eventConsumer } from "./queue/eventConsumer";
 import { connectDb } from "./db/mariaConnection";
 import { migrate } from "./db/migrate";
 import { startDockerSource } from "./sources/docker/dockerSource";
+import { startImportScheduler } from "./schedulers/import.scheduler";
 
 
 async function bootstrap() {
@@ -28,6 +29,7 @@ async function bootstrap() {
 
     initNotifiers([TelegramNotifier]);
     startScheduler(config);
+    await startImportScheduler();
     startServer();
   }
   

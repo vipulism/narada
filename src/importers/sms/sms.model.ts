@@ -11,6 +11,8 @@
 //     rawAttributes:any;
 //   }
 
+import { ImportResult } from "../import.types";
+
 export interface SmsBackup {
   metadata: SmsBackupMetadata;
   messages: SmsMessage[];
@@ -40,10 +42,6 @@ export interface SmsMessage {
 
 export type PartialHashSms = Omit<SmsMessage, 'hash'> & Partial<Pick<SmsMessage, 'hash'>>;
 
-export interface SmsImportResult {
+export interface SmsImportResult extends ImportResult {
   sourceFile: string;
-  attempted: number;
-  imported: number;
-  skipped: number;
-  durationMs: number;
 }
