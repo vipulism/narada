@@ -8,6 +8,8 @@ interface HashRow extends RowDataPacket {
 
 export class SmsRepository {
   private readonly db = getDb();
+  // Safe default batch limit to prevent hitting max_allowed_packet limits
+  private readonly BATCH_SIZE = 1000;
 
   async findExistingHashes(hashes: string[]): Promise<Set<string>> {
     if (hashes.length === 0) {
@@ -33,35 +35,46 @@ export class SmsRepository {
       return 0;
     }
 
-    const values = messages.map((sms) => [
-      sms.hash,
-      sms.address,
-      sms.contactName ?? null,
-      sms.body,
-      sms.smsType,
-      sms.receivedAt,
-      sms.sourceFile ?? null,
-      JSON.stringify(sms.rawAttributes),
-    ]);
+    let totalInserted = 0;
 
-    const [result] = await this.db.query<ResultSetHeader>(
-      `
-        INSERT INTO sms_messages
-        (
-          hash,
-          address,
-          contact_name,
-          body,
-          sms_type,
-          received_at,
-          source_file,
-          raw_attributes
-        )
-        VALUES ?
-      `,
-      [values]
-    );
+    // Process items in chunks/batches safely
+    for (let i = 0; i < messages.length; i += this.BATCH_SIZE) {
+      const chunk = messages.slice(i, i + this.BATCH_SIZE);
+      
+      const values = chunk.map((sms) => [
+        sms.hash,
+        sms.address,
+        sms.contactName ?? null,
+        sms.body,
+        sms.smsType,
+        sms.receivedAt,
+        sms.sourceFile ?? null,
+        JSON.stringify(sms.rawAttributes),
+      ]);
 
-    return result.affectedRows;
+      // Using INSERT IGNORE skips duplicate keys instead of throwing errors
+      const [result] = await this.db.query<ResultSetHeader>(
+        `
+          INSERT IGNORE INTO sms_messages
+          (
+            hash,
+            address,
+            contact_name,
+            body,
+            sms_type,
+            received_at,
+            source_file,
+            raw_attributes
+          )
+          VALUES ?
+        `,
+        [values]
+      );
+
+      // In MySQL INSERT IGNORE operations, affectedRows exactly matches the newly created rows
+      totalInserted += result.affectedRows;
+    }
+
+    return totalInserted;
   }
 }
