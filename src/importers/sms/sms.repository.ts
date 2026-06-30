@@ -7,18 +7,21 @@ interface HashRow extends RowDataPacket {
 }
 
 export class SmsRepository {
-  private readonly db = getDb();
+
   // Safe default batch limit to prevent hitting max_allowed_packet limits
   private readonly BATCH_SIZE = 1000;
 
   async findExistingHashes(hashes: string[]): Promise<Set<string>> {
+
+    const db = getDb();
+
     if (hashes.length === 0) {
       return new Set();
     }
 
     const placeholders = hashes.map(() => "?").join(",");
 
-    const [rows] = await this.db.query<HashRow[]>(
+    const [rows] = await db.query<HashRow[]>(
       `
         SELECT hash
         FROM sms_messages
@@ -31,6 +34,8 @@ export class SmsRepository {
   }
 
   async insertMany(messages: SmsMessage[]): Promise<number> {
+
+    const db = getDb();
     if (messages.length === 0) {
       return 0;
     }
@@ -53,7 +58,7 @@ export class SmsRepository {
       ]);
 
       // Using INSERT IGNORE skips duplicate keys instead of throwing errors
-      const [result] = await this.db.query<ResultSetHeader>(
+      const [result] = await db.query<ResultSetHeader>(
         `
           INSERT IGNORE INTO sms_messages
           (
