@@ -22,7 +22,7 @@ export interface SmsBackupMetadata {
   mmsCount: number;
   backupSet: string;
   backupDate: Date;
-
+  count:number;
 }
 
 export interface SmsMessage {
@@ -34,5 +34,6 @@ export interface SmsMessage {
   receivedAt: Date;
   sourceFile: string;
   rawAttributes: Record<string, unknown>;
+  hash:string;
 
 }

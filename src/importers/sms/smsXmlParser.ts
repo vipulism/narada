@@ -71,7 +71,10 @@ export async function loadSmsXml(
     metadata: {
         count: Number(backup.smses.count),
         backupSet: backup.smses.backup_set,
-        backupDate: new Date(Number(backup.smses.backup_date))
+        backupDate: new Date(Number(backup.smses.backup_date)),
+        declaredCount: Number(backup.smses.count),
+        smsCount: Number(backup.smses.sms.length),
+        mmsCount: Number(backup.smses.mms.length),
     },
 
     messages
