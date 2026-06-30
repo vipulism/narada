@@ -34,6 +34,6 @@ export interface SmsMessage {
   receivedAt: Date;
   sourceFile: string;
   rawAttributes: Record<string, unknown>;
-  hash:string;
+  hash?:string;
 
 }
