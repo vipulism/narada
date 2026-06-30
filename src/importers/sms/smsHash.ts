@@ -1,12 +1,12 @@
 import { createHash } from "crypto";
-import { SmsMessage } from "./sms.model";
+import { PartialHashSms, SmsMessage } from "./sms.model";
 
 /**
  * Generates a deterministic SHA-256 hash for an SMS.
  *
  * This hash is used for duplicate detection across imports.
  */
-export function smsHash(message: SmsMessage): string {
+export function smsHash(message: PartialHashSms): string {
   const payload = [
     normalize(message.address),
     normalize(message.body),

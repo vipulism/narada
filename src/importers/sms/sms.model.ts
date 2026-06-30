@@ -34,6 +34,16 @@ export interface SmsMessage {
   receivedAt: Date;
   sourceFile: string;
   rawAttributes: Record<string, unknown>;
-  hash?:string;
+  hash:string;
 
+}
+
+export type PartialHashSms = Omit<SmsMessage, 'hash'> & Partial<Pick<SmsMessage, 'hash'>>;
+
+export interface SmsImportResult {
+  sourceFile: string;
+  attempted: number;
+  imported: number;
+  skipped: number;
+  durationMs: number;
 }

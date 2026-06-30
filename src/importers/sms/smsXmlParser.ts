@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { XMLParser } from "fast-xml-parser";
-import { SmsBackup, SmsMessage } from "./sms.model";
+import { PartialHashSms, SmsBackup, SmsMessage } from "./sms.model";
 import { smsHash } from "./smsHash";
 
 export interface SmsXmlNode {
@@ -115,7 +115,7 @@ function createEmptyBackup(): SmsBackup {
 
 function parseXmlNode(sms: SmsXmlNode, filePath: string): SmsMessage {
   // Safe default evaluations using nullish coalescing
-  const smsData: SmsMessage = {
+  const smsData: PartialHashSms = {
     address: (sms.address ?? "").trim(),
     body: (sms.body ?? "").trim(),
     smsType: Number(sms.type),
@@ -136,5 +136,5 @@ function parseXmlNode(sms: SmsXmlNode, filePath: string): SmsMessage {
   };
 
   smsData.hash = smsHash(smsData);
-  return smsData;
+  return smsData as SmsMessage;
 }
