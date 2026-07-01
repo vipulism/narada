@@ -40,8 +40,36 @@ export interface SmsMessage {
 
 }
 
+export interface SmsMessageWithId extends SmsMessage {
+  id: number;
+}
+
 export type PartialHashSms = Omit<SmsMessage, 'hash'> & Partial<Pick<SmsMessage, 'hash'>>;
 
 export interface SmsImportResult extends ImportResult {
   sourceFile: string;
+}
+
+export enum SmsCategory {
+  UNKNOWN = "UNKNOWN",
+  AUTHENTICATION = "AUTHENTICATION",
+  FINANCIAL = "FINANCIAL",
+  COMMERCE = "COMMERCE",
+  TRAVEL = "TRAVEL",
+  GOVERNMENT = "GOVERNMENT",
+  UTILITY = "UTILITY",
+  PERSONAL = "PERSONAL",
+  PROMOTION = "PROMOTION",
+  SYSTEM = "SYSTEM",
+}
+export type FinancialSubCategory = string;
+
+export interface SmsAnalysis {
+  category: SmsCategory;
+  subcategory?: string;
+  confidence: number;
+  extractedData?: Record<string, unknown>;
+  classifier: string;
+  classifierVersion: string;
+  classifiedAt: Date;
 }

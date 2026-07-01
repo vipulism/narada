@@ -1,6 +1,6 @@
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getDb } from "../../db/mariaConnection";
-import { SmsMessage } from "./sms.model";
+import { SmsMessage, SmsMessageWithId } from "./sms.model";
 
 interface HashRow extends RowDataPacket {
   hash: string;
@@ -82,4 +82,28 @@ export class SmsRepository {
 
     return totalInserted;
   }
+
+  async findPendingClassification(classifier: string, version: string, limit = 100): Promise<SmsMessageWithId[]> {
+
+    const db = getDb();
+    const [rows] = await db.query<any[]>(
+        `
+        SELECT *
+        FROM sms_messages s
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM sms_analysis a
+            WHERE a.sms_id = s.id
+              AND a.classifier = ?
+              AND a.classifier_version = ?
+        )
+        ORDER BY s.id
+        LIMIT ?
+        `,
+        [classifier, version, limit]
+    );
+
+    return rows as SmsMessageWithId[];
+
+}
 }
