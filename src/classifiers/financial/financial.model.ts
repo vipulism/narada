@@ -13,6 +13,6 @@ export interface FinancialFacts {
     merchant?: string;
     transactionType?: string;
     accountLast4?: string;
-    balance?: number;
+    availableBalance?:number;
 
 }

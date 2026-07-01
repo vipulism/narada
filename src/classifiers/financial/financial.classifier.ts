@@ -26,9 +26,9 @@ export class FinancialClassifier implements SmsClassifier {
   ];
 
   supports(message: SmsMessage): number {
-    const sender = senderNormalize(message.address);
+    const senderinfo = senderNormalize(message.address);
 
-    if (this.FINANCIAL_SENDERS.some((bank) => sender.includes(bank))) {
+    if (this.FINANCIAL_SENDERS.some((bank) => senderinfo.sender.includes(bank))) {
       return 1;
     }
 
