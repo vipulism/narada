@@ -1,4 +1,5 @@
 CREATE TABLE sms_analysis (
+
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     sms_id BIGINT NOT NULL,
     category VARCHAR(100) NOT NULL,
@@ -16,20 +17,12 @@ CREATE TABLE sms_analysis (
         ON DELETE CASCADE,
 
     CONSTRAINT uk_sms_analysis_classifier
-        UNIQUE (sms_id, classifier, classifier_version)
+        UNIQUE (sms_id, classifier, classifier_version),
+
+    INDEX idx_sms_analysis_sms (sms_id),
+    INDEX idx_sms_analysis_category (category),
+    INDEX idx_sms_analysis_subcategory (subcategory),
+    INDEX idx_sms_analysis_classifier (classifier),
+    INDEX idx_sms_analysis_classified_at (classified_at)
+
 );
-
-CREATE INDEX idx_sms_analysis_sms
-    ON sms_analysis (sms_id);
-
-CREATE INDEX idx_sms_analysis_category
-    ON sms_analysis (category);
-
-CREATE INDEX idx_sms_analysis_subcategory
-    ON sms_analysis (subcategory);
-
-CREATE INDEX idx_sms_analysis_classifier
-    ON sms_analysis (classifier);
-
-CREATE INDEX idx_sms_analysis_classified_at
-    ON sms_analysis (classified_at);
