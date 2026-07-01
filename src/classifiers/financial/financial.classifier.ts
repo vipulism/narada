@@ -72,5 +72,22 @@ export class FinancialClassifier implements SmsClassifier {
     };
   }
 
+  /*
+TODO
+
+✓ Detect Financial SMS
+
+Next:
+
+- Amount
+- CashFlow
+- Currency
+- Merchant
+- Balance
+- Transaction Type
+- Due Date
+- Policy Number
+*/
 
 }
+

@@ -40,6 +40,10 @@ export interface SmsMessage {
 
 }
 
+export interface SmsMessageWithId extends SmsMessage {
+  id: number;
+}
+
 export type PartialHashSms = Omit<SmsMessage, 'hash'> & Partial<Pick<SmsMessage, 'hash'>>;
 
 export interface SmsImportResult extends ImportResult {
