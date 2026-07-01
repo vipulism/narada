@@ -1,16 +1,29 @@
-export function senderNormalize(sender: string): string {
+import { SenderInfo } from "./sender.model";
 
-    const upper = sender.toUpperCase();
+export function senderNormalize(address: string): SenderInfo {
 
-    const parts = upper.split("-");
+    const normalized = address.trim().toUpperCase();
+    const parts = normalized.split("-");
 
     if (parts.length === 3) {
-        return parts[1];
+        return {
+            original: normalized,
+            prefix: parts[0],
+            sender: parts[1],
+            suffix: parts[2],
+        };
     }
 
     if (parts.length === 2) {
-        return parts[1];
+        return {
+            original: normalized,
+            prefix: parts[0],
+            sender: parts[1],
+        };
     }
 
-    return upper;
+    return {
+        original: normalized,
+        sender: normalized,
+    };
 }
