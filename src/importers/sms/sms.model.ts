@@ -68,7 +68,7 @@ export interface SmsAnalysis {
   category: SmsCategory;
   subcategory?: string;
   confidence: number;
-  extractedData?: Record<string, unknown>;
+  extractedData?: Record<string, unknown> | undefined;
   classifier: string;
   classifierVersion: string;
   classifiedAt: Date;
