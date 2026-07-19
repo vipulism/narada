@@ -7,7 +7,7 @@ import { NaradaEvent } from "./naradaEvent";
 
 type registeredClassifiers = FinancialClassifier;
 
-export async function processEvent(event: NaradaEvent, config: ServicesConfig, classifier: registeredClassifiers): Promise<void> {
+export async function processEvent(event: NaradaEvent, config: ServicesConfig): Promise<void> {
     // Update service state
     const state = await updateServiceState(event);
 

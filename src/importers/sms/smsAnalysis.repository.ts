@@ -4,8 +4,8 @@ import { SmsAnalysis } from "./sms.model";
 
 export class SmsAnalysisRepository {
 
- static async save(
-    hash: string,
+  async save(
+    smsId: number,
     analysis: SmsAnalysis
   ): Promise<void> {
 
@@ -30,7 +30,7 @@ export class SmsAnalysisRepository {
       )
       `,
       [
-        hash,
+        smsId,
         analysis.category,
         analysis.subcategory ?? null,
         analysis.confidence,
