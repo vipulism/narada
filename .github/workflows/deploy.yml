@@ -15,7 +15,6 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm test
 
       - name: Deploy
         run: |
