@@ -1074,6 +1074,48 @@ const CASES: RegressionCase[] = [
             amount: 411,
         },
     },
+    {
+        id: "14797-salary-not-credited-skip",
+        address: "AD-HDFCBK-S",
+        body: "Attention! We've observed your salary is not credited to HDFC Bank A/c 1260 for May 2025. In case of no salary credit, you'll lose the benefits of a Salary A/c",
+        expect: {
+            category: SmsCategory.UNKNOWN,
+            subcategory: "UNKNOWN",
+        },
+    },
+    {
+        id: "18294-max-life-will-be-credited-skip",
+        address: "VA-AXMAXT-S",
+        body: "Dear Customer, a NEFT payment of Rs. 112189.34 has been processed towards the pay-out for your Axis Max Life policy 884998147. The amount will be credited to your registered bank account, ending with ****1412, within 3-4 business days, subject to transaction approval by your bank. T&C apply.",
+        expect: {
+            category: SmsCategory.UNKNOWN,
+            subcategory: "UNKNOWN",
+        },
+    },
+    {
+        id: "18295-icici-neft-income-stays",
+        address: "VK-ICICIT-S",
+        body: "ICICI Bank Account XX412 credited:Rs. 1,12,189.34 on 23-Jun-26. Info NEFT-HSBCN17458733606-AXIS M. Available Balance is Rs. 4,96,181.83.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "income",
+            cashFlow: "INFLOW",
+            amount: 112189.34,
+            accountLast4: "1412",
+        },
+    },
+    {
+        id: "18352-tata-play-fiber-paid-expense",
+        address: "TX-TPFIBR-S",
+        body: "Dear Customer, Your payment of Rs.10266.00 for your Tata Play Fiber account has been received on 06-28-2026 09:10. For more details, visit: tpfiber-mapp.app.link/download-invoice or call 18001207777.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 10266,
+            merchant: "Tata Play Fiber",
+        },
+    },
 ];
 
 function stubMessage(address: string, body: string): SmsMessage {

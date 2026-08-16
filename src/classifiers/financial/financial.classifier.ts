@@ -14,7 +14,7 @@ import { detectFinancialKind, isSkippedFinancialNoise } from "./financial.kind";
  */
 export class FinancialClassifier implements SmsClassifier {
   public readonly name = "regex-financial";
-  public readonly version = "1.3.24";
+  public readonly version = "1.3.25";
 
   private readonly parser = new FinancialParser();
 
@@ -61,6 +61,7 @@ export class FinancialClassifier implements SmsClassifier {
     "EPFOHO",
     "EPFO",
     "DOMINO",
+    "TPFIBR",
   ];
 
   /**

@@ -10,6 +10,7 @@
     "sms:audit": "tsx src/cli/sms/smsAudit.cli.ts",
     "sms:import": "tsx src/cli/sms/smsImport.cli.ts",
     "sms:extract": "tsx src/cli/sms/smsExtract.cli.ts",
+    "sms:events": "tsx src/cli/sms/smsEvents.cli.ts",
     "sms:classify-check": "tsx src/classifiers/financial/financial.regression.ts"
   },
   "repository": {

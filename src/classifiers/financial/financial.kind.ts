@@ -153,6 +153,19 @@ export function isSkippedFinancialNoise(message: SmsMessage): boolean {
         return true;
     }
 
+    if (body.includes("NOT CREDITED")) {
+        return true;
+    }
+
+    if (
+        body.includes("WILL BE CREDITED") &&
+        !isPaidBillReceipt(body) &&
+        !isCreditCardPaymentAck(body) &&
+        !body.includes("DEBITED")
+    ) {
+        return true;
+    }
+
     if (sender.includes("JUSPAY") || body.includes("APAY BALANCE")) {
         return true;
     }
@@ -714,6 +727,9 @@ export function isPaidBillReceipt(body: string): boolean {
             body.includes("SUCCESSFUL") &&
             (body.includes("PAYMENT OF") ||
                 body.includes("BILL PAYMENT") ||
-                body.includes("HAS BEEN SUCCESSFUL")))
+                body.includes("HAS BEEN SUCCESSFUL"))) ||
+        (body.includes("YOUR PAYMENT OF") &&
+            body.includes("HAS BEEN RECEIVED") &&
+            !body.includes("CREDIT CARD"))
     );
 }

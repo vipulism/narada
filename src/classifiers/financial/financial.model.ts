@@ -22,17 +22,17 @@ export interface FinancialFacts {
 
 
 export interface FinancialEvent {
-  id: string;
-  type: string;
-  merchant: string;
-  amount: number;
-  currency: string;
-  cash_flow: string;
-  bank: string;
-  account_last4: string;
-  available_balance: number;
-  transaction_type: string;
-  source_file: string;
-  created_at: Date;
-  updated_at: Date;
+    smsId: number;
+    kind: string;
+    cashFlow: string;
+    amount: number;
+    currency: string;
+    accountLast4?: string;
+    accountName?: string;
+    bank?: string;
+    merchant?: string;
+    transactionType?: string;
+    occurredAt: Date;
+    classifier: string;
+    classifierVersion: string;
 }

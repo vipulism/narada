@@ -34,10 +34,17 @@ export const migrate = async () => {
 
         const migrationPath = path.join(migrationsDir, migrationFile);
         const migrationSql = fs.readFileSync(migrationPath, "utf8");
-    
+
         console.log(`▶️ Running migration: ${migrationName}`);
-    
-        await db.execute(migrationSql);
+
+        const statements = migrationSql
+            .split(";")
+            .map((statement) => statement.trim())
+            .filter((statement) => statement.length > 0);
+
+        for (const statement of statements) {
+            await db.execute(statement);
+        }
     
         await db.execute(
           "INSERT INTO schema_migrations (filename) VALUES (?)",

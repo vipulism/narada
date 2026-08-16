@@ -9,7 +9,7 @@ Completed:
 ✅ Event APIs
 ✅ SSE
 ✅ SMS XML Importer
-✅ SMS financial detection (`regex-financial@1.3.24`)
+✅ SMS financial detection (`regex-financial@1.3.25`)
 ✅ Skip templates: data quota, UPI PIN, limit-increase, overlimit promo, pending CRED cashback, closed HDFC loan EMI, login/IPIN/password, KYC, UPI link, schedule of charges, OTP awareness, CC bill-payment acks
 ✅ SMS kinds: expense, income, bill, investment, epf, transfer
 ✅ Due reminders (payment due / min+total due) are bill, not expense
@@ -23,7 +23,7 @@ Completed:
 ✅ PayZapp wallet debit is expense; PhonePe/BSES payment successful is expense
 ✅ CDSL share credit, BK Crowns, and CAMS e-insurance account noise are skip
 ✅ CRED Club / CRED credited from savings is bill; YES funds-trf to owned a/c is transfer
-✅ `VIPIN` is not NetBanking IPIN; SBI `received and credited` ending 85 skip; loan `XXXXX489751` last4 is 9751
+✅ `financial_events` from posted analysis (expense/income/transfer/CRED outflow/investment); due reminders stay in sms_analysis
 
 
 In Progress:
@@ -37,7 +37,6 @@ Not Implemented:
 - Firefly connector
 - Unique-bank account resolve at resolve/push time (not during classify)
 - Dhan accounts for EPF, MF, stocks, FD (classify only for now)
-- `financial_events` persistence from extracted facts
 - RAG
 - Vector DB
 - AI extraction

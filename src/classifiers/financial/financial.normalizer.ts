@@ -1,32 +1,86 @@
-import { FinancialParser } from "./financial.parser";
-import { FinancialFacts } from "./financial.model";
-import { SmsAnalysis, SmsMessage } from "../../importers/sms/sms.model";
-import { SmsExtractionRepository } from "../repositories/smsExtraction.repository";
+import { RowDataPacket } from "mysql2";
+import { getDb } from "../../db/mariaConnection";
 import { FinancialClassifier } from "./financial.classifier";
+import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
+import { FinancialEvent } from "./financial.model";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 
+/**
+ * Builds financial_events from the latest regex-financial analysis rows.
+ */
 export class FinancialEventNormalizer {
-  private parser: FinancialParser;
-  private repository: FinancialEventRepository;
+    private readonly repository = new FinancialEventRepository();
+    private readonly classifier = new FinancialClassifier();
 
-  constructor() {
-    this.parser = new FinancialParser();
-    this.repository = new FinancialEventRepository();
-  }
+    /**
+     * Rebuilds financial_events from sms_analysis for the current classifier version.
+     *
+     * @returns How many posted events were stored
+     */
+    async rebuildFromAnalysis(): Promise<{ stored: number; considered: number }> {
+        const sources = await this.loadAnalysisRows();
+        const events: FinancialEvent[] = [];
 
-  async normalizeAndStore(message: SmsMessage): Promise<void> {
-    const analysis = this.classifyMessage(message);
-    if (!analysis) return;
+        for (const source of sources) {
+            const event = toFinancialEvent(source);
 
-    const facts = this.parser.parse(message);
+            if (event) {
+                events.push(event);
+            }
+        }
 
-    await this.repository.insert(facts);
-  }
+        await this.repository.replaceAll(events);
 
-  private classifyMessage(message: SmsMessage): SmsAnalysis | null {
-    const classifier = new FinancialClassifier();
-    return classifier.classify(message);
-  }
+        return { stored: events.length, considered: sources.length };
+    }
 
- 
+    private async loadAnalysisRows(): Promise<AnalysisEventSource[]> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                s.id AS sms_id,
+                s.received_at,
+                a.category,
+                a.subcategory,
+                a.classifier,
+                a.classifier_version,
+                a.extracted_data
+            FROM sms_analysis a
+            JOIN sms_messages s ON s.id = a.sms_id
+            WHERE a.classifier = ?
+              AND a.classifier_version = ?
+            `,
+            [this.classifier.name, this.classifier.version]
+        );
+
+        return rows.map((row) => ({
+            smsId: Number(row.sms_id),
+            occurredAt: new Date(row.received_at),
+            category: String(row.category),
+            subcategory: row.subcategory == null ? null : String(row.subcategory),
+            classifier: String(row.classifier),
+            classifierVersion: String(row.classifier_version),
+            extractedData: parseExtractedData(row.extracted_data),
+        }));
+    }
+}
+
+function parseExtractedData(value: unknown): Record<string, unknown> {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+    }
+
+    if (typeof value === "string" && value.length > 0) {
+        try {
+            const parsed = JSON.parse(value);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                return parsed as Record<string, unknown>;
+            }
+        } catch {
+            return {};
+        }
+    }
+
+    return {};
 }

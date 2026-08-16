@@ -533,6 +533,10 @@ export class FinancialParser {
             return "BSES";
         }
 
+        if (/\btata play fiber\b/i.test(body) || /\btp fiber\b/i.test(body)) {
+            return "Tata Play Fiber";
+        }
+
         const regexes = [
             MERCHANT_AT_REGEX,
             MERCHANT_TO_REGEX,
