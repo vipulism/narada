@@ -95,6 +95,13 @@ export class KnownAccountIndex {
     private uniqueMatch(matches: KnownAccount[]): KnownAccount | undefined {
         return matches.length === 1 ? matches[0] : undefined;
     }
+
+    /**
+     * Every owned account in the local config.
+     */
+    all(): KnownAccount[] {
+        return [...this.accounts];
+    }
 }
 
 /**

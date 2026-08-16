@@ -35,6 +35,7 @@ export interface FinancialEvent {
     merchant?: string;
     transactionType?: string;
     occurredAt: Date;
-    classifier: string;
-    classifierVersion: string;
+    /** Firefly III transaction journal id after a successful push. */
+    fireflyTransactionId?: string;
+    fireflyPushedAt?: Date;
 }

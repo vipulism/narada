@@ -2,6 +2,10 @@ import { FinancialClassifier } from "./financial.classifier";
 import { SmsCategory, SmsMessage } from "../../importers/sms/sms.model";
 import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilter";
 import { FinancialEvent } from "./financial.model";
+import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
+import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
+import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
+import { KnownAccountIndex } from "./knownAccounts";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1278,6 +1282,89 @@ function runEventFilterRegression(): void {
     }
 }
 
+function runFireflyMapRegression(): void {
+    const failures: string[] = [];
+
+    if (extractFireflyAccountLast4("1412") !== "1412") {
+        failures.push("exact last4");
+    }
+
+    if (extractFireflyAccountLast4("50100744801768") !== "1768") {
+        failures.push("long account_number last4");
+    }
+
+    if (extractFireflyAccountLast4("12") !== undefined) {
+        failures.push("short number should not map");
+    }
+
+    const firefly = new FireflyLast4Index([
+        {
+            id: "11",
+            name: "HDFC",
+            type: "asset",
+            accountNumber: "1260",
+        },
+        {
+            id: "22",
+            name: "SBI Home Loan",
+            type: "liability",
+            accountNumber: "9751",
+        },
+    ]);
+    const owned = new KnownAccountIndex([]);
+    const loanEvent = stubEvent(3111, "transfer", 10896, "1260", new Date("2020-11-09T12:00:00+05:30"));
+    loanEvent.counterpartyLast4 = "9751";
+    const loanPay = planFireflyTransaction(loanEvent, firefly, owned);
+
+    if (!loanPay.ok || loanPay.plan.type !== "transfer") {
+        failures.push("loan payment should dry-run as transfer");
+    } else if (loanPay.plan.sourceId !== "11" || loanPay.plan.destinationId !== "22") {
+        failures.push(
+            `loan transfer ids ${loanPay.plan.sourceId}→${loanPay.plan.destinationId} != 11→22`
+        );
+    }
+
+    const missing = planFireflyTransaction(
+        stubEvent(1, "expense", 100, "1412", new Date("2020-11-09T12:00:00+05:30")),
+        firefly,
+        owned
+    );
+
+    if (missing.ok) {
+        failures.push("missing Firefly last4 should block");
+    }
+
+    const openings = new FireflyOpenings(new Map([["5940", "2026-08-16"]]));
+    const fastag = new FireflyLast4Index([
+        { id: "49", name: "FASTag", type: "asset", accountNumber: "5940" },
+    ]);
+    const oldToll = planFireflyTransaction(
+        stubEvent(17531, "expense", 50, "5940", new Date("2026-03-30T12:00:00+05:30")),
+        fastag,
+        owned,
+        openings
+    );
+
+    if (oldToll.ok || !oldToll.skip) {
+        failures.push("FASTag before opening should skip");
+    }
+
+    const openingDay = planFireflyTransaction(
+        stubEvent(99999, "expense", 40, "5940", new Date("2026-08-16T12:00:00+05:30")),
+        fastag,
+        owned,
+        openings
+    );
+
+    if (!openingDay.ok) {
+        failures.push("FASTag on opening day should be ready");
+    }
+
+    if (failures.length > 0) {
+        throw new Error(`firefly map regression failed:\n${failures.join("\n")}`);
+    }
+}
+
 /**
  * Runs locked classify cases and throws on the first mismatch.
  */
@@ -1338,3 +1425,6 @@ console.log(`classify regression ok: ${CASES.length} cases`);
 
 runEventFilterRegression();
 console.log("event filter regression ok");
+
+runFireflyMapRegression();
+console.log("firefly map regression ok");

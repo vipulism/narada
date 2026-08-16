@@ -12,6 +12,8 @@
     "sms:extract": "tsx src/cli/sms/smsExtract.cli.ts",
     "sms:events": "tsx src/cli/sms/smsEvents.cli.ts",
     "sms:dhan-map": "tsx src/cli/sms/smsDhanMap.cli.ts",
+    "sms:firefly-map": "tsx src/cli/sms/smsFireflyMap.cli.ts",
+    "sms:firefly-push": "tsx src/cli/sms/smsFireflyPush.cli.ts",
     "sms:classify-check": "tsx src/classifiers/financial/financial.regression.ts"
   },
   "repository": {

@@ -13,6 +13,7 @@ export class FinancialEventRepository {
      */
     async replaceAll(events: FinancialEvent[]): Promise<void> {
         const db = getDb();
+        const pushed = await this.listPushedBySmsId();
 
         await db.query("DELETE FROM financial_events");
 
@@ -20,36 +21,91 @@ export class FinancialEventRepository {
 
         for (let offset = 0; offset < events.length; offset += batchSize) {
             const batch = events.slice(offset, offset + batchSize);
-            const placeholders = batch.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
-            const values = batch.flatMap((event) => [
-                event.smsId,
-                event.kind,
-                event.cashFlow,
-                event.amount,
-                event.currency,
-                event.accountLast4 ?? null,
-                event.counterpartyLast4 ?? null,
-                event.accountName ?? null,
-                event.bank ?? null,
-                event.merchant ?? null,
-                event.transactionType ?? null,
-                event.occurredAt,
-                event.classifier,
-                event.classifierVersion,
-            ]);
+            const placeholders = batch.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
+            const values = batch.flatMap((event) => {
+                const prior = pushed.get(event.smsId);
+
+                return [
+                    event.smsId,
+                    event.kind,
+                    event.cashFlow,
+                    event.amount,
+                    event.currency,
+                    event.accountLast4 ?? null,
+                    event.counterpartyLast4 ?? null,
+                    event.accountName ?? null,
+                    event.bank ?? null,
+                    event.merchant ?? null,
+                    event.transactionType ?? null,
+                    event.occurredAt,
+                    event.classifier,
+                    event.classifierVersion,
+                    event.fireflyTransactionId ?? prior?.id ?? null,
+                    event.fireflyPushedAt ?? prior?.pushedAt ?? null,
+                ];
+            });
 
             await db.query<ResultSetHeader>(
                 `
                 INSERT INTO financial_events (
                     sms_id, kind, cash_flow, amount, currency,
                     account_last4, counterparty_last4, account_name, bank, merchant,
-                    transaction_type, occurred_at, classifier, classifier_version
+                    transaction_type, occurred_at, classifier, classifier_version,
+                    firefly_transaction_id, firefly_pushed_at
                 )
                 VALUES ${placeholders}
                 `,
                 values
             );
         }
+    }
+
+    /**
+     * Stores the Firefly journal id after a successful POST.
+     *
+     * @param smsId - financial_events.sms_id
+     * @param fireflyTransactionId - Firefly transaction journal id
+     */
+    async markPushed(smsId: number, fireflyTransactionId: string): Promise<void> {
+        const db = getDb();
+
+        await db.query(
+            `
+            UPDATE financial_events
+            SET firefly_transaction_id = ?, firefly_pushed_at = NOW()
+            WHERE sms_id = ?
+            `,
+            [fireflyTransactionId, smsId]
+        );
+    }
+
+    private async listPushedBySmsId(): Promise<
+        Map<number, { id: string; pushedAt: Date }>
+    > {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT sms_id, firefly_transaction_id, firefly_pushed_at
+            FROM financial_events
+            WHERE firefly_transaction_id IS NOT NULL
+            `
+        );
+        const pushed = new Map<number, { id: string; pushedAt: Date }>();
+
+        for (const row of rows) {
+            const id = asOptionalString(row.firefly_transaction_id);
+
+            if (!id) {
+                continue;
+            }
+
+            pushed.set(Number(row.sms_id), {
+                id,
+                pushedAt: new Date(row.firefly_pushed_at),
+            });
+        }
+
+        return pushed;
     }
 
     /**
@@ -90,7 +146,9 @@ export class FinancialEventRepository {
                 transaction_type,
                 occurred_at,
                 classifier,
-                classifier_version
+                classifier_version,
+                firefly_transaction_id,
+                firefly_pushed_at
             FROM financial_events
             ORDER BY occurred_at ASC, sms_id ASC
             `
@@ -116,6 +174,8 @@ function rowToEvent(row: RowDataPacket): FinancialEvent {
         occurredAt: new Date(row.occurred_at),
         classifier: String(row.classifier),
         classifierVersion: String(row.classifier_version),
+        fireflyTransactionId: asOptionalString(row.firefly_transaction_id),
+        fireflyPushedAt: row.firefly_pushed_at ? new Date(row.firefly_pushed_at) : undefined,
     };
 }
 
