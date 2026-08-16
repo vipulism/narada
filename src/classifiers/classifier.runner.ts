@@ -1,7 +1,11 @@
 import { SmsAnalysisRepository } from "../importers/sms/smsAnalysis.repository";
 import { SmsRepository } from "../importers/sms/sms.repository";
+import { SmsCategory } from "../importers/sms/sms.model";
 import { CLASSIFIERS } from "./classifier.registry";
 
+/**
+ * Per-classifier totals from a full pending drain.
+ */
 export interface ClassificationResult {
     classifier: string;
     processed: number;
@@ -9,6 +13,9 @@ export interface ClassificationResult {
     skipped: number;
 }
 
+/**
+ * Runs registered SMS classifiers against messages that have no analysis yet.
+ */
 export class ClassifierRunner {
 
     private readonly smsRepository = new SmsRepository();
@@ -16,17 +23,23 @@ export class ClassifierRunner {
 
     private static readonly BATCH_SIZE = 100;
 
+    /**
+     * Drains every pending SMS for each registered classifier.
+     *
+     * @returns Totals per classifier
+     */
     async run(): Promise<ClassificationResult[]> {
 
         const results: ClassificationResult[] = [];
 
         for (const classifier of CLASSIFIERS) {
 
-            console.log( `🧠 Running classifier: ${classifier.name}@${classifier.version}` );
+            console.log(`🧠 Running classifier: ${classifier.name}@${classifier.version}`);
 
             let processed = 0;
             let classified = 0;
 
+            while (true) {
                 const messages =
                     await this.smsRepository.findPendingClassification(
                         classifier.name,
@@ -34,33 +47,39 @@ export class ClassifierRunner {
                         ClassifierRunner.BATCH_SIZE
                     );
 
-                if (messages.length === 0) { break; }
+                if (messages.length === 0) {
+                    break;
+                }
 
                 console.log(`📨 ${classifier.name}: ${messages.length} pending`);
 
                 for (const message of messages) {
-
                     processed++;
-                    if (classifier.supports(message) === 0) { continue; }
+
                     const analysis = classifier.classify(message);
-                    if (!analysis) { continue; }
+                    if (!analysis) {
+                        continue;
+                    }
 
                     await this.analysisRepository.save(
                         message.id,
                         analysis
                     );
 
-                    classified++;
+                    if (analysis.category === SmsCategory.FINANCIAL) {
+                        classified++;
+                    }
                 }
+            }
 
             const result: ClassificationResult = {
-                classifier: classifier.name,
+                classifier: `${classifier.name}@${classifier.version}`,
                 processed,
                 classified,
                 skipped: processed - classified,
             };
 
-            console.log(`✅ ${result.classifier}: processed=${result.processed}, classified=${result.classified}, skipped=${result.skipped}` );
+            console.log(`✅ ${result.classifier}: processed=${result.processed}, classified=${result.classified}, skipped=${result.skipped}`);
 
             results.push(result);
         }

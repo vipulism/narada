@@ -1,0 +1,16 @@
+-- Create financial_events table
+CREATE TABLE financial_events (
+    id VARCHAR(36) PRIMARY KEY,
+    type VARCHAR(50) NOT NULL,
+    merchant VARCHAR(255),
+    amount DECIMAL(15, 2) NOT NULL,
+    currency VARCHAR(10) NOT NULL,
+    cash_flow VARCHAR(10) NOT NULL,
+    bank VARCHAR(255),
+    account_last4 VARCHAR(4),
+    available_balance DECIMAL(15, 2),
+    transaction_type VARCHAR(50),
+    source_file VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

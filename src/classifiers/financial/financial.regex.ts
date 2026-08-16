@@ -18,7 +18,7 @@
  * INR 1,234.56
  */
 export const INR_AMOUNT_REGEX =
-    /INR\.?\s*([\d,]+(?:\.\d{1,2})?)/i;
+    /INR\.?\s*((?:\d[\d,]*)?(?:\.\d{1,2})|\d[\d,]*)/i;
 
 /**
  * Matches:
@@ -69,26 +69,104 @@ export const ACCOUNT_REGEX =
 export const CARD_LAST4_REGEX =
     /ending(?:\s+with)?\s+(\d{4})/i;
 
+/**
+ * Matches:
+ * card xx1260
+ * card ending xx1260
+ * a/c xx0592
+ * ac xxxx1234
+ */
+export const CARD_MASKED_LAST4_REGEX =
+    /(?:card|a\/?c|ac)\s+(?:ending\s+)?(?:x{2,}|\*{2,})-?(\d{3,})\b/i;
+
+/**
+ * Matches:
+ * xxxx1234
+ * ****1234
+ * xx1234
+ */
+export const MASKED_LAST4_REGEX =
+    /(?:x{2,}|\*{2,})-?(\d{3,})\b/i;
+
+/**
+ * Matches:
+ * Card 1687
+ * CC 3671
+ */
+export const CARD_BARE_LAST4_REGEX =
+    /(?:card|cc)\s+(\d{4})\b/i;
+
+/**
+ * Matches 3–4 visible digits after a mask:
+ * Acct XX412
+ * Acc XX412
+ * A/C *1260
+ */
+export const ACCT_MASKED_DIGITS_REGEX =
+    /(?:acct|account|acc|a\/?c|card|loan)\s+(?:x{1,}|\*+)-?(\d{3,})\b/i;
+
+/**
+ * Matches:
+ * FASTag 5940
+ * Fastag 5940
+ */
+export const FASTAG_LAST4_REGEX =
+    /fastag\s+(\d{4})\b/i;
+
+/**
+ * Matches:
+ * Tag 3XXX5940
+ * Tag XXXX5940
+ */
+export const FASTAG_TAG_LAST4_REGEX =
+    /tag\s+\d?x{2,4}(\d{4})\b/i;
+
+/**
+ * Matches:
+ * credit card (7111)
+ * card (1687)
+ */
+export const CARD_PAREN_LAST4_REGEX =
+    /(?:card|cc)\s*\((\d{4})\)/i;
+
 //
 // Cash Flow Keywords
 //
 
 export const CREDIT_KEYWORDS = [
+    "HAS BEEN CREDITED",
+    "RECEIVED FROM",
     "CREDITED",
     "RECEIVED",
     "DEPOSITED",
     "REFUND",
     "CASHBACK",
     "REVERSAL",
-    "REVERSED"
+    "REVERSED",
+    "CR ",
 ];
 
 export const DEBIT_KEYWORDS = [
+    "HAS BEEN DEBITED",
+    "DEBITED FROM",
+    "WITHDRAWN FROM",
+    "TRANSACTION OF",
+    "TXN OF",
+    "TXN RS",
+    "TXN INR",
+    "AMT SENT",
+    "AMOUNT SENT",
+    "SENT RS",
+    "AUTOPAY (E-MANDATE) SUCCESS",
+    "CURRENT TXN AMT",
+    "SENT TO",
+    "USED AT",
     "DEBITED",
     "SPENT",
     "PAID",
     "PURCHASE",
-    "WITHDRAWN"
+    "WITHDRAWN",
+    "DR ",
 ];
 
 //
@@ -96,6 +174,7 @@ export const DEBIT_KEYWORDS = [
 //
 
 export const UPI_REGEX = /\bUPI\b/i;
+export const BBPS_REGEX = /\bBBPS\b/i;
 export const NEFT_REGEX = /\bNEFT\b/i;
 export const IMPS_REGEX = /\bIMPS\b/i;
 export const RTGS_REGEX = /\bRTGS\b/i;
@@ -112,11 +191,55 @@ export const ATM_REGEX = /\bATM\b/i;
  * at JABONG
  */
 export const MERCHANT_AT_REGEX =
-    /\bat\s+([A-Z0-9*.\-& ]+?)(?=\s+on|\s*$)/i;
+    /\bat\s+([A-Z0-9*.\-_& ]+?)(?:\s*\([^)]*\))?(?=\s+on|\s+for\s+(?:INR|RS)|$)/i;
 
 /**
  * Example:
  * to UBER
+ * To PWC_IRCTC_UPI
  */
 export const MERCHANT_TO_REGEX =
-    /\bto\s+([A-Z0-9*.\-& ]+?)(?=\s+on|\s*$)/i;
+    /\bto\s+([A-Z0-9*.\-_& ]+?)(?=\s+on|\s+from\b|\s+at\s+(?:\d|[A-Za-z]{3})|\s*$)/i;
+
+//
+// Transaction date (body only)
+//
+
+/**
+ * Matches:
+ * on 15-Aug-26
+ * on 15/08/2026
+ * on 15-08-26
+ */
+export const TRANSACTION_DATE_REGEX =
+    /\bon\s+(\d{1,2}[-/](?:[A-Za-z]{3}|\d{1,2})[-/]\d{2,4})/i;
+
+/**
+ * Matches:
+ * Payment due on 20-Jan-23
+ * due by 30-NOV-21
+ */
+export const DUE_DATE_REGEX =
+    /(?:payment\s+due\s+on|is\s+due\s+on|due\s+by|to\s+be\s+paid\s+by|due\s+date)\s+(\d{1,2}[-/](?:[A-Za-z]{3}|\d{1,2})[-/]\d{2,4})/i;
+
+/**
+ * Matches:
+ * Payment Due Date: 05/01/23
+ * Payment Due Date 05-01-2023
+ */
+export const PAYMENT_DUE_DATE_REGEX =
+    /payment\s+due\s+date[:\s]+(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})/i;
+
+/**
+ * Matches:
+ * Due on 25th Aug 2021
+ */
+export const DUE_ON_ORDINAL_REGEX =
+    /due\s+(?:on|by)\s+(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9},?\s+\d{2,4})/i;
+
+/**
+ * Matches EPF passbook corpus:
+ * passbook balance ... is Rs. 111415
+ */
+export const EPF_BALANCE_REGEX =
+    /passbook\s+balance[^\d]*Rs\.?\s*([\d,]+)/i;

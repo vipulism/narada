@@ -12,7 +12,7 @@ export const BANKS: BankDefinition[] = [
     },
     {
         name: "ICICI Bank",
-        senderCodes: ["ICICIT"],
+        senderCodes: ["ICICIT", "ICICIB"],
         aliases: ["ICICI", "ICICI BANK"],
     },
     {
@@ -22,12 +22,17 @@ export const BANKS: BankDefinition[] = [
     },
     {
         name: "RBL Bank",
-        senderCodes: ["RBLBNK"],
+        senderCodes: ["RBLBNK", "RBLCRD"],
         aliases: ["RBL", "RBL BANK"],
     },
     {
+        name: "Axis Bank",
+        senderCodes: ["AXISBK"],
+        aliases: ["AXIS BANK"],
+    },
+    {
         name: "State Bank of India",
-        senderCodes: ["SBIINB", "SBIBNK"],
+        senderCodes: ["SBIINB", "SBIBNK", "SBICRD", "CBSSBI"],
         aliases: ["SBI", "STATE BANK OF INDIA"],
     },
     {
@@ -39,5 +44,35 @@ export const BANKS: BankDefinition[] = [
         name: "Punjab National Bank",
         senderCodes: ["PNBNK", "PNBSMS", "PNBDBD"],
         aliases: ["PNB", "PUNJAB NATIONAL BANK"],
-    }
+    },
+    {
+        name: "HSBC",
+        senderCodes: ["HSBCBK", "HSBC"],
+        aliases: ["HSBC"],
+    },
+    {
+        name: "Tata Neu",
+        senderCodes: ["TATANE", "TATANEU"],
+        aliases: ["TATA NEU", "TATANEU", "TATA NEU INFINITY"],
+    },
+    {
+        name: "Scapia",
+        senderCodes: ["SCAPIA"],
+        aliases: ["SCAPIA"],
+    },
+    {
+        name: "IndusInd Bank",
+        senderCodes: ["INDUSB", "INDUSIND"],
+        aliases: ["INDUSIND", "INDUSIND BANK"],
+    },
+    {
+        name: "IDFC First Bank",
+        senderCodes: ["IDFCFB", "IDFCFR"],
+        aliases: ["IDFC", "IDFC FIRST", "IDFC FIRST BANK"],
+    },
+    {
+        name: "FASTag",
+        senderCodes: ["PARKPL"],
+        aliases: ["FASTAG", "PARKPLUS"],
+    },
 ];
