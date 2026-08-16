@@ -59,7 +59,12 @@ export function toFinancialEvent(source: AnalysisEventSource): FinancialEvent | 
     const cashFlow = typeof data.cashFlow === "string" ? data.cashFlow : undefined;
     const kind = source.subcategory as FinancialKind | null;
 
-    if (!isPostedFinancialEvent(kind, cashFlow, amount) || !kind || !cashFlow) {
+    if (
+        amount === undefined ||
+        !kind ||
+        !cashFlow ||
+        !isPostedFinancialEvent(kind, cashFlow, amount)
+    ) {
         return undefined;
     }
 
