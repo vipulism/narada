@@ -23,7 +23,7 @@ Completed:
 ✅ PayZapp wallet debit is expense; PhonePe/BSES payment successful is expense
 ✅ CDSL share credit, BK Crowns, and CAMS e-insurance account noise are skip
 ✅ CRED Club / CRED credited from savings is bill; YES funds-trf to owned a/c is transfer
-✅ `financial_events` from posted analysis (expense/income/transfer/CRED outflow/investment); due reminders stay in sms_analysis
+✅ `financial_events` from posted analysis on owned last4 only; unmapped (old cards, no last4) stay in sms_analysis
 
 
 In Progress:

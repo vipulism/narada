@@ -17,6 +17,7 @@ const POSTED_KIND_FLOW: Record<string, CashFlow> = {
 export interface AnalysisEventSource {
     smsId: number;
     occurredAt: Date;
+    body: string;
     category: string;
     subcategory: string | null;
     classifier: string;

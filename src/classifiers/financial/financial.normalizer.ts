@@ -2,7 +2,9 @@ import { RowDataPacket } from "mysql2";
 import { getDb } from "../../db/mariaConnection";
 import { FinancialClassifier } from "./financial.classifier";
 import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
-import { FinancialEvent } from "./financial.model";
+import { EventFilterSource, filterPostedEvents } from "./financial.eventFilter";
+import { isOwnedDhanEvent } from "./financial.dhanMap";
+import { loadKnownAccountIndex } from "./knownAccounts";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 
 /**
@@ -19,16 +21,18 @@ export class FinancialEventNormalizer {
      */
     async rebuildFromAnalysis(): Promise<{ stored: number; considered: number }> {
         const sources = await this.loadAnalysisRows();
-        const events: FinancialEvent[] = [];
+        const accounts = loadKnownAccountIndex();
+        const owned: EventFilterSource[] = [];
 
         for (const source of sources) {
             const event = toFinancialEvent(source);
 
-            if (event) {
-                events.push(event);
+            if (event && isOwnedDhanEvent(event, accounts)) {
+                owned.push({ event, body: source.body });
             }
         }
 
+        const events = filterPostedEvents(owned);
         await this.repository.replaceAll(events);
 
         return { stored: events.length, considered: sources.length };
@@ -41,6 +45,7 @@ export class FinancialEventNormalizer {
             SELECT
                 s.id AS sms_id,
                 s.received_at,
+                s.body,
                 a.category,
                 a.subcategory,
                 a.classifier,
@@ -57,6 +62,7 @@ export class FinancialEventNormalizer {
         return rows.map((row) => ({
             smsId: Number(row.sms_id),
             occurredAt: new Date(row.received_at),
+            body: String(row.body ?? ""),
             category: String(row.category),
             subcategory: row.subcategory == null ? null : String(row.subcategory),
             classifier: String(row.classifier),

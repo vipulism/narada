@@ -11,6 +11,7 @@
     "sms:import": "tsx src/cli/sms/smsImport.cli.ts",
     "sms:extract": "tsx src/cli/sms/smsExtract.cli.ts",
     "sms:events": "tsx src/cli/sms/smsEvents.cli.ts",
+    "sms:dhan-map": "tsx src/cli/sms/smsDhanMap.cli.ts",
     "sms:classify-check": "tsx src/classifiers/financial/financial.regression.ts"
   },
   "repository": {

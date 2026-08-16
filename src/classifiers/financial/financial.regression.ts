@@ -1,5 +1,7 @@
 import { FinancialClassifier } from "./financial.classifier";
 import { SmsCategory, SmsMessage } from "../../importers/sms/sms.model";
+import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilter";
+import { FinancialEvent } from "./financial.model";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1130,6 +1132,152 @@ function stubMessage(address: string, body: string): SmsMessage {
     };
 }
 
+function stubEvent(
+    smsId: number,
+    kind: string,
+    amount: number,
+    accountLast4: string,
+    occurredAt: Date
+): FinancialEvent {
+    return {
+        smsId,
+        kind,
+        cashFlow: kind === "transfer" ? "NEUTRAL" : kind === "income" ? "INFLOW" : "OUTFLOW",
+        amount,
+        currency: "INR",
+        accountLast4,
+        occurredAt,
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+    };
+}
+
+/**
+ * Locked persist-filter cases. Classify stays transfer; events skip same-VPA,
+ * closed legs, and paired duplicate SMS.
+ */
+function runEventFilterRegression(): void {
+    const failures: string[] = [];
+    const persistCases: Array<{ id: string; body: string; persist: boolean }> = [
+        {
+            id: "phonepe-owned-to-owned-keep",
+            body: "You've transferred Rs.100000 from HDFC Bank a/c ******1260 to YES Bank a/c XXXXX0592.",
+            persist: true,
+        },
+        {
+            id: "same-vpa-vipulism-skip",
+            body: "Rs 50,000.00 Debited to Ac XX0592 on 19-MAR 18:17-UPI/007972996523/From:vipulism@ybl/To:vipulism@ybl/Payment from PhonePe Tot Avbl Bal-Rs 811,870.45 on 19-Mar 18:17.",
+            persist: false,
+        },
+        {
+            id: "closed-3330-to-1260-skip",
+            body: "Your a/c no. XXXXXXXXXXX3330 is debited for Rs.50000.00 on 19-03-2020 and a/c XXXXXXXXXXX1260 credited (IMPS Ref no 007902449179).",
+            persist: false,
+        },
+        {
+            id: "closed-3330-funds-trf-skip",
+            body: "Rs 12,000.00 Debited to Ac XX3330 on 30-OCT 12:15-Funds Trf to XX0592/own account/5 and 12 Tot Avbl Bal-Rs 29,110.87 on 30-Oct 12:15.",
+            persist: false,
+        },
+        {
+            id: "both-owned-keep",
+            body: "Your a/c no. XXXXXXXXXXX1412 is debited for Rs.2000.00 on 19-03-2020 and a/c XXXXXXXXXXX1260 credited (IMPS Ref no 007902449179).",
+            persist: true,
+        },
+        {
+            id: "hdfc-to-home-loan-keep",
+            body: "UPDATE: A/c XX1260 debited for INR 10,896.00 on 09-11-20 & A/c xxxxxxx9751 credited (IMPS Ref No.031321326782).Avl bal:INR 10,32,682.11.Not you?Call 18002586161",
+            persist: true,
+        },
+    ];
+
+    for (const testCase of persistCases) {
+        const persist = isPersistableTransfer(testCase.body);
+
+        if (persist !== testCase.persist) {
+            failures.push(
+                `${testCase.id}: persist ${persist} != ${testCase.persist}`
+            );
+        }
+    }
+
+    const day = new Date("2020-03-19T12:00:00+05:30");
+    const phonepeBody =
+        "You've transferred Rs.100000 from HDFC Bank a/c ******1260 to YES Bank a/c XXXXX0592.";
+    const sameVpaBody =
+        "Rs 100000.00 Credited to Ac XX0592 on 19-MAR 18:17-UPI/007972996523/From:vipulism@ybl/To:vipulism@ybl/Payment from PhonePe.";
+    const yesImpsBody =
+        "Rs 200,000.00 Debited to Ac XX0592 on 05-AUG 18:48-IMPS/NA/XXXX1260/RRN:221718648405/6588085827940851331/HDFC Bank/VIPUL SHARMA/Ghar3 Tot Avbl Bal-Rs 304,019.69 on 05-Aug 18:48.";
+    const yesImpsDupBody =
+        "Your a/c no. XXXXXXXXXXX0592 is debited for Rs.200000.00 on 05-08-2022 and a/c XXXXXXXXXXX1260 credited (IMPS Ref no 221718648405).";
+
+    const deduped = filterPostedEvents([
+        {
+            event: stubEvent(31, "transfer", 100000, "1260", day),
+            body: phonepeBody,
+        },
+        {
+            event: stubEvent(33, "transfer", 100000, "0592", day),
+            body: sameVpaBody,
+        },
+        {
+            event: stubEvent(32, "income", 100000, "0592", day),
+            body: "Rs 100000.00 Credited to Ac XX0592. Avl Bal Rs 200000.",
+        },
+        {
+            event: stubEvent(6916, "transfer", 200000, "0592", new Date("2022-08-05T18:48:00+05:30")),
+            body: yesImpsDupBody,
+        },
+        {
+            event: stubEvent(6917, "transfer", 200000, "0592", new Date("2022-08-05T18:48:00+05:30")),
+            body: yesImpsBody,
+        },
+        {
+            event: stubEvent(3111, "transfer", 10896, "1260", new Date("2020-11-09T12:00:00+05:30")),
+            body: "UPDATE: A/c XX1260 debited for INR 10,896.00 on 09-11-20 & A/c xxxxxxx9751 credited (IMPS Ref No.031321326782).Avl bal:INR 10,32,682.11.Not you?Call 18002586161",
+        },
+    ]);
+    const ids = deduped.map((event) => event.smsId).sort((left, right) => left - right);
+
+    if (ids.includes(33)) {
+        failures.push("paired same-VPA credit was persisted");
+    }
+
+    if (ids.includes(32)) {
+        failures.push("paired income credit was persisted");
+    }
+
+    if (!ids.includes(31)) {
+        failures.push("PhonePe owned-to-owned transfer was dropped");
+    }
+
+    const phonepe = deduped.find((event) => event.smsId === 31);
+
+    if (phonepe?.accountLast4 !== "1260" || phonepe?.counterpartyLast4 !== "0592") {
+        failures.push(
+            `PhonePe legs ${phonepe?.accountLast4}→${phonepe?.counterpartyLast4} != 1260→0592`
+        );
+    }
+
+    const homeLoan = deduped.find((event) => event.smsId === 3111);
+
+    if (homeLoan?.accountLast4 !== "1260" || homeLoan?.counterpartyLast4 !== "9751") {
+        failures.push(
+            `home-loan legs ${homeLoan?.accountLast4}→${homeLoan?.counterpartyLast4} != 1260→9751`
+        );
+    }
+
+    const twoLakh = ids.filter((id) => id === 6916 || id === 6917);
+
+    if (twoLakh.length !== 1) {
+        failures.push(`IMPS pair kept ${twoLakh.length} events, expected 1`);
+    }
+
+    if (failures.length > 0) {
+        throw new Error(`event filter regression failed:\n${failures.join("\n")}`);
+    }
+}
+
 /**
  * Runs locked classify cases and throws on the first mismatch.
  */
@@ -1187,3 +1335,6 @@ export function runFinancialRegression(): void {
 
 runFinancialRegression();
 console.log(`classify regression ok: ${CASES.length} cases`);
+
+runEventFilterRegression();
+console.log("event filter regression ok");

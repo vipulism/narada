@@ -20,7 +20,7 @@ export class FinancialEventRepository {
 
         for (let offset = 0; offset < events.length; offset += batchSize) {
             const batch = events.slice(offset, offset + batchSize);
-            const placeholders = batch.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
+            const placeholders = batch.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",");
             const values = batch.flatMap((event) => [
                 event.smsId,
                 event.kind,
@@ -28,6 +28,7 @@ export class FinancialEventRepository {
                 event.amount,
                 event.currency,
                 event.accountLast4 ?? null,
+                event.counterpartyLast4 ?? null,
                 event.accountName ?? null,
                 event.bank ?? null,
                 event.merchant ?? null,
@@ -41,8 +42,8 @@ export class FinancialEventRepository {
                 `
                 INSERT INTO financial_events (
                     sms_id, kind, cash_flow, amount, currency,
-                    account_last4, account_name, bank, merchant, transaction_type,
-                    occurred_at, classifier, classifier_version
+                    account_last4, counterparty_last4, account_name, bank, merchant,
+                    transaction_type, occurred_at, classifier, classifier_version
                 )
                 VALUES ${placeholders}
                 `,
@@ -67,4 +68,62 @@ export class FinancialEventRepository {
 
         return rows.map((row) => ({ kind: String(row.kind), n: Number(row.n) }));
     }
+
+    /**
+     * Returns every financial event, oldest first.
+     */
+    async listAll(): Promise<FinancialEvent[]> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                sms_id,
+                kind,
+                cash_flow,
+                amount,
+                currency,
+                account_last4,
+                counterparty_last4,
+                account_name,
+                bank,
+                merchant,
+                transaction_type,
+                occurred_at,
+                classifier,
+                classifier_version
+            FROM financial_events
+            ORDER BY occurred_at ASC, sms_id ASC
+            `
+        );
+
+        return rows.map(rowToEvent);
+    }
+}
+
+function rowToEvent(row: RowDataPacket): FinancialEvent {
+    return {
+        smsId: Number(row.sms_id),
+        kind: String(row.kind),
+        cashFlow: String(row.cash_flow),
+        amount: Number(row.amount),
+        currency: String(row.currency),
+        accountLast4: asOptionalString(row.account_last4),
+        counterpartyLast4: asOptionalString(row.counterparty_last4),
+        accountName: asOptionalString(row.account_name),
+        bank: asOptionalString(row.bank),
+        merchant: asOptionalString(row.merchant),
+        transactionType: asOptionalString(row.transaction_type),
+        occurredAt: new Date(row.occurred_at),
+        classifier: String(row.classifier),
+        classifierVersion: String(row.classifier_version),
+    };
+}
+
+function asOptionalString(value: unknown): string | undefined {
+    if (value == null) {
+        return undefined;
+    }
+
+    const trimmed = String(value).trim();
+    return trimmed.length > 0 ? trimmed : undefined;
 }

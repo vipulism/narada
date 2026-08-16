@@ -511,7 +511,12 @@ export function isSelfTransfer(body: string): boolean {
     return creditOwned && (/YOUR\s+A\/?C/.test(body) || body.includes("OWN ACCOUNT"));
 }
 
-function isSameVpaTransfer(body: string): boolean {
+/**
+ * UPI debit and credit use the same VPA (e.g. vipulism@ybl → vipulism@ybl).
+ *
+ * @param body - Uppercased SMS body
+ */
+export function isSameVpaTransfer(body: string): boolean {
     const from = body.match(/FROM:([A-Z0-9._-]+@[A-Z0-9._-]+)/);
     const to = body.match(/TO:([A-Z0-9._-]+@[A-Z0-9._-]+)/);
 

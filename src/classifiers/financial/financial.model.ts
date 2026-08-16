@@ -28,6 +28,8 @@ export interface FinancialEvent {
     amount: number;
     currency: string;
     accountLast4?: string;
+    /** Credit/destination last4 for owned-to-owned transfers (loan or savings). */
+    counterpartyLast4?: string;
     accountName?: string;
     bank?: string;
     merchant?: string;
