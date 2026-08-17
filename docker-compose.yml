@@ -13,6 +13,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./services.json:/app/services.json:ro
       - ./config/accounts.local.json:/app/config/accounts.local.json:ro
+      - ./config/firefly-openings.local.json:/app/config/firefly-openings.local.json:ro
       - /mnt/data/syncthing/data/sms:/imports/sms:ro
     networks:
       - mariadb_homelab
