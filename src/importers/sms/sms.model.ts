@@ -11,6 +11,7 @@
 //     rawAttributes:any;
 //   }
 
+import { FinancialEvent } from "../../classifiers/financial/financial.model";
 import { ImportResult } from "../import.types";
 
 export interface SmsBackup {
@@ -42,6 +43,41 @@ export interface SmsMessage {
 
 export interface SmsMessageWithId extends SmsMessage {
   id: number;
+}
+
+/** SMS list row with preferred classifier analysis. */
+export interface SmsListItem {
+  id: number;
+  address: string;
+  contactName?: string;
+  body: string;
+  smsType: number;
+  receivedAt: Date;
+  sourceFile?: string;
+  category?: string;
+  subcategory?: string;
+  confidence?: number;
+}
+
+/** SMS detail including analysis payload and optional posted event. */
+export interface SmsDetail extends SmsListItem {
+  hash: string;
+  rawAttributes: Record<string, unknown> | null;
+  extractedData?: Record<string, unknown>;
+  financialEvent?: FinancialEvent;
+}
+
+/** Pagination and filters for GET /sms. */
+export interface ListSmsOptions {
+  page: number;
+  limit: number;
+  category?: string;
+  subcategory?: string;
+  address?: string;
+  from?: Date;
+  to?: Date;
+  preferredClassifier: string;
+  preferredVersion: string;
 }
 
 export type PartialHashSms = Omit<SmsMessage, 'hash'> & Partial<Pick<SmsMessage, 'hash'>>;

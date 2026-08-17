@@ -10,13 +10,13 @@ This roadmap focuses on long-term platform evolution rather than individual impl
 
 ## Current Sprint
 
-🚧 Firefly ledger completeness
+🚧 Knowledge surface
 
-SMS ingestion, regex financial extraction, and the Firefly III (Dhan) push path are in place.
+SMS ingestion, regex financial extraction, Firefly III (Dhan) push, and read APIs for imports / SMS / posted financial knowledge are in place.
 
 Current focus:
 
-- Import / knowledge APIs (not started)
+- Timeline and knowledge search (not started)
 
 ---
 
@@ -229,22 +229,27 @@ GET /events/:id
 
 GET /services
 GET /services/stream
+
+GET /imports
+GET /imports/:id
+
+GET /sms
+GET /sms/:id
+
+GET /knowledge
+GET /knowledge/:id
 ```
+
+`GET /knowledge` is posted `financial_events` only (`type: "financial"`).
 
 Future
 
 ```text
-GET /imports
-
-GET /sms
-
-GET /knowledge
+GET /knowledge/search
 
 GET /timeline
 
 GET /documents
-
-GET /search
 ```
 
 ---

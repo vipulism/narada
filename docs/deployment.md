@@ -363,6 +363,9 @@ curl http://192.168.1.32:4000/health
 curl http://192.168.1.32:4000/events
 curl http://192.168.1.32:4000/services
 curl -N http://192.168.1.32:4000/services/stream
+curl "http://192.168.1.32:4000/sms?category=FINANCIAL&limit=5"
+curl "http://192.168.1.32:4000/knowledge?kind=investment"
+curl http://192.168.1.32:4000/imports
 ```
 
 Expected checks:
@@ -374,6 +377,8 @@ Docker source started
 /events returns paginated event response
 /services returns latest service status
 /services/stream keeps the SSE connection open
+/sms and /knowledge return paginated knowledge envelopes
+/imports is empty until the next new/changed SMS XML
 ```
 
 Also verify database persistence:

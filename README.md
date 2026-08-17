@@ -44,6 +44,7 @@ Narada sends notifications only when state changes occur.
 ## Documentation
 
 * [Architecture](docs/architecture.md)
+* [HTTP API](docs/api.md)
 * [Roadmap](docs/roadmap.md)
 * [Integrations](docs/integrations.md)
 

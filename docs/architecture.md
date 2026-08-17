@@ -684,27 +684,35 @@ GET /services/stream
 GET /events
 
 GET /events/:id
-```
 
-Future APIs:
+GET /imports
 
-```text
+GET /imports/:id
+
 GET /sms
 
 GET /sms/:id
 
 GET /knowledge
 
+GET /knowledge/:id
+```
+
+`GET /knowledge` currently returns posted `financial_events` only (`type: "financial"`, `id` = SMS id). Search and timeline are later.
+
+Future APIs:
+
+```text
 GET /knowledge/search
 
 GET /timeline
 
 GET /documents
-
-GET /imports
 ```
 
 The API layer never contains business logic.
+
+Request/response details: [HTTP API](api.md).
 
 Controllers delegate work to Services.
 
@@ -783,6 +791,7 @@ Narada currently supports:
 - Event APIs
 - Services APIs
 - SSE updates
+- Import / SMS / knowledge read APIs
 - Scheduler-based health checks
 
 Knowledge ingestion currently includes:

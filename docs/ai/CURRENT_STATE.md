@@ -30,11 +30,12 @@ Completed:
 ✅ Unique-bank account resolve at persist/push: last4 → unique (bank + type) → unique bank → skip
 ✅ Dhan investment buckets: FD/MF/equity/SGB/EPF seeded; `investment` SMS → Firefly transfer (kind+bank dest); EPF snapshot-only
 ✅ SMS import follow-up: classify pending → rebuild `financial_events` → push ready rows to Firefly
+✅ Import / knowledge read APIs: `GET /imports`, `GET /sms`, `GET /knowledge` (financial envelope, id = smsId)
 
 
 In Progress:
 
-🚧 Import / knowledge APIs
+🚧 Timeline / knowledge search
 
 
 Not Implemented:
@@ -43,4 +44,4 @@ Not Implemented:
 - Vector DB
 - AI extraction
 - Bank importer
-- Knowledge / timeline APIs
+- Timeline / knowledge search

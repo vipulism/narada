@@ -156,6 +156,140 @@ export class FinancialEventRepository {
 
         return rows.map(rowToEvent);
     }
+
+    /**
+     * Lists posted financial events newest-first for GET /knowledge.
+     *
+     * @param options - Page and optional kind / last4 / bank / pushed filters
+     */
+    async listPage(
+        options: ListFinancialEventsOptions
+    ): Promise<{ items: FinancialEvent[]; total: number }> {
+        const db = getDb();
+        const offset = (options.page - 1) * options.limit;
+        const { whereSql, params } = financialEventWhere(options);
+
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                sms_id,
+                kind,
+                cash_flow,
+                amount,
+                currency,
+                account_last4,
+                counterparty_last4,
+                account_name,
+                bank,
+                merchant,
+                transaction_type,
+                occurred_at,
+                classifier,
+                classifier_version,
+                firefly_transaction_id,
+                firefly_pushed_at
+            FROM financial_events
+            ${whereSql}
+            ORDER BY occurred_at DESC, sms_id DESC
+            LIMIT ? OFFSET ?
+            `,
+            [...params, options.limit, offset]
+        );
+
+        const [countRows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT COUNT(*) AS total
+            FROM financial_events
+            ${whereSql}
+            `,
+            params
+        );
+
+        return {
+            items: rows.map(rowToEvent),
+            total: Number(countRows[0]?.total ?? 0),
+        };
+    }
+
+    /**
+     * Loads one posted financial event by SMS id.
+     *
+     * @param smsId - `financial_events.sms_id`
+     */
+    async getBySmsId(smsId: number): Promise<FinancialEvent | null> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                sms_id,
+                kind,
+                cash_flow,
+                amount,
+                currency,
+                account_last4,
+                counterparty_last4,
+                account_name,
+                bank,
+                merchant,
+                transaction_type,
+                occurred_at,
+                classifier,
+                classifier_version,
+                firefly_transaction_id,
+                firefly_pushed_at
+            FROM financial_events
+            WHERE sms_id = ?
+            LIMIT 1
+            `,
+            [smsId]
+        );
+
+        return rows[0] ? rowToEvent(rows[0]) : null;
+    }
+}
+
+/** Pagination and filters for GET /knowledge. */
+export interface ListFinancialEventsOptions {
+    page: number;
+    limit: number;
+    kind?: string;
+    last4?: string;
+    bank?: string;
+    pushed?: boolean;
+}
+
+function financialEventWhere(options: ListFinancialEventsOptions): {
+    whereSql: string;
+    params: unknown[];
+} {
+    const where: string[] = [];
+    const params: unknown[] = [];
+
+    if (options.kind) {
+        where.push("kind = ?");
+        params.push(options.kind);
+    }
+
+    if (options.last4) {
+        where.push("(account_last4 = ? OR counterparty_last4 = ?)");
+        params.push(options.last4, options.last4);
+    }
+
+    if (options.bank) {
+        where.push("bank = ?");
+        params.push(options.bank);
+    }
+
+    if (options.pushed === true) {
+        where.push("firefly_transaction_id IS NOT NULL");
+    } else if (options.pushed === false) {
+        where.push("firefly_transaction_id IS NULL");
+    }
+
+    return {
+        whereSql: where.length ? `WHERE ${where.join(" AND ")}` : "",
+        params,
+    };
 }
 
 function rowToEvent(row: RowDataPacket): FinancialEvent {

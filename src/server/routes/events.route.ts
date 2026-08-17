@@ -3,6 +3,7 @@ import { createWebhookEvent } from '../../events/createWebhookEvent';
 import { validateWebhookEventPayload } from '../../middlewares/validateWebhookEventPayload';
 import { publishEvent } from '../../queue/eventPublisher';
 import { getEventById, getEvents } from '../../repositories/event.repository';
+import { paginationMeta, parsePagination } from '../pagination';
 
 
 const createEvent = async (req: Request, res: Response) => {
@@ -19,13 +20,7 @@ const createEvent = async (req: Request, res: Response) => {
 
 const getEventList = async (req: Request, res: Response) => {
 
-  const rawPage = Number(req.query.page ?? 1);
-  const rawLimit = Number(req.query.limit ?? 10);
-  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
-  const limit = Number.isFinite(rawLimit) && rawLimit > 0
-    ? Math.min(rawLimit, 100)
-    : 10;
-
+  const { page, limit } = parsePagination(req.query);
 
   const status = req.query.status as string | undefined;
   const type = req.query.type as string | undefined;
@@ -34,12 +29,7 @@ const getEventList = async (req: Request, res: Response) => {
 
   return res.status(200).json({
     items: result.items,
-    pagination: {
-      page,
-      limit,
-      total: result.total,
-      totalPages: Math.ceil(result.total / limit),
-    },
+    pagination: paginationMeta(page, limit, result.total),
     filters: {
       status: status ?? null,
       type: type ?? null,
