@@ -97,6 +97,7 @@ Examples include:
 - Folder Connector
 - Docker Connector
 - Webhook Connector
+- Firefly III Connector
 - Paperless Connector
 - Gmail Connector
 - Calendar Connector
@@ -273,7 +274,7 @@ External System
 
 ---
 
-### Folder Connector (Sprint 4)
+### Folder Connector
 
 The Folder Connector is the first connector for knowledge ingestion.
 
@@ -303,6 +304,28 @@ It only knows:
 - file path
 - file type
 - modified time
+
+---
+
+### Firefly III Connector
+
+Pushes posted `financial_events` into the Dhan Firefly III ledger.
+
+Flow:
+
+```text
+financial_events
+        │
+ last4 account map
+        │
+ openings filter
+        │
+ POST /api/v1/transactions
+        │
+ firefly_transaction_id
+```
+
+Push is skipped when `FIREFLY_URL` or `FIREFLY_TOKEN` is missing. Already-pushed rows are left in place across `financial_events` rebuilds.
 
 ---
 
@@ -370,6 +393,17 @@ SmsImportService
 sms.repository
      ▼
 MariaDB
+     │
+     ▼
+ClassifierRunner (regex-financial)
+     ▼
+sms_analysis
+     ▼
+FinancialEventNormalizer
+     ▼
+financial_events
+     ▼
+Firefly push (optional)
 ```
 
 The parser is intentionally database agnostic.
@@ -425,6 +459,7 @@ Examples:
 
 ```text
 SmsRepository
+FinancialEventRepository
 EventRepository
 NotificationRepository
 ServiceRepository
@@ -515,10 +550,12 @@ sms_messages
 
 sms_imports
 
-sms_extractions
+sms_analysis
 
-knowledge_events
+financial_events
 ```
+
+`financial_events` stores posted ledger rows plus `classifier`, `classifier_version`, and optional Firefly push columns (`firefly_transaction_id`, `firefly_pushed_at`).
 
 Future tables:
 
@@ -551,11 +588,11 @@ sms_messages
 
 ↓
 
-Extraction
+sms_analysis (regex-financial@version)
 
 ↓
 
-Knowledge Events
+financial_events (owned last4, posted kinds)
 ```
 
 This ensures:
@@ -685,11 +722,16 @@ src/
 checks/
 config/
 
+classifiers/
+│
+└── financial/
+
 connectors/
 │
 ├── docker/
 ├── webhook/
-└── folder/              (Sprint 4)
+├── folder/
+└── firefly/
 
 db/
 
@@ -747,7 +789,10 @@ Knowledge ingestion currently includes:
 
 - SMS XML parsing
 - SMS normalization
-- SMS persistence (Sprint 4)
+- SMS persistence
+- Financial SMS classification (`regex-financial`)
+- Posted `financial_events` with classifier + version
+- Firefly III ledger push (Dhan)
 
 ---
 

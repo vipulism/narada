@@ -15,3 +15,6 @@ Ubuntu Homelab
 
 Development:
 Windows + WSL
+
+Optional ledger:
+Firefly III (Dhan)

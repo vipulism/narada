@@ -116,6 +116,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./services.json:/app/services.json:ro
+      - ./config/accounts.local.json:/app/config/accounts.local.json:ro
+      - /mnt/data/syncthing/data/sms:/imports/sms:ro
     networks:
       - mariadb_homelab
       - rabbitmq_default
@@ -145,6 +147,10 @@ SERVICES_CONFIG_PATH=/app/services.json
 DOCKER_SOURCE_ENABLED=true
 TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID=YOUR_TELEGRAM_CHAT_ID
+ACCOUNTS_CONFIG_PATH=/app/config/accounts.local.json
+FIREFLY_URL=https://dhan.example.internal
+FIREFLY_TOKEN=YOUR_FIREFLY_TOKEN
+FIREFLY_TLS_INSECURE=
 ```
 
 If Narada is not connected to the same Docker network as MariaDB and RabbitMQ, replace the container names with Mandara's LAN IP or Tailscale IP. The preferred setup is to connect Narada to both external Docker networks.
@@ -285,6 +291,10 @@ jobs:
           DOCKER_SOURCE_ENABLED=true
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          ACCOUNTS_CONFIG_PATH=/app/config/accounts.local.json
+          FIREFLY_URL=${{ vars.FIREFLY_URL }}
+          FIREFLY_TOKEN=${{ secrets.FIREFLY_TOKEN }}
+          FIREFLY_TLS_INSECURE=${{ vars.FIREFLY_TLS_INSECURE }}
           EOF
 
       - name: Create services config
@@ -317,6 +327,8 @@ PORT=4000
 NARADA_DEPLOY_PATH=/opt/stacks/narada
 RABBITMQ_EXCHANGE=narada.events
 RABBITMQ_QUEUE=narada.events.process
+FIREFLY_URL=
+FIREFLY_TLS_INSECURE=
 ```
 
 ---
@@ -329,6 +341,7 @@ NARADA_RABBITMQ_URL
 NARADA_SERVICES_JSON
 TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID
+FIREFLY_TOKEN
 ```
 
 Recommended secret values for Mandara network deployment:
@@ -368,6 +381,7 @@ Also verify database persistence:
 ```sql
 SELECT * FROM narada_events ORDER BY created_at DESC LIMIT 10;
 SELECT * FROM narada_notifications ORDER BY created_at DESC LIMIT 10;
+SELECT classifier, classifier_version, COUNT(*) FROM financial_events GROUP BY classifier, classifier_version;
 ```
 
 ---
