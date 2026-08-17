@@ -9,6 +9,7 @@ Completed:
 ✅ Event APIs
 ✅ SSE
 ✅ SMS XML Importer
+✅ Folder connector + import scheduler (SMS Backup XML)
 ✅ SMS financial detection (`regex-financial@1.3.25`)
 ✅ Skip templates: data quota, UPI PIN, limit-increase, overlimit promo, pending CRED cashback, closed HDFC loan EMI, login/IPIN/password, KYC, UPI link, schedule of charges, OTP awareness, CC bill-payment acks
 ✅ SMS kinds: expense, income, bill, investment, epf, transfer
@@ -24,20 +25,21 @@ Completed:
 ✅ CDSL share credit, BK Crowns, and CAMS e-insurance account noise are skip
 ✅ CRED Club / CRED credited from savings is bill; YES funds-trf to owned a/c is transfer
 ✅ `financial_events` from posted analysis on owned last4 only; unmapped (old cards, no last4) stay in sms_analysis
+✅ `FinancialEvent` matches the table: `classifier` + `classifier_version` are required (same values as `sms_analysis`)
+✅ Firefly III connector (Dhan): last4 account map, dry-run, openings, push with `external_id`
+✅ SMS import follow-up: classify pending → rebuild `financial_events` → push ready rows to Firefly
 
 
 In Progress:
 
-🚧 Knowledge ingestion
-🚧 Firefly III mapping (Dhan bank/card accounts ready, connector not started)
+🚧 Unique-bank account resolve at resolve/push time (not during classify)
+🚧 Dhan accounts for EPF, MF, stocks, FD (classify only for now)
 
 
 Not Implemented:
 
-- Firefly connector
-- Unique-bank account resolve at resolve/push time (not during classify)
-- Dhan accounts for EPF, MF, stocks, FD (classify only for now)
 - RAG
 - Vector DB
 - AI extraction
 - Bank importer
+- Knowledge / timeline APIs

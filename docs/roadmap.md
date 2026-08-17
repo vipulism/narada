@@ -10,15 +10,15 @@ This roadmap focuses on long-term platform evolution rather than individual impl
 
 ## Current Sprint
 
-🚧 Sprint 4 — Knowledge Ingestion
+🚧 Firefly ledger completeness
+
+SMS ingestion, regex financial extraction, and the Firefly III (Dhan) push path are in place.
 
 Current focus:
 
-- SMS XML Parser
-- SMS Repository
-- SMS Import Service
-- Folder Connector
-- Import Dispatcher
+- Unique-bank account resolve at push time (not during classify)
+- Dhan accounts for EPF, MF, stocks, FD
+- Import / knowledge APIs (not started)
 
 ---
 
@@ -47,53 +47,59 @@ The initial goal of Narada was to provide a lightweight event processing layer f
 
 ---
 
-## Phase 2 — Knowledge Ingestion 🚧
+## Phase 2 — Knowledge Ingestion ✅
 
 Narada begins evolving beyond infrastructure monitoring.
 
 Instead of observing only services, Narada now starts ingesting personal data sources.
 
-### Current
+### Completed
 
 - SMS XML Parser
 - SMS Repository
 - SMS Import Service
-- SMS persistence
+- SMS persistence (`sms_messages`, `sms_imports`)
 - Folder Connector
 - Import Dispatcher
 - Import Scheduler
+- Duplicate detection via SMS hash
 
 ### Planned
 
-- Generic Folder Connector
-- Import history
-- Import statistics
-- Import retries
-- Duplicate detection improvements
+- Generic Folder Connector reuse for non-SMS sources
 - Import dashboard
+- Import retries
 
 ---
 
-## Phase 3 — Knowledge Extraction
+## Phase 3 — Knowledge Extraction 🚧
 
 Raw imported information becomes structured knowledge.
 
+### Completed
+
+- Financial SMS classification (`regex-financial@1.3.25`)
+- `sms_analysis` + posted `financial_events` (owned last4 only)
+- Event kinds: expense, income, bill, investment, epf, transfer
+- Promotional / OTP / KYC skip templates
+- Classifier name + version stored on both analysis and events
+
 ### Planned
 
-- Financial transaction extraction
-- Bill detection
 - Reminder extraction
 - Subscription detection
-- OTP classification
-- Promotional SMS filtering
 - Important message detection
-- Knowledge event generation
+- Knowledge event generation beyond financial SMS
 
 ---
 
-## Phase 4 — Connector Ecosystem
+## Phase 4 — Connector Ecosystem 🚧
 
 Narada expands by supporting many external systems.
+
+### Completed
+
+- Firefly III connector (Dhan ledger push from `financial_events`)
 
 ### Planned Connectors
 
@@ -186,6 +192,7 @@ Current
 - Docker Connector
 - Webhook Connector
 - Folder Connector
+- Firefly III Connector (ledger push)
 
 Future
 
@@ -546,7 +553,23 @@ SmsRepository
 
 ↓
 
-MariaDB
+MariaDB (sms_messages)
+
+↓
+
+ClassifierRunner
+
+↓
+
+sms_analysis
+
+↓
+
+financial_events
+
+↓
+
+Firefly III (optional)
 ```
 
 ---

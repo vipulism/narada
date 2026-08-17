@@ -16,6 +16,8 @@ Inspired by Narada — the divine messenger from Hindu mythology — this projec
 * Telegram notifications (failure, slow, recovery)
 * Per-endpoint state tracking and deduplicated alerts
 * Configurable slow-response threshold
+* SMS Backup XML import and regex financial classification
+* Firefly III (Dhan) ledger push from posted financial events
 * Lightweight Node.js + TypeScript architecture
 * Docker deployment via Compose
 

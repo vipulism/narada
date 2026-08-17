@@ -35,6 +35,10 @@ export interface FinancialEvent {
     merchant?: string;
     transactionType?: string;
     occurredAt: Date;
+    /** Classifier that produced this event (e.g. regex-financial). */
+    classifier: string;
+    /** Classifier version stored with the event. */
+    classifierVersion: string;
     /** Firefly III transaction journal id after a successful push. */
     fireflyTransactionId?: string;
     fireflyPushedAt?: Date;
