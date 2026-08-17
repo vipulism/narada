@@ -1,0 +1,35 @@
+{
+  "openOn": "2026-08-16",
+  "accounts": [
+    {
+      "name": "FD – YES Bank",
+      "last4": "1111",
+      "openingBalance": 0,
+      "notes": "Sum of live YES FDs as of openOn"
+    },
+    {
+      "name": "FD – ICICI Bank",
+      "last4": "2222",
+      "openingBalance": 0,
+      "notes": "Sum of live ICICI FDs as of openOn"
+    },
+    {
+      "name": "Mutual funds",
+      "last4": "3333",
+      "openingBalance": 0,
+      "notes": "Current corpus (Groww/zerodha), not per-scheme"
+    },
+    {
+      "name": "Equity / Demat",
+      "last4": "4358",
+      "openingBalance": 0,
+      "notes": "Current equity value"
+    },
+    {
+      "name": "SGB",
+      "last4": "0000",
+      "openingBalance": 0,
+      "notes": "Replace last4; current gold value or invested amount"
+    }
+  ]
+}

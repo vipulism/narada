@@ -14,6 +14,7 @@
     "sms:dhan-map": "tsx src/cli/sms/smsDhanMap.cli.ts",
     "sms:firefly-map": "tsx src/cli/sms/smsFireflyMap.cli.ts",
     "sms:firefly-push": "tsx src/cli/sms/smsFireflyPush.cli.ts",
+    "sms:firefly-accounts": "tsx src/cli/sms/smsFireflyAccounts.cli.ts",
     "sms:classify-check": "tsx src/classifiers/financial/financial.regression.ts"
   },
   "repository": {

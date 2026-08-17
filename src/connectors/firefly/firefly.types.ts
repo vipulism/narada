@@ -33,3 +33,15 @@ export interface PlannedFireflyTransaction {
 export type FireflyDryRunRow =
     | { ok: true; plan: PlannedFireflyTransaction }
     | { ok: false; smsId: number; kind: string; amount: number; reason: string; skip?: boolean };
+
+/**
+ * Payload to create one Firefly asset account.
+ */
+export interface FireflyAccountCreate {
+    name: string;
+    accountNumber: string;
+    openingBalance: string;
+    openingBalanceDate: string;
+    accountRole: "defaultAsset" | "savingAsset";
+    notes?: string;
+}

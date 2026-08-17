@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from "axios";
 import { Agent as HttpsAgent } from "node:https";
-import { FireflyAccount, PlannedFireflyTransaction } from "./firefly.types";
+import { FireflyAccount, FireflyAccountCreate, PlannedFireflyTransaction } from "./firefly.types";
 
 interface FireflyAccountsResponse {
     data?: Array<{
@@ -109,6 +109,75 @@ export class FireflyClient {
             return id;
         } catch (error) {
             throw fireflyHttpError(error, "POST /transactions");
+        }
+    }
+
+    /**
+     * Creates one asset account. Does not update existing accounts.
+     *
+     * @param plan - Name, last4, opening balance, role
+     */
+    async createAccount(plan: FireflyAccountCreate): Promise<string> {
+        const payload: Record<string, string | boolean> = {
+            name: plan.name,
+            type: "asset",
+            account_role: plan.accountRole,
+            currency_code: "INR",
+            account_number: plan.accountNumber,
+            opening_balance: plan.openingBalance,
+            opening_balance_date: plan.openingBalanceDate,
+            active: true,
+            include_net_worth: true,
+        };
+
+        if (plan.notes) {
+            payload.notes = plan.notes;
+        }
+
+        try {
+            const response = await this.http.post<{ data?: { id?: string } }>(
+                "/accounts",
+                payload
+            );
+            const id = response.data?.data?.id?.trim();
+
+            if (!id) {
+                throw new Error("Firefly POST /accounts returned no id");
+            }
+
+            return id;
+        } catch (error) {
+            throw fireflyHttpError(error, "POST /accounts");
+        }
+    }
+
+    /**
+     * Updates fields on an existing account (e.g. opening balance).
+     *
+     * @param id - Firefly account id
+     * @param fields - Subset of account attributes to change
+     */
+    async updateAccount(
+        id: string,
+        fields: {
+            openingBalance?: string;
+            openingBalanceDate?: string;
+        }
+    ): Promise<void> {
+        const payload: Record<string, string> = {};
+
+        if (fields.openingBalance !== undefined) {
+            payload.opening_balance = fields.openingBalance;
+        }
+
+        if (fields.openingBalanceDate !== undefined) {
+            payload.opening_balance_date = fields.openingBalanceDate;
+        }
+
+        try {
+            await this.http.put(`/accounts/${id}`, payload);
+        } catch (error) {
+            throw fireflyHttpError(error, `PUT /accounts/${id}`);
         }
     }
 
