@@ -1,5 +1,6 @@
 {
   "accounts": [
-    { "name": "Example savings", "bank": "Example Bank", "last4": "0000", "type": "savings" }
+    { "name": "Example savings", "bank": "Example Bank", "last4": "0000", "type": "savings" },
+    { "name": "Example FD", "bank": "Example Bank", "last4": "1111", "type": "investment" }
   ]
 }

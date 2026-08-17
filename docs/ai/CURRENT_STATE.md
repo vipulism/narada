@@ -28,12 +28,13 @@ Completed:
 ✅ `FinancialEvent` matches the table: `classifier` + `classifier_version` are required (same values as `sms_analysis`)
 ✅ Firefly III connector (Dhan): last4 account map, dry-run, openings, push with `external_id`
 ✅ Unique-bank account resolve at persist/push: last4 → unique (bank + type) → unique bank → skip
+✅ Dhan investment buckets: FD/MF/equity/SGB/EPF seeded; `investment` SMS → Firefly transfer (kind+bank dest); EPF snapshot-only
 ✅ SMS import follow-up: classify pending → rebuild `financial_events` → push ready rows to Firefly
 
 
 In Progress:
 
-🚧 Dhan accounts for EPF, MF, stocks, FD (classify only for now)
+🚧 Import / knowledge APIs
 
 
 Not Implemented:

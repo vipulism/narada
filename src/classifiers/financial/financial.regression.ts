@@ -1297,6 +1297,14 @@ function ownedFixture(): KnownAccountIndex {
         { name: "SBI BP", bank: "State Bank of India", last4: "8561", type: "credit_card" },
         { name: "SBI Home Loan", bank: "State Bank of India", last4: "9751", type: "loan" },
         { name: "HSBC Credit Card", bank: "HSBC", last4: "4433", type: "credit_card" },
+        { name: "Yes Bank savings", bank: "YES Bank", last4: "0592", type: "savings" },
+        { name: "FD – YES Bank", bank: "YES Bank", last4: "6636", type: "investment" },
+        { name: "FD – ICICI Bank", bank: "ICICI Bank", last4: "2222", type: "investment" },
+        { name: "FD – HDFC Bank", bank: "HDFC Bank", last4: "6666", type: "investment" },
+        { name: "Mutual funds", bank: "Mutual Fund", last4: "3333", type: "investment" },
+        { name: "Equity / Demat", bank: "Demat", last4: "4444", type: "investment" },
+        { name: "SGB", bank: "SGB", last4: "5555", type: "investment" },
+        { name: "EPF", bank: "EPFO", last4: "7777", type: "epf" },
     ];
 
     return new KnownAccountIndex(accounts);
@@ -1386,6 +1394,48 @@ function runDhanResolveRegression(): void {
 
     if (restamped.event.accountLast4 !== "1412") {
         failures.push(`stamp last4 ${restamped.event.accountLast4} != 1412`);
+    }
+
+    const yesSavings = resolveDhanAccount(
+        { bank: "YES Bank" },
+        accounts,
+        "YES Bank Acct credited with INR 5000.00 on 26-JAN-23"
+    );
+
+    if (yesSavings.account?.last4 !== "0592") {
+        failures.push(`YES unique savings with FD present → ${yesSavings.account?.last4} != 0592`);
+    }
+
+    const yesFdBody =
+        "Rs 15,000.00 Debited to Ac XX0592 on 01-JAN 09:44-NET-New FD-VIPUL SHARMA-016648000000121 -1-CHANDNICHOWK Tot Avbl Bal-Rs 455,991.91 on 01-Jan 09:44. Warm Regards, YES Bank.";
+    const yesFd = stampDhanAccount(
+        {
+            ...stubEvent(5891, "investment", 15000, "0592", new Date("2021-01-01T04:14:00+05:30")),
+            bank: "YES Bank",
+        },
+        accounts,
+        yesFdBody
+    );
+
+    if (yesFd.event.accountLast4 !== "0592" || yesFd.event.counterpartyLast4 !== "6636") {
+        failures.push(
+            `YES New FD legs ${yesFd.event.accountLast4}→${yesFd.event.counterpartyLast4} != 0592→6636`
+        );
+    }
+
+    const sipBody =
+        "Dear Investor, Payment of Rs. 2999.85 towards your SIP in Axis Small Cap Fund Direct Growth has been received and 26.505 units at NAV 113.18 are allotted in Folio XXXXXXXXX5143. Axis MF";
+    const sip = stampDhanAccount(
+        {
+            ...stubEvent(14447, "investment", 2999.85, "1412", new Date("2026-08-16T12:00:00+05:30")),
+            bank: "ICICI Bank",
+        },
+        accounts,
+        sipBody
+    );
+
+    if (sip.event.counterpartyLast4 !== "3333") {
+        failures.push(`Axis SIP dest ${sip.event.counterpartyLast4} != 3333`);
     }
 
     if (failures.length > 0) {
@@ -1483,6 +1533,48 @@ function runFireflyMapRegression(): void {
 
     if (!uniquePush.ok || uniquePush.plan.destinationId !== "1412id") {
         failures.push("ICICI UPI without last4 should unique-savings to 1412");
+    }
+
+    const fdLedger = new FireflyLast4Index([
+        { id: "yesSav", name: "Yes Bank savings", type: "asset", accountNumber: "0592" },
+        { id: "yesFd", name: "FD – YES Bank", type: "asset", accountNumber: "6636" },
+        { id: "mf", name: "Mutual funds", type: "asset", accountNumber: "3333" },
+    ]);
+    const oldFd = stubEvent(5891, "investment", 15000, "0592", new Date("2021-01-01T04:14:00+05:30"));
+    oldFd.counterpartyLast4 = "6636";
+    oldFd.bank = "YES Bank";
+    const oldFdPlan = planFireflyTransaction(
+        oldFd,
+        fdLedger,
+        ownedFixture(),
+        new FireflyOpenings(new Map([
+            ["0592", "2026-08-16"],
+            ["6636", "2026-08-16"],
+        ]))
+    );
+
+    if (oldFdPlan.ok || !oldFdPlan.skip) {
+        failures.push("historical YES FD should skip before opening");
+    }
+
+    const newFd = stubEvent(20000, "investment", 15000, "0592", new Date("2026-08-16T12:00:00+05:30"));
+    newFd.counterpartyLast4 = "6636";
+    newFd.bank = "YES Bank";
+    const newFdPlan = planFireflyTransaction(newFd, fdLedger, ownedFixture());
+
+    if (!newFdPlan.ok || newFdPlan.plan.type !== "transfer") {
+        failures.push("YES New FD should dry-run as transfer");
+    } else if (newFdPlan.plan.sourceId !== "yesSav" || newFdPlan.plan.destinationId !== "yesFd") {
+        failures.push(
+            `YES FD transfer ids ${newFdPlan.plan.sourceId}→${newFdPlan.plan.destinationId} != yesSav→yesFd`
+        );
+    }
+
+    const noDest = stubEvent(20001, "investment", 2999.85, "1412", new Date("2026-08-16T12:00:00+05:30"));
+    const blockedInvest = planFireflyTransaction(noDest, fdLedger, ownedFixture());
+
+    if (blockedInvest.ok) {
+        failures.push("investment without dest last4 must not post as withdrawal");
     }
 
     if (failures.length > 0) {

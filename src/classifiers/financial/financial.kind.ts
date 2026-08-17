@@ -615,13 +615,10 @@ export function detectFinancialKind(
     }
 
     if (
-        sender.includes("PPFAMF") ||
-        sender.includes("IPRUMF") ||
-        sender.includes("CAMS") ||
-        sender.includes("AXISMF") ||
-        body.includes("MUTUAL FUND") ||
-        body.includes("NEW FD") ||
-        (body.includes("FOLIO") && body.includes("NAV"))
+        isMutualFundMessage(body, sender) ||
+        isNewFdMessage(body) ||
+        isSgbMessage(body) ||
+        isEquityBuyMessage(body)
     ) {
         return "investment";
     }
@@ -737,4 +734,74 @@ export function isPaidBillReceipt(body: string): boolean {
             body.includes("HAS BEEN RECEIVED") &&
             !body.includes("CREDIT CARD"))
     );
+}
+
+/**
+ * Bank SMS that books a new fixed deposit from a savings account.
+ *
+ * @param body - SMS body (any case)
+ */
+export function isNewFdMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    return (
+        upper.includes("NEW FD") ||
+        upper.includes("FD BOOKED") ||
+        upper.includes("FD HAS BEEN")
+    );
+}
+
+/**
+ * Mutual-fund allotment or SIP SMS (AMC / RTA / folio+NAV).
+ *
+ * @param body - SMS body (any case)
+ * @param sender - Normalized or raw sender id
+ */
+export function isMutualFundMessage(body: string, sender = ""): boolean {
+    const upper = body.toUpperCase();
+    const from = sender.toUpperCase();
+
+    return (
+        from.includes("PPFAMF") ||
+        from.includes("IPRUMF") ||
+        from.includes("CAMS") ||
+        from.includes("AXISMF") ||
+        upper.includes("MUTUAL FUND") ||
+        (upper.includes("FOLIO") && upper.includes("NAV"))
+    );
+}
+
+/**
+ * Sovereign Gold Bond purchase or allotment with a cash amount.
+ *
+ * @param body - SMS body (any case)
+ */
+export function isSgbMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    return upper.includes("SOVEREIGN GOLD") || /\bSGB\b/.test(upper);
+}
+
+/**
+ * Cash equity/demat buy. Bonus allotments are skipped elsewhere.
+ *
+ * @param body - SMS body (any case)
+ */
+export function isEquityBuyMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    if (upper.includes("BONUS ALLOTMENT") || upper.includes("BONUS SHARE")) {
+        return false;
+    }
+
+    const product =
+        upper.includes("DEMAT") ||
+        upper.includes("EQUITY") ||
+        upper.includes("SHARES");
+    const buy =
+        upper.includes("PURCHASE") ||
+        upper.includes("BOUGHT") ||
+        /\bBUY\b/.test(upper);
+
+    return product && buy;
 }

@@ -26,7 +26,7 @@ export function planFireflyTransaction(
         return blocked(event, skipReason, true);
     }
 
-    if (event.kind === "transfer") {
+    if (event.kind === "transfer" || event.kind === "investment") {
         return planTransfer(event, sourceLast4, firefly);
     }
 

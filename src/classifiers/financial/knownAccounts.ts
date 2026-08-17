@@ -61,14 +61,18 @@ export class KnownAccountIndex {
     }
 
     /**
-     * When SMS has no last4, use the bank only if this owner has exactly one account there.
+     * When SMS has no last4, use the bank only if this owner has exactly one
+     * cash account there (savings / card / loan / wallet). Investment and EPF
+     * buckets are ignored so a YES FD does not break YES savings unique-bank.
      *
      * @param bank - Bank name from sender or body (e.g. HSBC)
      */
     resolveUniqueByBank(bank: string): KnownAccount | undefined {
         return this.uniqueMatch(
             this.accounts.filter(
-                (account) => account.bank.toUpperCase() === bank.trim().toUpperCase()
+                (account) =>
+                    isCashAccountType(account.type) &&
+                    account.bank.toUpperCase() === bank.trim().toUpperCase()
             )
         );
     }
@@ -123,4 +127,13 @@ export function loadKnownAccountIndex(): KnownAccountIndex {
     );
 
     return new KnownAccountIndex(accounts);
+}
+
+function isCashAccountType(type: KnownAccount["type"]): boolean {
+    return (
+        type === "savings" ||
+        type === "credit_card" ||
+        type === "loan" ||
+        type === "wallet"
+    );
 }

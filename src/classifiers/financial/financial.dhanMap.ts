@@ -5,6 +5,12 @@ import {
     inferOwnedAccountType,
     inferOwnedAccountTypeFromTxn,
 } from "./financial.accountType";
+import {
+    isEquityBuyMessage,
+    isMutualFundMessage,
+    isNewFdMessage,
+    isSgbMessage,
+} from "./financial.kind";
 
 export type DhanMapBucket = "mapped" | "unique-bank" | "unmapped";
 
@@ -62,7 +68,39 @@ export function resolveDhanAccount(
 }
 
 /**
+ * Investment bucket the SMS funded (FD at the source bank, or MF / SGB / demat).
+ *
+ * @param event - Posted event with optional source bank
+ * @param body - SMS body
+ * @param accounts - Owned last4 index
+ */
+export function resolveInvestmentDestination(
+    event: Pick<FinancialEvent, "bank">,
+    body: string,
+    accounts: KnownAccountIndex
+): KnownAccount | undefined {
+    if (isMutualFundMessage(body)) {
+        return accounts.resolveUniqueByBankAndType("Mutual Fund", "investment");
+    }
+
+    if (isSgbMessage(body)) {
+        return accounts.resolveUniqueByBankAndType("SGB", "investment");
+    }
+
+    if (isEquityBuyMessage(body)) {
+        return accounts.resolveUniqueByBankAndType("Demat", "investment");
+    }
+
+    if (isNewFdMessage(body) && event.bank) {
+        return accounts.resolveUniqueByBankAndType(event.bank, "investment");
+    }
+
+    return undefined;
+}
+
+/**
  * Stamps resolved last4/name onto the event when classify left them empty.
+ * Investment events also get counterpartyLast4 for the destination bucket.
  *
  * @param event - Candidate financial event
  * @param accounts - Owned last4 index
@@ -79,15 +117,22 @@ export function stampDhanAccount(
         return { event, resolution };
     }
 
-    return {
-        resolution,
-        event: {
-            ...event,
-            accountLast4: event.accountLast4 ?? resolution.account.last4,
-            accountName: event.accountName ?? resolution.account.name,
-            bank: event.bank ?? resolution.account.bank,
-        },
+    const next: FinancialEvent = {
+        ...event,
+        accountLast4: event.accountLast4 ?? resolution.account.last4,
+        accountName: event.accountName ?? resolution.account.name,
+        bank: event.bank ?? resolution.account.bank,
     };
+
+    if (event.kind === "investment" && !next.counterpartyLast4) {
+        const destination = resolveInvestmentDestination(next, body ?? "", accounts);
+
+        if (destination) {
+            next.counterpartyLast4 = destination.last4;
+        }
+    }
+
+    return { resolution, event: next };
 }
 
 /**

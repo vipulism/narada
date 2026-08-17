@@ -16,7 +16,6 @@ SMS ingestion, regex financial extraction, and the Firefly III (Dhan) push path 
 
 Current focus:
 
-- Dhan accounts for EPF, MF, stocks, FD
 - Import / knowledge APIs (not started)
 
 ---

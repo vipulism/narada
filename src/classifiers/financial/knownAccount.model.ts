@@ -5,7 +5,7 @@ export interface KnownAccount {
     name: string;
     bank: string;
     last4: string;
-    type: "savings" | "credit_card" | "loan" | "wallet";
+    type: "savings" | "credit_card" | "loan" | "wallet" | "investment" | "epf";
 }
 
 export interface KnownAccountsFile {
