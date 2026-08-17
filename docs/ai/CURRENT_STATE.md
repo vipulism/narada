@@ -27,12 +27,12 @@ Completed:
 ✅ `financial_events` from posted analysis on owned last4 only; unmapped (old cards, no last4) stay in sms_analysis
 ✅ `FinancialEvent` matches the table: `classifier` + `classifier_version` are required (same values as `sms_analysis`)
 ✅ Firefly III connector (Dhan): last4 account map, dry-run, openings, push with `external_id`
+✅ Unique-bank account resolve at persist/push: last4 → unique (bank + type) → unique bank → skip
 ✅ SMS import follow-up: classify pending → rebuild `financial_events` → push ready rows to Firefly
 
 
 In Progress:
 
-🚧 Unique-bank account resolve at resolve/push time (not during classify)
 🚧 Dhan accounts for EPF, MF, stocks, FD (classify only for now)
 
 

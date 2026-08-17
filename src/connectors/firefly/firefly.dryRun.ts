@@ -1,3 +1,4 @@
+import { inferOwnedAccountTypeFromTxn } from "../../classifiers/financial/financial.accountType";
 import { FinancialEvent } from "../../classifiers/financial/financial.model";
 import { KnownAccountIndex } from "../../classifiers/financial/knownAccounts";
 import { FireflyLast4Index } from "./firefly.accountMap";
@@ -18,7 +19,7 @@ export function planFireflyTransaction(
     owned: KnownAccountIndex,
     openings: FireflyOpenings = new FireflyOpenings(new Map())
 ): FireflyDryRunRow {
-    const sourceLast4 = event.accountLast4 ?? uniqueBankLast4(event.bank, owned);
+    const sourceLast4 = event.accountLast4 ?? uniqueBankLast4(event, owned);
     const skipReason = openings.skipReason(event, sourceLast4);
 
     if (skipReason) {
@@ -117,14 +118,24 @@ function resolveLeg(
 }
 
 function uniqueBankLast4(
-    bank: string | undefined,
+    event: Pick<FinancialEvent, "bank" | "transactionType">,
     owned: KnownAccountIndex
 ): string | undefined {
-    if (!bank) {
+    if (!event.bank) {
         return undefined;
     }
 
-    return owned.resolveUniqueByBank(bank)?.last4;
+    const type = inferOwnedAccountTypeFromTxn(event.transactionType);
+
+    if (type) {
+        const uniqueTyped = owned.resolveUniqueByBankAndType(event.bank, type);
+
+        if (uniqueTyped) {
+            return uniqueTyped.last4;
+        }
+    }
+
+    return owned.resolveUniqueByBank(event.bank)?.last4;
 }
 
 function basePlan(

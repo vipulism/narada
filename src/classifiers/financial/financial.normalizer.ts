@@ -3,7 +3,7 @@ import { getDb } from "../../db/mariaConnection";
 import { FinancialClassifier } from "./financial.classifier";
 import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
 import { EventFilterSource, filterPostedEvents } from "./financial.eventFilter";
-import { isOwnedDhanEvent } from "./financial.dhanMap";
+import { stampDhanAccount } from "./financial.dhanMap";
 import { loadKnownAccountIndex } from "./knownAccounts";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 
@@ -27,8 +27,14 @@ export class FinancialEventNormalizer {
         for (const source of sources) {
             const event = toFinancialEvent(source);
 
-            if (event && isOwnedDhanEvent(event, accounts)) {
-                owned.push({ event, body: source.body });
+            if (!event) {
+                continue;
+            }
+
+            const stamped = stampDhanAccount(event, accounts, source.body);
+
+            if (stamped.resolution.bucket !== "unmapped") {
+                owned.push({ event: stamped.event, body: source.body });
             }
         }
 

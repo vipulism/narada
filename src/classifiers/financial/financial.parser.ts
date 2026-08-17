@@ -32,6 +32,7 @@ import { SmsMessage } from "../../importers/sms/sms.model";
 import { senderNormalize } from "../common/senderNormalizer";
 import { BANKS } from "./financial.constants";
 import { SenderInfo } from "../common/sender.model";
+import { inferOwnedAccountType, namesCreditCard } from "./financial.accountType";
 import { KnownAccountIndex, loadKnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { isCreditCardPaymentAck, isDueReminder, isPaidBillReceipt, isSelfTransfer, isWalletTopUp, resolveOwnedTransferToken, selfTransferLast4s } from "./financial.kind";
@@ -120,7 +121,7 @@ export class FinancialParser {
             return undefined;
         }
 
-        if (this.namesCreditCard(body)) {
+        if (namesCreditCard(body)) {
             const uniqueCard = this.knownAccounts.resolveUniqueByBankAndType(
                 bank,
                 "credit_card"
@@ -132,6 +133,19 @@ export class FinancialParser {
 
             if (ending && uniqueCard && !this.endingDigitsAgree(ending, uniqueCard.last4)) {
                 return undefined;
+            }
+        }
+
+        const inferredType = inferOwnedAccountType(body);
+
+        if (inferredType && inferredType !== "credit_card") {
+            const uniqueTyped = this.knownAccounts.resolveUniqueByBankAndType(
+                bank,
+                inferredType
+            );
+
+            if (uniqueTyped && this.endingDigitsAgree(ending, uniqueTyped.last4)) {
+                return uniqueTyped;
             }
         }
 
@@ -196,16 +210,6 @@ export class FinancialParser {
             /\bFASTAG\b/i.test(body) ||
             FASTAG_TAG_LAST4_REGEX.test(body) ||
             (/\btoll paid\b/i.test(body) && /\btag\b/i.test(body))
-        );
-    }
-
-    private namesCreditCard(body: string): boolean {
-        const withoutPayChannel = body.replace(/\b(?:visa\s+)?credit\s+card\s+pay\b/gi, "");
-
-        return (
-            /\bCREDIT\s+CARD\b/i.test(withoutPayChannel) ||
-            /\bSBI\s+CC\b/i.test(withoutPayChannel) ||
-            /\bSBI\s+CARD\b/i.test(withoutPayChannel)
         );
     }
 

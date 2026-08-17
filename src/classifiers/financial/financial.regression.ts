@@ -6,6 +6,8 @@ import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
 import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
+import { KnownAccount } from "./knownAccount.model";
+import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1282,6 +1284,115 @@ function runEventFilterRegression(): void {
     }
 }
 
+function ownedFixture(): KnownAccountIndex {
+    const accounts: KnownAccount[] = [
+        { name: "ICICI savings", bank: "ICICI Bank", last4: "1412", type: "savings" },
+        { name: "ICICI Amazon Pay", bank: "ICICI Bank", last4: "0004", type: "credit_card" },
+        { name: "ICICI Sapphiro Visa", bank: "ICICI Bank", last4: "1003", type: "credit_card" },
+        { name: "ICICI Sapphiro Rupee", bank: "ICICI Bank", last4: "7000", type: "credit_card" },
+        { name: "HDFC savings", bank: "HDFC Bank", last4: "1260", type: "savings" },
+        { name: "HDFC Rupee", bank: "HDFC Bank", last4: "1687", type: "credit_card" },
+        { name: "HDFC Regalia", bank: "HDFC Bank", last4: "0170", type: "credit_card" },
+        { name: "SBI savings", bank: "State Bank of India", last4: "6424", type: "savings" },
+        { name: "SBI BP", bank: "State Bank of India", last4: "8561", type: "credit_card" },
+        { name: "SBI Home Loan", bank: "State Bank of India", last4: "9751", type: "loan" },
+        { name: "HSBC Credit Card", bank: "HSBC", last4: "4433", type: "credit_card" },
+    ];
+
+    return new KnownAccountIndex(accounts);
+}
+
+/**
+ * Unique (bank + type) when last4 is missing; multi-card banks stay unmapped.
+ */
+function runDhanResolveRegression(): void {
+    const failures: string[] = [];
+    const accounts = ownedFixture();
+
+    const iciciSavings = resolveDhanAccount(
+        { bank: "ICICI Bank", transactionType: "UPI" },
+        accounts,
+        "Dear Customer, Acct is credited with Rs 3188.00 from ABHISHEK SHARMA. UPI:312548874973-ICICI Bank."
+    );
+
+    if (iciciSavings.account?.last4 !== "1412" || iciciSavings.bucket !== "unique-bank") {
+        failures.push(
+            `ICICI acct credit → ${iciciSavings.bucket}:${iciciSavings.account?.last4} != unique-bank:1412`
+        );
+    }
+
+    const iciciCard = resolveDhanAccount(
+        { bank: "ICICI Bank" },
+        accounts,
+        "Spent Rs 500 on your ICICI Bank Credit Card. Available limit Rs 10000."
+    );
+
+    if (iciciCard.bucket !== "unmapped") {
+        failures.push(
+            `ICICI credit card without last4 should stay unmapped, got ${iciciCard.account?.last4}`
+        );
+    }
+
+    const hsbc = resolveDhanAccount(
+        { bank: "HSBC" },
+        accounts,
+        "You have spent INR 41 on HSBC Credit Card at swiggy."
+    );
+
+    if (hsbc.account?.last4 !== "4433") {
+        failures.push(`HSBC unique card → ${hsbc.account?.last4} != 4433`);
+    }
+
+    const sbiCard = resolveDhanAccount(
+        { bank: "State Bank of India" },
+        accounts,
+        "SBI Card ending 61: payment received Rs 500."
+    );
+
+    if (sbiCard.account?.last4 !== "8561") {
+        failures.push(`SBI unique card → ${sbiCard.account?.last4} != 8561`);
+    }
+
+    const homeLoan = resolveDhanAccount(
+        { bank: "State Bank of India" },
+        accounts,
+        "EMI of Rs 10896 paid towards SBI Home Loan."
+    );
+
+    if (homeLoan.account?.last4 !== "9751") {
+        failures.push(`SBI home loan → ${homeLoan.account?.last4} != 9751`);
+    }
+
+    const hdfcSavings = resolveDhanAccount(
+        { bank: "HDFC Bank", transactionType: "IMPS" },
+        accounts,
+        "HDFC Bank A/c credited with INR 2000.00."
+    );
+
+    if (hdfcSavings.account?.last4 !== "1260") {
+        failures.push(`HDFC A/c → ${hdfcSavings.account?.last4} != 1260`);
+    }
+
+    const restamped = stampDhanAccount(
+        {
+            ...stubEvent(18849, "income", 3188, "1412", new Date("2026-08-15T12:00:00+05:30")),
+            accountLast4: undefined,
+            bank: "ICICI Bank",
+            transactionType: "UPI",
+        },
+        accounts,
+        "Dear Customer, Acct is credited with Rs 3188.00 from ABHISHEK. UPI:1-ICICI Bank."
+    );
+
+    if (restamped.event.accountLast4 !== "1412") {
+        failures.push(`stamp last4 ${restamped.event.accountLast4} != 1412`);
+    }
+
+    if (failures.length > 0) {
+        throw new Error(`dhan resolve regression failed:\n${failures.join("\n")}`);
+    }
+}
+
 function runFireflyMapRegression(): void {
     const failures: string[] = [];
 
@@ -1360,6 +1471,20 @@ function runFireflyMapRegression(): void {
         failures.push("FASTag on opening day should be ready");
     }
 
+    const iciciLedger = new FireflyLast4Index([
+        { id: "1412id", name: "ICICI savings", type: "asset", accountNumber: "1412" },
+        { id: "0004id", name: "ICICI Amazon Pay", type: "asset", accountNumber: "0004" },
+    ]);
+    const noLast4 = stubEvent(18849, "income", 3188, "1412", new Date("2026-08-16T12:00:00+05:30"));
+    noLast4.accountLast4 = undefined;
+    noLast4.bank = "ICICI Bank";
+    noLast4.transactionType = "UPI";
+    const uniquePush = planFireflyTransaction(noLast4, iciciLedger, ownedFixture());
+
+    if (!uniquePush.ok || uniquePush.plan.destinationId !== "1412id") {
+        failures.push("ICICI UPI without last4 should unique-savings to 1412");
+    }
+
     if (failures.length > 0) {
         throw new Error(`firefly map regression failed:\n${failures.join("\n")}`);
     }
@@ -1425,6 +1550,9 @@ console.log(`classify regression ok: ${CASES.length} cases`);
 
 runEventFilterRegression();
 console.log("event filter regression ok");
+
+runDhanResolveRegression();
+console.log("dhan resolve regression ok");
 
 runFireflyMapRegression();
 console.log("firefly map regression ok");

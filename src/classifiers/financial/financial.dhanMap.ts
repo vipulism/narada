@@ -1,6 +1,10 @@
 import { FinancialEvent } from "./financial.model";
 import { KnownAccount } from "./knownAccount.model";
 import { KnownAccountIndex } from "./knownAccounts";
+import {
+    inferOwnedAccountType,
+    inferOwnedAccountTypeFromTxn,
+} from "./financial.accountType";
 
 export type DhanMapBucket = "mapped" | "unique-bank" | "unmapped";
 
@@ -11,14 +15,16 @@ export interface DhanAccountResolution {
 
 /**
  * Resolves a posted event to an owned account without calling Firefly.
- * Last4 exact match first. Unique-bank only when last4 is missing.
+ * Last4 exact match first. When last4 is missing: unique (bank + type), then unique bank.
  *
  * @param event - Row from financial_events or a candidate event
  * @param accounts - Owned last4 index
+ * @param body - SMS body; used to infer savings vs card vs loan
  */
 export function resolveDhanAccount(
-    event: Pick<FinancialEvent, "accountLast4" | "bank">,
-    accounts: KnownAccountIndex
+    event: Pick<FinancialEvent, "accountLast4" | "bank" | "transactionType">,
+    accounts: KnownAccountIndex,
+    body?: string
 ): DhanAccountResolution {
     if (event.accountLast4) {
         const exact = accounts.resolve(event.accountLast4);
@@ -30,15 +36,58 @@ export function resolveDhanAccount(
         return { bucket: "unmapped" };
     }
 
-    if (event.bank) {
-        const unique = accounts.resolveUniqueByBank(event.bank);
+    if (!event.bank) {
+        return { bucket: "unmapped" };
+    }
 
-        if (unique) {
-            return { bucket: "unique-bank", account: unique };
+    const type =
+        (body ? inferOwnedAccountType(body) : undefined) ??
+        inferOwnedAccountTypeFromTxn(event.transactionType);
+
+    if (type) {
+        const uniqueTyped = accounts.resolveUniqueByBankAndType(event.bank, type);
+
+        if (uniqueTyped) {
+            return { bucket: "unique-bank", account: uniqueTyped };
         }
     }
 
+    const unique = accounts.resolveUniqueByBank(event.bank);
+
+    if (unique) {
+        return { bucket: "unique-bank", account: unique };
+    }
+
     return { bucket: "unmapped" };
+}
+
+/**
+ * Stamps resolved last4/name onto the event when classify left them empty.
+ *
+ * @param event - Candidate financial event
+ * @param accounts - Owned last4 index
+ * @param body - SMS body for type inference
+ */
+export function stampDhanAccount(
+    event: FinancialEvent,
+    accounts: KnownAccountIndex,
+    body?: string
+): { event: FinancialEvent; resolution: DhanAccountResolution } {
+    const resolution = resolveDhanAccount(event, accounts, body);
+
+    if (!resolution.account) {
+        return { event, resolution };
+    }
+
+    return {
+        resolution,
+        event: {
+            ...event,
+            accountLast4: event.accountLast4 ?? resolution.account.last4,
+            accountName: event.accountName ?? resolution.account.name,
+            bank: event.bank ?? resolution.account.bank,
+        },
+    };
 }
 
 /**
@@ -46,12 +95,14 @@ export function resolveDhanAccount(
  *
  * @param event - Candidate financial event
  * @param accounts - Owned last4 index
+ * @param body - SMS body for type inference
  */
 export function isOwnedDhanEvent(
-    event: Pick<FinancialEvent, "accountLast4" | "bank">,
-    accounts: KnownAccountIndex
+    event: Pick<FinancialEvent, "accountLast4" | "bank" | "transactionType">,
+    accounts: KnownAccountIndex,
+    body?: string
 ): boolean {
-    return resolveDhanAccount(event, accounts).bucket !== "unmapped";
+    return resolveDhanAccount(event, accounts, body).bucket !== "unmapped";
 }
 
 /**
