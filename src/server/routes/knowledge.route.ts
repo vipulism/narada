@@ -11,6 +11,7 @@ import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun"
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 import { SmsDueRepository } from "../../importers/sms/smsDue.repository";
 import {
+    dedupeDueKnowledgeItems,
     toDueKnowledgeItem,
     toExceptionKnowledgeItem,
     toKnowledgeItem,
@@ -25,10 +26,11 @@ import {
 
 const events = new FinancialEventRepository();
 const dues = new SmsDueRepository();
+const DUE_FETCH_CAP = 500;
 
 /**
  * GET /knowledge and GET /knowledge/:id.
- * `kind=due` reads bill+NEUTRAL reminders; `kind=exception` dry-runs unpushed Dhan posts.
+ * `kind=due` reads unique bill+NEUTRAL reminders; `kind=exception` dry-runs unpushed Dhan posts.
  */
 export function createKnowledgeRouter(): Router {
     const router = Router();
@@ -52,17 +54,19 @@ async function listKnowledge(req: Request, res: Response): Promise<void> {
     if (kind === "due") {
         const preferred = preferredClassifier();
         const result = await dues.list({
-            page,
-            limit,
+            page: 1,
+            limit: DUE_FETCH_CAP,
             last4,
             bank,
             classifier: preferred.name,
             classifierVersion: preferred.version,
         });
+        const unique = dedupeDueKnowledgeItems(result.items.map(toDueKnowledgeItem));
+        const start = (page - 1) * limit;
 
         res.status(200).json({
-            items: result.items.map(toDueKnowledgeItem),
-            pagination: paginationMeta(page, limit, result.total),
+            items: unique.slice(start, start + limit),
+            pagination: paginationMeta(page, limit, unique.length),
             filters: {
                 kind: "due",
                 last4: last4 ?? null,

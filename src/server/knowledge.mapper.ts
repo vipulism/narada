@@ -1,4 +1,4 @@
-import { parseDueAmounts } from "../classifiers/financial/financial.due";
+import { keepLatestDueReminders, parseDueAmounts } from "../classifiers/financial/financial.due";
 import { FinancialEvent } from "../classifiers/financial/financial.model";
 import type { PushException } from "../connectors/firefly/firefly.exceptions";
 import type { DueAnalysisSource } from "../importers/sms/smsDue.repository";
@@ -133,6 +133,44 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
             classifierVersion: source.classifierVersion,
         },
     };
+}
+
+/**
+ * Collapses repeated reminder SMS for the same last4, due date, and amount.
+ * Non-due items are left unchanged and returned after the unique dues.
+ *
+ * @param items - Knowledge envelopes (typically all `type: "due"`)
+ */
+export function dedupeDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[] {
+    const rest: KnowledgeItem[] = [];
+    const dues: Array<DueReminderRow> = [];
+
+    for (const item of items) {
+        if (item.type !== "due") {
+            rest.push(item);
+            continue;
+        }
+
+        dues.push({
+            smsId: item.id,
+            occurredAt: item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt),
+            dueDate: item.payload.dueDate,
+            accountLast4: item.payload.accountLast4,
+            amount: item.payload.amount,
+            item,
+        });
+    }
+
+    return [...keepLatestDueReminders(dues).map((row) => row.item), ...rest];
+}
+
+interface DueReminderRow {
+    smsId: number;
+    occurredAt: Date;
+    dueDate: string | null;
+    accountLast4: string | null;
+    amount: number | null;
+    item: KnowledgeItem;
 }
 
 /**
