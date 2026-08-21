@@ -11,6 +11,7 @@ import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, istComparableMonthRanges, monthOverMonthPhrase } from "../../notifiers/attention.digest";
+import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -2006,6 +2007,9 @@ console.log("due feed regression ok");
 
 runAttentionDigestRegression();
 console.log("attention digest regression ok");
+
+runDockerSnapshotRegression();
+console.log("docker snapshot regression ok");
 
 function runAttentionDigestRegression(): void {
     const failures: string[] = [];
