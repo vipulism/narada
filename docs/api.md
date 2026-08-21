@@ -47,7 +47,7 @@ GET /imports?limit=1
 GET /health
 ```
 
-Home has search, due status filter (unpaid / overdue / upcoming / paid / all), and sort. Those map to `q`, `status`, `sort`, and `order` on the knowledge URLs. The query string on `/` is kept in sync (`/?q=1687&status=overdue`).
+Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), and sort. Those map to `q`, `from`, `status`, `sort`, and `order`. The query string on `/` is kept in sync (`/?since=6&status=overdue`).
 
 ---
 
@@ -152,6 +152,7 @@ Filters:
 | `pushed` | `true` / `false` — Dhan journal id (ignored when `kind=due` or `kind=exception`) |
 | `status` | `blocked` / `skipped` with `kind=exception`. For `kind=due`: `open` / `overdue` / `paid` / `all`. Default dues omit **paid** (a received/credited SMS on the same last4 settled that cycle). |
 | `q` | Case-insensitive search of last4, bank, merchant, amounts, status, SMS body (dues), and reason (exceptions) |
+| `from` / `to` | ISO datetime. Dues use **due date** (SMS time if due date missing). Exceptions use event time. |
 | `sort` | `dueDate` / `amount` / `bank` / `occurredAt` / `status` |
 | `order` | `asc` (default) or `desc` |
 

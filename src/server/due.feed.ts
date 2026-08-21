@@ -1,4 +1,5 @@
 import { CLASSIFIERS } from "../classifiers/classifier.registry";
+import { todayIstDate } from "../classifiers/financial/financial.due";
 import { SmsDueRepository } from "../importers/sms/smsDue.repository";
 import {
     filterDueKnowledgeItems,
@@ -30,8 +31,6 @@ export async function loadSettledDueKnowledge(options?: {
             limit: DUE_FETCH_CAP,
             last4: options?.last4,
             bank: options?.bank,
-            from: options?.from,
-            to: options?.to,
             classifier: preferred.name,
             classifierVersion: preferred.version,
         }),
@@ -46,9 +45,32 @@ export async function loadSettledDueKnowledge(options?: {
     const settled = settleDueKnowledgeItems(dueResult.items, payments);
     const bodies = new Map(dueResult.items.map((row) => [row.smsId, row.body]));
 
-    return filterDueKnowledgeItems(settled, options?.status).filter((item) =>
-        matchesKnowledgeQuery(item, options?.q, bodies.get(item.id))
-    );
+    return filterDueKnowledgeItems(settled, options?.status)
+        .filter((item) => dueInTimeWindow(item, options?.from, options?.to))
+        .filter((item) => matchesKnowledgeQuery(item, options?.q, bodies.get(item.id)));
+}
+
+function dueInTimeWindow(item: KnowledgeItem, from?: Date, to?: Date): boolean {
+    if (item.type !== "due" || (!from && !to)) {
+        return true;
+    }
+
+    const dueDay = item.payload.dueDate?.slice(0, 10);
+    const day =
+        dueDay ||
+        todayIstDate(
+            item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt)
+        );
+
+    if (from && day < todayIstDate(from)) {
+        return false;
+    }
+
+    if (to && day > todayIstDate(to)) {
+        return false;
+    }
+
+    return true;
 }
 
 function preferredClassifier(): { name: string; version: string } {

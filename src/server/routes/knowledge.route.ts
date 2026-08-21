@@ -23,6 +23,7 @@ import {
 import {
     optionalPositiveInt,
     optionalQueryBoolean,
+    optionalQueryDate,
     optionalQueryString,
     paginationMeta,
     parsePagination,
@@ -55,6 +56,8 @@ async function listKnowledge(req: Request, res: Response): Promise<void> {
     const q = optionalQueryString(req.query.q);
     const sort = optionalQueryString(req.query.sort);
     const order = optionalQueryString(req.query.order);
+    const from = optionalQueryDate(req.query.from);
+    const to = optionalQueryDate(req.query.to);
     const status = parseExceptionStatus(optionalQueryString(req.query.status));
 
     if (kind === "due") {
@@ -63,6 +66,8 @@ async function listKnowledge(req: Request, res: Response): Promise<void> {
             await loadSettledDueKnowledge({
                 last4,
                 bank,
+                from,
+                to,
                 status: dueStatus,
                 q,
             }),
@@ -81,6 +86,8 @@ async function listKnowledge(req: Request, res: Response): Promise<void> {
                 pushed: null,
                 status: dueStatus ?? "unpaid",
                 q: q ?? null,
+                from: from?.toISOString() ?? null,
+                to: to?.toISOString() ?? null,
                 sort: parseKnowledgeSort(sort) ?? null,
                 order: sort ? parseKnowledgeOrder(order) : null,
             },
@@ -96,7 +103,7 @@ async function listKnowledge(req: Request, res: Response): Promise<void> {
 
         try {
             const items = sortKnowledgeList(
-                (await loadExceptionKnowledge({ last4, bank, status })).filter((item) =>
+                (await loadExceptionKnowledge({ last4, bank, status, from, to })).filter((item) =>
                     matchesKnowledgeQuery(item, q)
                 ),
                 sort,
@@ -114,6 +121,8 @@ async function listKnowledge(req: Request, res: Response): Promise<void> {
                     pushed: false,
                     status: status ?? null,
                     q: q ?? null,
+                    from: from?.toISOString() ?? null,
+                    to: to?.toISOString() ?? null,
                     sort: parseKnowledgeSort(sort) ?? null,
                     order: sort ? parseKnowledgeOrder(order) : null,
                 },
@@ -211,12 +220,14 @@ async function searchKnowledge(req: Request, res: Response): Promise<void> {
     const dueStatus = optionalQueryString(req.query.status) ?? "all";
     const sort = optionalQueryString(req.query.sort);
     const order = optionalQueryString(req.query.order);
-    const dues = await loadSettledDueKnowledge({ last4, bank, status: dueStatus, q });
+    const from = optionalQueryDate(req.query.from);
+    const to = optionalQueryDate(req.query.to);
+    const dues = await loadSettledDueKnowledge({ last4, bank, from, to, status: dueStatus, q });
     let exceptions: KnowledgeItem[] = [];
 
     if (isFireflyConfigured()) {
         try {
-            exceptions = (await loadExceptionKnowledge({ last4, bank })).filter((item) =>
+            exceptions = (await loadExceptionKnowledge({ last4, bank, from, to })).filter((item) =>
                 matchesKnowledgeQuery(item, q)
             );
         } catch {
@@ -239,6 +250,8 @@ async function searchKnowledge(req: Request, res: Response): Promise<void> {
             last4: last4 ?? null,
             bank: bank ?? null,
             status: dueStatus,
+            from: from?.toISOString() ?? null,
+            to: to?.toISOString() ?? null,
             sort: parseKnowledgeSort(sort) ?? "occurredAt",
             order: parseKnowledgeOrder(order ?? (sort ? "asc" : "desc")),
         },
@@ -248,17 +261,21 @@ async function searchKnowledge(req: Request, res: Response): Promise<void> {
 /**
  * Dry-runs unpushed Firefly rows as exception knowledge items.
  *
- * @param options - Optional last4, bank, and blocked/skipped filter
+ * @param options - Optional last4, bank, time window, and blocked/skipped filter
  */
 async function loadExceptionKnowledge(options: {
     last4?: string;
     bank?: string;
+    from?: Date;
+    to?: Date;
     status?: PushExceptionStatus;
 }): Promise<KnowledgeItem[]> {
     const planner = await loadExceptionPlanner();
     const unpushed = await events.listUnpushed({
         last4: options.last4,
         bank: options.bank,
+        from: options.from,
+        to: options.to,
     });
     let exceptions = collectPushExceptions(
         unpushed,

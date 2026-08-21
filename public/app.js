@@ -31,6 +31,7 @@
     toolbar: document.getElementById("toolbar"),
     query: document.getElementById("query"),
     dueStatus: document.getElementById("due-status"),
+    since: document.getElementById("since"),
     sort: document.getElementById("sort"),
     order: document.getElementById("order"),
     resetView: document.getElementById("reset-view"),
@@ -39,6 +40,7 @@
   const view = {
     q: "",
     status: "",
+    since: "6",
     sort: "",
     order: "asc",
   };
@@ -357,6 +359,31 @@
   }
 
   /**
+   * @param {string | null | undefined} value
+   * @returns {"3" | "6" | "12" | "all"}
+   */
+  function parseSince(value) {
+    if (value === "3" || value === "12" || value === "all") {
+      return value;
+    }
+    return "6";
+  }
+
+  /**
+   * @param {string} since
+   * @returns {string | null}
+   */
+  function sinceFromIso(since) {
+    const months = Number(since);
+    if (!Number.isFinite(months) || months <= 0) {
+      return null;
+    }
+    const from = new Date();
+    from.setMonth(from.getMonth() - months);
+    return from.toISOString();
+  }
+
+  /**
    * @returns {string}
    */
   function dueQuery() {
@@ -366,6 +393,10 @@
     }
     if (view.status) {
       params.set("status", view.status);
+    }
+    const from = sinceFromIso(view.since);
+    if (from) {
+      params.set("from", from);
     }
     if (view.sort) {
       params.set("sort", view.sort);
@@ -386,6 +417,10 @@
     if (view.q) {
       params.set("q", view.q);
     }
+    const from = sinceFromIso(view.since);
+    if (from) {
+      params.set("from", from);
+    }
     if (view.sort) {
       params.set("sort", view.sort);
       params.set("order", view.order);
@@ -397,6 +432,7 @@
     const params = new URLSearchParams(window.location.search);
     view.q = params.get("q")?.trim() ?? "";
     view.status = params.get("status") ?? "";
+    view.since = parseSince(params.get("since"));
     view.sort = params.get("sort") ?? "";
     view.order = params.get("order") === "desc" ? "desc" : "asc";
   }
@@ -409,6 +445,7 @@
     if (view.status) {
       params.set("status", view.status);
     }
+    params.set("since", view.since);
     if (view.sort) {
       params.set("sort", view.sort);
       params.set("order", view.order);
@@ -427,6 +464,9 @@
     if (els.dueStatus) {
       els.dueStatus.value = view.status;
     }
+    if (els.since) {
+      els.since.value = view.since;
+    }
     if (els.sort) {
       els.sort.value = view.sort;
     }
@@ -438,6 +478,7 @@
   function readForm() {
     view.q = els.query?.value.trim() ?? "";
     view.status = els.dueStatus?.value ?? "";
+    view.since = parseSince(els.since?.value);
     view.sort = els.sort?.value ?? "";
     view.order = els.order?.value === "desc" ? "desc" : "asc";
   }
@@ -553,6 +594,11 @@
     writeViewToUrl();
     void load();
   });
+  els.since?.addEventListener("change", () => {
+    readForm();
+    writeViewToUrl();
+    void load();
+  });
   els.sort?.addEventListener("change", () => {
     readForm();
     writeViewToUrl();
@@ -577,6 +623,7 @@
   els.resetView?.addEventListener("click", () => {
     view.q = "";
     view.status = "";
+    view.since = "6";
     view.sort = "";
     view.order = "asc";
     syncForm();
