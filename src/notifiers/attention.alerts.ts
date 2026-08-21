@@ -62,9 +62,9 @@ export function formatDueDigest(title: string, rows: DueAlert[]): string | undef
     }
 
     const lines = rows.slice(0, DIGEST_CAP).map((row) => {
-        const who = [row.bank, row.accountLast4 ? `…${row.accountLast4}` : undefined]
-            .filter(Boolean)
-            .join(" ");
+        const who = row.accountLast4
+            ? [row.bank, `…${row.accountLast4}`].filter(Boolean).join(" ")
+            : [row.bank, row.merchant].filter(Boolean).join(" ");
         const when = row.dueDate ? `due ${row.dueDate}` : "due";
         const total = row.totalDue ?? row.amount;
         const min = row.minDue;
@@ -113,6 +113,8 @@ async function loadDues(): Promise<DueAlert[]> {
         return [
             {
                 smsId: item.id,
+                occurredAt:
+                    item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt),
                 dueDate: item.payload.dueDate,
                 amount: item.payload.amount,
                 minDue: item.payload.minDue,

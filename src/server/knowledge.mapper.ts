@@ -137,7 +137,7 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
         occurredAt: source.occurredAt,
         payload: {
             kind: "due",
-            dueDate: asOptionalString(data.dueDate) ?? parseDueDate(source.body),
+            dueDate: asOptionalString(data.dueDate) ?? parseDueDate(source.body, source.occurredAt),
             minDue,
             totalDue,
             amount: totalDue ?? minDue ?? extractedAmount,
@@ -171,16 +171,7 @@ export function dedupeDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[]
             continue;
         }
 
-        dues.push({
-            smsId: item.id,
-            occurredAt: item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt),
-            dueDate: item.payload.dueDate,
-            accountLast4: item.payload.accountLast4,
-            amount: item.payload.amount,
-            dueParty: item.payload.dueParty,
-            merchant: item.payload.merchant,
-            item,
-        });
+        dues.push(dueReminderRow(item));
     }
 
     return [...keepLatestDueReminders(dues).map((row) => row.item), ...rest];
@@ -215,17 +206,10 @@ export function settleDueKnowledgeItems(
         }
         return [
             {
-                smsId: source.smsId,
-                occurredAt: source.occurredAt,
-                dueDate: item.type === "due" ? item.payload.dueDate : null,
+                ...dueReminderRow(item, source.body),
                 accountLast4:
                     (item.type === "due" ? item.payload.accountLast4 : null) ??
                     cardLast4FromBody(source.body),
-                amount: item.type === "due" ? item.payload.amount : null,
-                dueParty: item.type === "due" ? item.payload.dueParty : null,
-                merchant: item.type === "due" ? item.payload.merchant : null,
-                body: source.body,
-                item,
             },
         ];
     });
@@ -270,6 +254,7 @@ export function knowledgeDueReminderKey(item: KnowledgeItem): string | undefined
 
     return dueReminderKey({
         smsId: item.id,
+        occurredAt: item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt),
         dueDate: item.payload.dueDate,
         accountLast4: item.payload.accountLast4,
         amount: item.payload.amount,
@@ -405,6 +390,22 @@ interface DueReminderRow {
     merchant?: string | null;
     body?: string | null;
     item: KnowledgeItem;
+}
+
+function dueReminderRow(item: KnowledgeItem, body?: string | null): DueReminderRow {
+    const payload = item.type === "due" ? item.payload : undefined;
+
+    return {
+        smsId: item.id,
+        occurredAt: item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt),
+        dueDate: payload?.dueDate ?? null,
+        accountLast4: payload?.accountLast4 ?? null,
+        amount: payload?.amount ?? null,
+        dueParty: payload?.dueParty,
+        merchant: payload?.merchant,
+        body: body ?? null,
+        item,
+    };
 }
 
 /**

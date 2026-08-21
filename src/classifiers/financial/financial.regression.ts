@@ -1714,6 +1714,20 @@ export function runFinancialRegression(): void {
 /**
  * Locked min/total due parse and due-vs-payment-ack split.
  */
+function airtelDueRow(smsId: number, occurredAt: string, body: string) {
+    const at = new Date(occurredAt);
+
+    return {
+        smsId,
+        occurredAt: at,
+        dueDate: parseDueDate(body, at),
+        accountLast4: null as string | null,
+        amount: 589,
+        merchant: "Airtel",
+        body,
+    };
+}
+
 function runDueFeedRegression(): void {
     const failures: string[] = [];
     const yesDue =
@@ -1869,44 +1883,57 @@ function runDueFeedRegression(): void {
         failures.push(`18 Aug HSBC credit should pay the 3 Aug bill, got ${paidFrom3Aug.get(18761)}`);
     }
 
-    const airtelWifi =
-        "REMINDER: Bill of Rs. 351 for Airtel Wi-Fi account no. 01142311413 dated 06-JUN-26 is due today. Please ignore if paid.";
-    const airtelFixed =
-        "REMINDER: Bill of Rs. 351 for Airtel Fixedline account no. 01142311413 dated 06-JUN-26 is due today. Please ignore if paid.";
+    const airtelWifiJul =
+        "REMINDER: Bill of Rs. 589.00 for Airtel Wi-Fi account no. 01142311413 dated 06-JUL-26 is due today. To pay via Airtel Thanks App, click i.airtel.in/BBpayBills. Please ignore if paid.";
+    const airtelFixedJul =
+        "REMINDER: Bill of Rs. 589.00 for Airtel Fixedline account no. 01142311413 dated 06-JUL-26 is due today. To pay via Airtel Thanks App, click i.airtel.in/BBpayBills. Please ignore if paid.";
+    const airtelWifiAug =
+        "REMINDER: Bill of Rs. 589.00 for Airtel Wi-Fi account no. 01142311413 dated 06-AUG-26 is due today. To pay via Airtel Thanks App, click i.airtel.in/BBpayBills. Please ignore if paid.";
 
-    if (dueBillerAlias(null, airtelWifi) !== "airtel-broadband") {
+    if (dueBillerAlias(null, airtelWifiJul) !== "airtel-broadband") {
         failures.push("Airtel Wi-Fi should alias to airtel-broadband");
     }
 
-    if (dueBillerAlias(null, airtelFixed) !== dueBillerAlias(null, airtelWifi)) {
+    if (dueBillerAlias(null, airtelFixedJul) !== dueBillerAlias(null, airtelWifiJul)) {
         failures.push("Airtel Fixedline and Wi-Fi must be the same biller");
     }
 
-    const wifiDue = {
-        smsId: 1,
-        occurredAt: new Date("2026-06-06T10:00:00+05:30"),
-        dueDate: null,
-        accountLast4: null,
-        amount: 351,
-        body: airtelWifi,
-    };
-    const fixedDue = {
-        smsId: 2,
-        occurredAt: new Date("2026-06-07T10:00:00+05:30"),
-        dueDate: null,
-        accountLast4: "1413",
-        amount: 351,
-        body: airtelFixed,
-    };
-
-    if (dueReminderKey(wifiDue) !== dueReminderKey(fixedDue)) {
-        failures.push("Airtel Wi-Fi and Fixedline dues must share a cycle key");
+    if (parseDueDate(airtelWifiJul) != null) {
+        failures.push("Airtel dated … must not be treated as the due date");
     }
 
-    const airtelCollapsed = keepLatestDueReminders([wifiDue, fixedDue]);
+    if (parseDueDate(airtelWifiJul, new Date("2026-07-16T09:14:00+05:30")) !== "2026-07-16") {
+        failures.push("Airtel is due today should use the SMS day in IST");
+    }
 
-    if (airtelCollapsed.length !== 1 || airtelCollapsed[0].smsId !== 2) {
-        failures.push("Airtel Wi-Fi + Fixedline should be one due card");
+    const julWifi = airtelDueRow(18548, "2026-07-16T09:14:00+05:30", airtelWifiJul);
+    const julFixed = airtelDueRow(18551, "2026-07-16T09:16:00+05:30", airtelFixedJul);
+    const augWifi = airtelDueRow(18850, "2026-08-16T07:21:00+05:30", airtelWifiAug);
+
+    if (dueReminderKey(julWifi) !== dueReminderKey({ ...julFixed, accountLast4: "1413" })) {
+        failures.push("Airtel landline last4 must not split Wi-Fi vs Fixedline");
+    }
+
+    const julyOnly = keepLatestDueReminders([julWifi, julFixed]);
+
+    if (julyOnly.length !== 1 || julyOnly[0].smsId !== 18551) {
+        failures.push("July Airtel Wi-Fi + Fixedline ₹589 should be one due card");
+    }
+
+    const bothMonths = keepLatestDueReminders([julWifi, julFixed, augWifi]);
+
+    if (bothMonths.length !== 2) {
+        failures.push(`July + August Airtel ₹589 should be two dues, got ${bothMonths.length}`);
+    }
+
+    const undatedMonths = keepLatestDueReminders([
+        { ...julWifi, dueDate: null },
+        { ...julFixed, dueDate: null },
+        { ...augWifi, dueDate: null },
+    ]);
+
+    if (undatedMonths.length !== 2) {
+        failures.push(`undated Airtel ₹589 must still split by SMS month, got ${undatedMonths.length}`);
     }
 
     const due1687 = {

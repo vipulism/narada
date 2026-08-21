@@ -79,7 +79,7 @@ export class FinancialParser {
             transactionType: this.extractTransactionType(body),
             bank: matchedAccount?.bank ?? this.extractBank(message),
             transactionDate: this.extractTransactionDate(body),
-            dueDate: this.extractDueDate(body),
+            dueDate: this.extractDueDate(body, message.receivedAt),
         };
 
     }
@@ -820,8 +820,8 @@ export class FinancialParser {
         return this.normalizeTransactionDate(match[1]) ?? match[1];
     }
 
-    private extractDueDate(body: string): string | undefined {
-        return parseDueDate(body) ?? undefined;
+    private extractDueDate(body: string, receivedAt?: Date): string | undefined {
+        return parseDueDate(body, receivedAt) ?? undefined;
     }
 
     private normalizeTransactionDate(value: string): string | undefined {
