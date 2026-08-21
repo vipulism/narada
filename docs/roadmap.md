@@ -16,7 +16,7 @@ Posted ledger lives in Dhan. Narada should surface what Dhan never stores.
 
 Current focus (see `docs/ai/current_goals/005.md`):
 
-- Due SMS feed (`bill` + NEUTRAL)
+- Due SMS feed (`GET /knowledge?kind=due`) ✅
 - Push exceptions (blocked / unpushed / before opening)
 - Mixed `GET /timeline` (dues + infra + exceptions)
 - Telegram for dues / blocked pushes

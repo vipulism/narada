@@ -31,6 +31,7 @@ Completed:
 ✅ Dhan investment buckets: FD/MF/equity/SGB/EPF seeded; `investment` SMS → Firefly transfer (kind+bank dest); EPF snapshot-only
 ✅ SMS import follow-up: classify pending → rebuild `financial_events` → push ready rows to Firefly
 ✅ Import / knowledge read APIs: `GET /imports`, `GET /sms`, `GET /knowledge` (financial envelope, id = smsId)
+✅ Due feed: `GET /knowledge?kind=due` from `sms_analysis` bill+NEUTRAL (min/total due, never posted to Dhan)
 
 
 In Progress:
@@ -40,7 +41,7 @@ In Progress:
 
 Not Implemented:
 
-- Due / exception HTTP feed
+- Push exceptions over HTTP (blocked / unpushed / before opening)
 - `GET /timeline` (dues + infra + exceptions; not a Firefly clone)
 - Telegram for dues / blocked pushes
 - Attention-only dashboard (no Money charts)
