@@ -47,6 +47,8 @@ GET /imports?limit=1
 GET /health
 ```
 
+Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), and sort. Those map to `q`, `from`, `status`, `sort`, and `order`. The query string on `/` is kept in sync (`/?since=6&status=overdue`).
+
 ---
 
 ## Monitoring
@@ -149,6 +151,10 @@ Filters:
 | `bank` | e.g. `YES Bank` |
 | `pushed` | `true` / `false` — Dhan journal id (ignored when `kind=due` or `kind=exception`) |
 | `status` | `blocked` / `skipped` with `kind=exception`. For `kind=due`: `open` / `overdue` / `paid` / `all`. Default dues omit **paid** (a received/credited SMS on the same last4 settled that cycle). |
+| `q` | Case-insensitive search of last4, bank, merchant, amounts, status, SMS body (dues), and reason (exceptions) |
+| `from` / `to` | ISO datetime. Dues use **due date** (SMS time if due date missing). Exceptions use event time. |
+| `sort` | `dueDate` / `amount` / `bank` / `occurredAt` / `status` |
+| `order` | `asc` (default) or `desc` |
 
 ```bash
 curl "http://192.168.1.32:4000/knowledge?kind=investment"
@@ -156,6 +162,9 @@ curl "http://192.168.1.32:4000/knowledge?kind=due"
 curl "http://192.168.1.32:4000/knowledge?kind=exception"
 curl "http://192.168.1.32:4000/knowledge?kind=exception&status=blocked"
 curl "http://192.168.1.32:4000/knowledge?last4=1412&pushed=true"
+curl "http://192.168.1.32:4000/knowledge?kind=due&status=overdue&sort=amount&order=desc"
+curl "http://192.168.1.32:4000/knowledge?kind=due&q=1687"
+curl "http://192.168.1.32:4000/knowledge/search?q=YES"
 curl "http://192.168.1.32:4000/knowledge/18849"
 ```
 
@@ -231,7 +240,7 @@ Due item:
 }
 ```
 
-Not implemented: `GET /knowledge/search`.
+Not implemented: generic document search. `GET /knowledge/search?q=` searches dues (including SMS body) and push exceptions only — not the Firefly ledger.
 
 ---
 

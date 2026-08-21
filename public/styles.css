@@ -104,6 +104,58 @@ h1 {
   outline: none;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) repeat(4, minmax(7.5rem, 10.5rem));
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.toolbar label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.field-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.toolbar input,
+.toolbar select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+}
+
+.toolbar input:focus-visible,
+.toolbar select:focus-visible {
+  outline: none;
+  border-color: var(--focus);
+}
+
+.grow {
+  min-width: 0;
+}
+
 .panel {
   background: color-mix(in srgb, var(--bg-raise) 88%, black);
   border: 1px solid var(--border);
@@ -302,5 +354,9 @@ h2 {
 
   h1 {
     font-size: 2rem;
+  }
+
+  .toolbar {
+    grid-template-columns: 1fr;
   }
 }

@@ -36,16 +36,16 @@ Completed:
 ✅ Mixed timeline: `GET /timeline` (dues + exceptions + infra events; `type=financial` opt-in)
 ✅ Telegram attention: new dues + new/repeated Firefly blocked (seed then delta; no spend summaries)
 ✅ Attention-only dashboard at `GET /` (dues, blocked pushes, services, last import; no Money charts)
+✅ Attention search: Home filter/sort/search plus `GET /knowledge/search?q=` (dues + exceptions, not the ledger)
 
 
 In Progress:
 
-🚧 Attention layer remaining: `GET /knowledge/search` — see `docs/ai/current_goals/005.md`
+🚧 Attention layer remaining: close shipped GitHub issues `#32`–`#38` — see `docs/ai/current_goals/005.md`
 
 
 Not Implemented:
 
-- `GET /knowledge/search`
 - RAG
 - Vector DB
 - AI extraction

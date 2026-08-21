@@ -699,18 +699,18 @@ GET /sms/:id
 
 GET /knowledge
 
+GET /knowledge/search
+
 GET /knowledge/:id
 
 GET /timeline
 ```
 
-`GET /` is the attention-only dashboard. `GET /knowledge` defaults to posted `financial_events` (`type: "financial"`, `id` = SMS id). `kind=due` and `kind=exception` are attention feeds. `GET /timeline` mixes dues, exceptions, and infra events.
+`GET /` is the attention-only dashboard (filter, sort, search). `GET /knowledge` defaults to posted `financial_events` (`type: "financial"`, `id` = SMS id). `kind=due` and `kind=exception` are attention feeds. `GET /knowledge/search` matches dues and exceptions. `GET /timeline` mixes dues, exceptions, and infra events.
 
 Future APIs:
 
 ```text
-GET /knowledge/search
-
 GET /documents
 ```
 
