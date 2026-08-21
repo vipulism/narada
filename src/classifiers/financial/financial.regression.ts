@@ -4,6 +4,7 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
+import { toPushException } from "../../connectors/firefly/firefly.exceptions";
 import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
@@ -1576,6 +1577,34 @@ function runFireflyMapRegression(): void {
 
     if (blockedInvest.ok) {
         failures.push("investment without dest last4 must not post as withdrawal");
+    }
+
+    const blockedEx = toPushException(noDest, blockedInvest);
+
+    if (!blockedEx || blockedEx.status !== "blocked") {
+        failures.push("investment gap should be a blocked exception");
+    }
+
+    const skippedEx = toPushException(
+        stubEvent(17531, "expense", 50, "5940", new Date("2026-03-30T12:00:00+05:30")),
+        oldToll
+    );
+
+    if (!skippedEx || skippedEx.status !== "skipped") {
+        failures.push("pre-opening FASTag should be a skipped exception");
+    }
+
+    const readyEvent = stubEvent(99999, "expense", 40, "5940", new Date("2026-08-16T12:00:00+05:30"));
+    const readyEx = toPushException(readyEvent, openingDay);
+
+    if (readyEx) {
+        failures.push("ready opening-day event must not be an exception");
+    }
+
+    const pushed = stubEvent(1, "expense", 100, "1412", new Date("2020-11-09T12:00:00+05:30"));
+    pushed.fireflyTransactionId = "99";
+    if (toPushException(pushed, missing)) {
+        failures.push("already-pushed event must not be an exception");
     }
 
     if (failures.length > 0) {
