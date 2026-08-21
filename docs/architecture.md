@@ -616,9 +616,9 @@ Extraction answers:
 
 > "What does this data mean?"
 
-Example:
+Example (today: card/utility **SMS**; later: insurer **email** when Gmail exists):
 
-SMS
+SMS or mail
 
 ```text
 Insurance premium due tomorrow.

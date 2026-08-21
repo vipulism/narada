@@ -89,7 +89,7 @@ Raw imported information becomes structured knowledge.
 
 ### Planned
 
-- Reminder extraction
+- Reminder extraction (SMS dues are live; **insurance premium due/paid is email**, not SMS — after Gmail)
 - Subscription detection
 - Important message detection
 - Knowledge event generation beyond financial SMS
@@ -107,7 +107,7 @@ Narada expands by supporting many external systems.
 ### Planned Connectors
 
 - Paperless-ngx
-- Gmail
+- Gmail — first attention use: LIC / insurer payment-confirmation (and due) **email**. No premium SMS in the backup. Same due-cycle as SMS bills once mail is ingested. See `docs/ai/current_goals/006.md`.
 - Calendar
 - WhatsApp Export
 - Signal Export
@@ -708,10 +708,10 @@ Importing stores structured data.
 
 Extraction derives meaning.
 
-Example:
+Example (card/utility **SMS** today; insurer **email** after Gmail):
 
 ```text
-SMS
+SMS or mail
 
 ↓
 
