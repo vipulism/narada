@@ -21,6 +21,7 @@ Current focus (see `docs/ai/current_goals/005.md`):
 - Mixed `GET /timeline` (dues + infra + exceptions) ✅
 - Telegram for dues / blocked pushes ✅
 - Dashboard: Home = attention only (no Money charts) ✅
+- Home filter / sort / search + `GET /knowledge/search` ✅
 
 ---
 
@@ -241,18 +242,17 @@ GET /sms
 GET /sms/:id
 
 GET /knowledge
+GET /knowledge/search
 GET /knowledge/:id
 
 GET /timeline
 ```
 
-`GET /knowledge` defaults to posted `financial_events` (`type: "financial"`). `kind=due` and `kind=exception` are attention feeds. `GET /timeline` mixes dues, exceptions, and infra events.
+`GET /knowledge` defaults to posted `financial_events` (`type: "financial"`). `kind=due` and `kind=exception` are attention feeds. `GET /timeline` mixes dues, exceptions, and infra events. `GET /knowledge/search` searches dues and exceptions.
 
 Future
 
 ```text
-GET /knowledge/search
-
 GET /documents
 ```
 

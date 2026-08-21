@@ -5,6 +5,7 @@ import {
     settleDueKnowledgeItems,
     type KnowledgeItem,
 } from "./knowledge.mapper";
+import { matchesKnowledgeQuery } from "./knowledge.query";
 
 const DUE_FETCH_CAP = 500;
 const dues = new SmsDueRepository();
@@ -12,7 +13,7 @@ const dues = new SmsDueRepository();
 /**
  * Unique due bills with paid/overdue/open from received/credited card SMS.
  *
- * @param options - Optional last4, bank, from/to, and due status filter
+ * @param options - Optional last4, bank, from/to, status, and search
  */
 export async function loadSettledDueKnowledge(options?: {
     last4?: string;
@@ -20,6 +21,7 @@ export async function loadSettledDueKnowledge(options?: {
     from?: Date;
     to?: Date;
     status?: string;
+    q?: string;
 }): Promise<KnowledgeItem[]> {
     const preferred = preferredClassifier();
     const [dueResult, payments] = await Promise.all([
@@ -42,7 +44,11 @@ export async function loadSettledDueKnowledge(options?: {
     ]);
 
     const settled = settleDueKnowledgeItems(dueResult.items, payments);
-    return filterDueKnowledgeItems(settled, options?.status);
+    const bodies = new Map(dueResult.items.map((row) => [row.smsId, row.body]));
+
+    return filterDueKnowledgeItems(settled, options?.status).filter((item) =>
+        matchesKnowledgeQuery(item, options?.q, bodies.get(item.id))
+    );
 }
 
 function preferredClassifier(): { name: string; version: string } {

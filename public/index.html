@@ -49,6 +49,52 @@
         <div id="services" class="chips" role="list"></div>
       </section>
 
+      <section class="panel" aria-labelledby="tools-heading">
+        <div class="section-head">
+          <h2 id="tools-heading">Find</h2>
+          <button type="button" id="reset-view" class="btn">Reset</button>
+        </div>
+        <form id="toolbar" class="toolbar" action="/" method="get">
+          <label class="grow">
+            <span class="sr-only">Search</span>
+            <input
+              id="query"
+              name="q"
+              type="search"
+              placeholder="Search last4, bank, merchant, SMS…"
+              autocomplete="off"
+            />
+          </label>
+          <label>
+            <span class="field-label">Dues</span>
+            <select id="due-status" name="status">
+              <option value="">Unpaid</option>
+              <option value="overdue">Overdue</option>
+              <option value="open">Upcoming</option>
+              <option value="paid">Paid</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+          <label>
+            <span class="field-label">Sort</span>
+            <select id="sort" name="sort">
+              <option value="">Attention</option>
+              <option value="dueDate">Due date</option>
+              <option value="amount">Amount</option>
+              <option value="bank">Bank</option>
+              <option value="occurredAt">Newest SMS</option>
+            </select>
+          </label>
+          <label>
+            <span class="field-label">Order</span>
+            <select id="order" name="order">
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+          </label>
+        </form>
+      </section>
+
       <div class="columns">
         <section class="panel" aria-labelledby="dues-heading">
           <div class="section-head">

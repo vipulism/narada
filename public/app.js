@@ -28,6 +28,19 @@
     duesMeta: document.getElementById("dues-meta"),
     blocked: document.getElementById("blocked"),
     blockedMeta: document.getElementById("blocked-meta"),
+    toolbar: document.getElementById("toolbar"),
+    query: document.getElementById("query"),
+    dueStatus: document.getElementById("due-status"),
+    sort: document.getElementById("sort"),
+    order: document.getElementById("order"),
+    resetView: document.getElementById("reset-view"),
+  };
+
+  const view = {
+    q: "",
+    status: "",
+    sort: "",
+    order: "asc",
   };
 
   /** @type {Map<string, object>} */
@@ -300,7 +313,10 @@
     );
 
     if (!dues.length) {
-      setHtml(els.dues, `<p class="empty">Nothing due.</p>`);
+      setHtml(
+        els.dues,
+        `<p class="empty">${view.q || view.status ? "No dues match this filter." : "Nothing due."}</p>`
+      );
     } else {
       setHtml(els.dues, dues.map(dueCard).join(""));
     }
@@ -311,7 +327,10 @@
     }
 
     if (!blocked.length) {
-      setHtml(els.blocked, `<p class="empty">No blocked pushes.</p>`);
+      setHtml(
+        els.blocked,
+        `<p class="empty">${view.q ? "No blocked pushes match this search." : "No blocked pushes."}</p>`
+      );
     } else {
       setHtml(els.blocked, blocked.map(blockedCard).join(""));
     }
@@ -337,6 +356,92 @@
     setText(els.importStatus, `Completed ${when} · ${counts}`);
   }
 
+  /**
+   * @returns {string}
+   */
+  function dueQuery() {
+    const params = new URLSearchParams({ kind: "due", limit: String(LIST_LIMIT) });
+    if (view.q) {
+      params.set("q", view.q);
+    }
+    if (view.status) {
+      params.set("status", view.status);
+    }
+    if (view.sort) {
+      params.set("sort", view.sort);
+      params.set("order", view.order);
+    }
+    return `/knowledge?${params}`;
+  }
+
+  /**
+   * @returns {string}
+   */
+  function blockedQuery() {
+    const params = new URLSearchParams({
+      kind: "exception",
+      status: "blocked",
+      limit: String(LIST_LIMIT),
+    });
+    if (view.q) {
+      params.set("q", view.q);
+    }
+    if (view.sort) {
+      params.set("sort", view.sort);
+      params.set("order", view.order);
+    }
+    return `/knowledge?${params}`;
+  }
+
+  function readViewFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    view.q = params.get("q")?.trim() ?? "";
+    view.status = params.get("status") ?? "";
+    view.sort = params.get("sort") ?? "";
+    view.order = params.get("order") === "desc" ? "desc" : "asc";
+  }
+
+  function writeViewToUrl() {
+    const params = new URLSearchParams();
+    if (view.q) {
+      params.set("q", view.q);
+    }
+    if (view.status) {
+      params.set("status", view.status);
+    }
+    if (view.sort) {
+      params.set("sort", view.sort);
+      params.set("order", view.order);
+    }
+    const next = params.toString() ? `/?${params}` : "/";
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== next) {
+      history.replaceState(null, "", next);
+    }
+  }
+
+  function syncForm() {
+    if (els.query) {
+      els.query.value = view.q;
+    }
+    if (els.dueStatus) {
+      els.dueStatus.value = view.status;
+    }
+    if (els.sort) {
+      els.sort.value = view.sort;
+    }
+    if (els.order) {
+      els.order.value = view.order;
+    }
+  }
+
+  function readForm() {
+    view.q = els.query?.value.trim() ?? "";
+    view.status = els.dueStatus?.value ?? "";
+    view.sort = els.sort?.value ?? "";
+    view.order = els.order?.value === "desc" ? "desc" : "asc";
+  }
+
   async function load() {
     setText(els.clock, `Updated ${new Date().toLocaleTimeString()}`);
 
@@ -350,8 +455,8 @@
     }
 
     const [dueRes, exceptionRes, importRes, serviceRes] = await Promise.allSettled([
-      api(`/knowledge?kind=due&limit=${LIST_LIMIT}`),
-      api(`/knowledge?kind=exception&status=blocked&limit=${LIST_LIMIT}`),
+      api(dueQuery()),
+      api(blockedQuery()),
       api("/imports?limit=1"),
       api("/services"),
     ]);
@@ -378,14 +483,6 @@
       const body = await dueRes.value.json();
       dues = Array.isArray(body.items) ? body.items : [];
       dueTotal = Number(body.pagination?.total ?? dues.length);
-      dues.sort((a, b) => {
-        const aDay = dueDay(a.payload?.dueDate) || "9999-99-99";
-        const bDay = dueDay(b.payload?.dueDate) || "9999-99-99";
-        if (aDay !== bDay) {
-          return aDay.localeCompare(bDay);
-        }
-        return String(b.occurredAt || "").localeCompare(String(a.occurredAt || ""));
-      });
     } else {
       setHtml(els.dues, `<p class="error">Could not load dues.</p>`);
     }
@@ -401,9 +498,6 @@
         const body = await res.json();
         blocked = Array.isArray(body.items) ? body.items : [];
         blockedTotal = Number(body.pagination?.total ?? blocked.length);
-        blocked.sort((a, b) =>
-          String(b.occurredAt || "").localeCompare(String(a.occurredAt || ""))
-        );
       } else if (res.status === 503) {
         exceptionError = "Dhan is not configured — blocked pushes cannot be checked.";
       } else {
@@ -447,6 +541,51 @@
     void load();
   });
 
+  els.toolbar?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    readForm();
+    writeViewToUrl();
+    void load();
+  });
+
+  els.dueStatus?.addEventListener("change", () => {
+    readForm();
+    writeViewToUrl();
+    void load();
+  });
+  els.sort?.addEventListener("change", () => {
+    readForm();
+    writeViewToUrl();
+    void load();
+  });
+  els.order?.addEventListener("change", () => {
+    readForm();
+    writeViewToUrl();
+    void load();
+  });
+
+  let searchTimer = 0;
+  els.query?.addEventListener("input", () => {
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => {
+      readForm();
+      writeViewToUrl();
+      void load();
+    }, 300);
+  });
+
+  els.resetView?.addEventListener("click", () => {
+    view.q = "";
+    view.status = "";
+    view.sort = "";
+    view.order = "asc";
+    syncForm();
+    writeViewToUrl();
+    void load();
+  });
+
+  readViewFromUrl();
+  syncForm();
   void load();
   connectStream();
   window.setInterval(() => {
