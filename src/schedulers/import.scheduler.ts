@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { FolderConnector } from "../connectors/folder/folder.connector";
 import { SmsImportService } from "../importers/sms/smsImport.service";
+import { runAttentionAlerts } from "../notifiers/attention.alerts";
 import { runSmsLedgerFollowUp } from "../importers/sms/smsLedger.followUp";
 
 /**
@@ -31,6 +32,7 @@ async function ingestSms(smsFolderConnector: FolderConnector): Promise<void> {
     try {
         await smsFolderConnector.scan();
         await runSmsLedgerFollowUp();
+        await runAttentionAlerts();
     } catch (error) {
         console.error("SMS ingest failed", error);
     }

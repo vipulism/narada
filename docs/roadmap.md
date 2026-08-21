@@ -19,7 +19,7 @@ Current focus (see `docs/ai/current_goals/005.md`):
 - Due SMS feed (`GET /knowledge?kind=due`) ✅
 - Push exceptions (`GET /knowledge?kind=exception`) ✅
 - Mixed `GET /timeline` (dues + infra + exceptions) ✅
-- Telegram for dues / blocked pushes
+- Telegram for dues / blocked pushes ✅
 - Dashboard later: Home = attention only (no Money charts)
 
 ---

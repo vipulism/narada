@@ -34,6 +34,7 @@ Completed:
 ✅ Due feed: `GET /knowledge?kind=due` from `sms_analysis` bill+NEUTRAL (min/total due, never posted to Dhan)
 ✅ Push exceptions: `GET /knowledge?kind=exception` dry-run reasons (`blocked` / `skipped`) for unpushed `financial_events`
 ✅ Mixed timeline: `GET /timeline` (dues + exceptions + infra events; `type=financial` opt-in)
+✅ Telegram attention: new dues + new/repeated Firefly blocked (seed then delta; no spend summaries)
 
 
 In Progress:
@@ -43,7 +44,6 @@ In Progress:
 
 Not Implemented:
 
-- Telegram for dues / blocked pushes
 - Attention-only dashboard (no Money charts)
 - `GET /knowledge/search`
 - RAG
