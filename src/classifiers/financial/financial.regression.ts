@@ -9,7 +9,7 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { isDueKnowledgeRow, parseDueAmounts } from "./financial.due";
+import { isCardPaymentAckRow, isDueKnowledgeRow, parseDueAmounts, settleDueStatuses } from "./financial.due";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1697,6 +1697,45 @@ function runDueFeedRegression(): void {
 
     if (isDueKnowledgeRow("bill", "NEUTRAL", paymentAck)) {
         failures.push("CC payment ack must not be due knowledge");
+    }
+
+    if (!isCardPaymentAckRow("bill", "NEUTRAL", paymentAck)) {
+        failures.push("CC payment ack should settle dues");
+    }
+
+    const due1687 = {
+        smsId: 1,
+        occurredAt: new Date("2026-04-05T10:00:00+05:30"),
+        dueDate: "2026-04-20",
+        accountLast4: "1687",
+        amount: 430,
+    };
+    const paid1687 = {
+        smsId: 2,
+        occurredAt: new Date("2026-04-18T12:00:00+05:30"),
+        accountLast4: "1687",
+        amount: 430,
+    };
+    const settled = settleDueStatuses([due1687], [paid1687], "2026-08-21");
+
+    if (settled.get(1) !== "paid") {
+        failures.push(`paid card should not stay overdue, got ${settled.get(1)}`);
+    }
+
+    const unpaid = settleDueStatuses([due1687], [], "2026-08-21");
+
+    if (unpaid.get(1) !== "overdue") {
+        failures.push(`unpaid past due should be overdue, got ${unpaid.get(1)}`);
+    }
+
+    const upcoming = settleDueStatuses(
+        [{ ...due1687, dueDate: "2026-09-20" }],
+        [],
+        "2026-08-21"
+    );
+
+    if (upcoming.get(1) !== "open") {
+        failures.push(`future due should be open, got ${upcoming.get(1)}`);
     }
 
     if (failures.length > 0) {

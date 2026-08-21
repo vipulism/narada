@@ -1,20 +1,16 @@
-import { CLASSIFIERS } from "../classifiers/classifier.registry";
 import {
     collectPushExceptions,
     isFireflyConfigured,
     loadExceptionPlanner,
 } from "../connectors/firefly/firefly.exceptions";
 import { FinancialEventRepository } from "../db/repositories/financialEvent.repository";
-import { SmsDueRepository } from "../importers/sms/smsDue.repository";
-import { toDueKnowledgeItem, dedupeDueKnowledgeItems } from "../server/knowledge.mapper";
+import { loadSettledDueKnowledge } from "../server/due.feed";
 import { AttentionAlertState, BlockedAlert, DueAlert } from "./attention.state";
 import { TelegramNotifier } from "./telegram.notifier";
 
-const DUE_CAP = 500;
 const DIGEST_CAP = 8;
 
 const state = new AttentionAlertState();
-const dues = new SmsDueRepository();
 const events = new FinancialEventRepository();
 const telegram = new TelegramNotifier();
 
@@ -107,20 +103,9 @@ export function formatBlockedDigest(title: string, rows: BlockedAlert[]): string
 }
 
 async function loadDues(): Promise<DueAlert[]> {
-    const preferred = CLASSIFIERS[0];
+    const items = await loadSettledDueKnowledge();
 
-    if (!preferred) {
-        return [];
-    }
-
-    const result = await dues.list({
-        page: 1,
-        limit: DUE_CAP,
-        classifier: preferred.name,
-        classifierVersion: preferred.version,
-    });
-
-    return dedupeDueKnowledgeItems(result.items.map(toDueKnowledgeItem)).flatMap((item) => {
+    return items.flatMap((item) => {
         if (item.type !== "due") {
             return [];
         }

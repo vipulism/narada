@@ -1,4 +1,12 @@
-import { keepLatestDueReminders, parseDueAmounts } from "../classifiers/financial/financial.due";
+import {
+    isCardPaymentAckRow,
+    keepLatestDueReminders,
+    parseDueAmounts,
+    settleDueStatuses,
+    todayIstDate,
+    type CardPaymentAck,
+    type DueAttentionStatus,
+} from "../classifiers/financial/financial.due";
 import { FinancialEvent } from "../classifiers/financial/financial.model";
 import type { PushException } from "../connectors/firefly/firefly.exceptions";
 import type { DueAnalysisSource } from "../importers/sms/smsDue.repository";
@@ -35,6 +43,7 @@ export interface KnowledgeDuePayload {
     merchant: string | null;
     classifier: string;
     classifierVersion: string;
+    status?: DueAttentionStatus;
 }
 
 /** Push dry-run failure for an unpushed posted event. */
@@ -162,6 +171,132 @@ export function dedupeDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[]
     }
 
     return [...keepLatestDueReminders(dues).map((row) => row.item), ...rest];
+}
+
+/**
+ * Dedupes due SMS, then marks paid / overdue / open from card payment-ack SMS.
+ *
+ * @param dueSources - Due reminder analysis rows
+ * @param paymentSources - Candidate received/credited analysis rows
+ * @param today - `YYYY-MM-DD` (defaults to today IST)
+ */
+export function settleDueKnowledgeItems(
+    dueSources: DueAnalysisSource[],
+    paymentSources: DueAnalysisSource[],
+    today: string = todayIstDate()
+): KnowledgeItem[] {
+    const dues: DueReminderRow[] = dueSources.map((source) => {
+        const item = toDueKnowledgeItem(source);
+        return {
+            smsId: source.smsId,
+            occurredAt: source.occurredAt,
+            dueDate: item.type === "due" ? item.payload.dueDate : null,
+            accountLast4: item.type === "due" ? item.payload.accountLast4 : null,
+            amount: item.type === "due" ? item.payload.amount : null,
+            item,
+        };
+    });
+    const unique = keepLatestDueReminders(dues);
+    const payments: CardPaymentAck[] = paymentSources.flatMap((source) => {
+        const cashFlow =
+            typeof source.extractedData.cashFlow === "string"
+                ? source.extractedData.cashFlow
+                : undefined;
+
+        if (!isCardPaymentAckRow("bill", cashFlow, source.body)) {
+            return [];
+        }
+
+        return [
+            {
+                smsId: source.smsId,
+                occurredAt: source.occurredAt,
+                accountLast4: asOptionalString(source.extractedData.accountLast4),
+                amount: asFiniteNumber(source.extractedData.amount),
+            },
+        ];
+    });
+    const statuses = settleDueStatuses(unique, payments, today);
+
+    return unique
+        .map((row) => withDueStatus(row.item, statuses.get(row.smsId) ?? "open"))
+        .sort(compareDueAttention);
+}
+
+/**
+ * Sets due attention status on a knowledge envelope.
+ *
+ * @param item - Knowledge item
+ * @param status - open, overdue, or paid
+ */
+export function withDueStatus(item: KnowledgeItem, status: DueAttentionStatus): KnowledgeItem {
+    if (item.type !== "due") {
+        return item;
+    }
+
+    return {
+        ...item,
+        payload: {
+            ...item.payload,
+            status,
+        },
+    };
+}
+
+/**
+ * Default due list hides paid bills. `all` keeps them.
+ *
+ * @param items - Settled due envelopes
+ * @param status - `open` / `overdue` / `paid` / `all` / omitted (unpaid)
+ */
+export function filterDueKnowledgeItems(
+    items: KnowledgeItem[],
+    status: string | undefined
+): KnowledgeItem[] {
+    if (status === "all") {
+        return items;
+    }
+
+    if (status === "open" || status === "overdue" || status === "paid") {
+        return items.filter((item) => item.type === "due" && item.payload.status === status);
+    }
+
+    return items.filter((item) => item.type === "due" && item.payload.status !== "paid");
+}
+
+function compareDueAttention(left: KnowledgeItem, right: KnowledgeItem): number {
+    const leftRank = dueStatusRank(left);
+    const rightRank = dueStatusRank(right);
+
+    if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+    }
+
+    const leftDay = left.type === "due" ? left.payload.dueDate ?? "9999-99-99" : "9999-99-99";
+    const rightDay = right.type === "due" ? right.payload.dueDate ?? "9999-99-99" : "9999-99-99";
+    const byDay = leftDay.localeCompare(rightDay);
+
+    if (byDay !== 0) {
+        return byDay;
+    }
+
+    return right.id - left.id;
+}
+
+function dueStatusRank(item: KnowledgeItem): number {
+    if (item.type !== "due") {
+        return 9;
+    }
+
+    if (item.payload.status === "overdue") {
+        return 0;
+    }
+
+    if (item.payload.status === "open") {
+        return 1;
+    }
+
+    return 2;
 }
 
 interface DueReminderRow {

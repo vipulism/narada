@@ -201,7 +201,7 @@
   function dueCard(item) {
     const payload = item.payload || {};
     const day = dueDay(payload.dueDate);
-    const overdue = Boolean(day && day < todayDate());
+    const overdue = payload.status === "overdue" || (!payload.status && Boolean(day && day < todayDate()));
     const title = [payload.bank, payload.accountLast4 ? `····${payload.accountLast4}` : null]
       .filter(Boolean)
       .join(" ");
@@ -262,6 +262,13 @@
    */
   function renderAttention(dues, dueTotal, blocked, blockedTotal, exceptionError) {
     const overdue = dues.filter((item) => {
+      const status = item.payload?.status;
+      if (status === "overdue") {
+        return true;
+      }
+      if (status === "open" || status === "paid") {
+        return false;
+      }
       const day = dueDay(item.payload?.dueDate);
       return day && day < todayDate();
     }).length;

@@ -133,7 +133,7 @@ curl "http://192.168.1.32:4000/sms/18897"
 
 Posted `financial_events` by default. `id` is the SMS id (stable across event rebuilds), not `financial_events.id`.
 
-Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS. `GET /knowledge/:id` still returns that individual SMS.
+Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS. A later **received / credited to that last4** SMS marks the cycle `paid` (hidden by default). Overdue is only when the due date has passed **and** no such payment-ack exists. `GET /knowledge/:id` still returns that individual SMS.
 
 ```text
 GET /knowledge
@@ -148,7 +148,7 @@ Filters:
 | `last4` | source or counterparty last4 (dues: extracted account last4) |
 | `bank` | e.g. `YES Bank` |
 | `pushed` | `true` / `false` — Dhan journal id (ignored when `kind=due` or `kind=exception`) |
-| `status` | `blocked` / `skipped` — only with `kind=exception` |
+| `status` | `blocked` / `skipped` with `kind=exception`. For `kind=due`: `open` / `overdue` / `paid` / `all`. Default dues omit **paid** (a received/credited SMS on the same last4 settled that cycle). |
 
 ```bash
 curl "http://192.168.1.32:4000/knowledge?kind=investment"
@@ -201,7 +201,8 @@ Due item:
     "bank": "YES Bank",
     "merchant": null,
     "classifier": "regex-financial",
-    "classifierVersion": "1.3.25"
+    "classifierVersion": "1.3.25",
+    "status": "overdue"
   }
 }
 ```
