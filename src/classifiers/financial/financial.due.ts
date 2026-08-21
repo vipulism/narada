@@ -388,6 +388,55 @@ export function todayIstDate(now = new Date()): string {
 }
 
 /**
+ * Whole IST calendar days from `today` to `dueDate` (negative if overdue).
+ *
+ * @param dueDate - `YYYY-MM-DD`
+ * @param today - `YYYY-MM-DD` (defaults to today IST)
+ */
+export function daysUntilDue(dueDate: string, today: string = todayIstDate()): number | null {
+    const day = dueDate.trim().slice(0, 10);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+        return null;
+    }
+
+    const due = Date.parse(`${day}T00:00:00+05:30`);
+    const start = Date.parse(`${today}T00:00:00+05:30`);
+
+    if (Number.isNaN(due) || Number.isNaN(start)) {
+        return null;
+    }
+
+    return Math.round((due - start) / MS_DAY);
+}
+
+/**
+ * Home/Telegram label for remaining or overdue days.
+ *
+ * @param days - Result of `daysUntilDue`
+ */
+export function formatRemainingDays(days: number | null | undefined): string | null {
+    if (days == null || !Number.isFinite(days)) {
+        return null;
+    }
+
+    if (days === 0) {
+        return "today";
+    }
+
+    if (days === 1) {
+        return "1 day left";
+    }
+
+    if (days > 1) {
+        return `${days} days left`;
+    }
+
+    const overdue = Math.abs(days);
+    return overdue === 1 ? "1 day overdue" : `${overdue} days overdue`;
+}
+
+/**
  * Marks each due paid when a received/credited SMS hits the same last4
  * in that bill cycle. Prefer the due whose amount matches, then the closest
  * reminder time, so an older open cycle does not steal a later payment.

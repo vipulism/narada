@@ -22,6 +22,12 @@ interface FireflyAccountsResponse {
     };
 }
 
+interface InsightTotalEntry {
+    difference?: string;
+    difference_float?: number;
+    currency_code?: string;
+}
+
 /**
  * Firefly III HTTP client. Transaction POST is idempotent via external_id in Narada.
  */
@@ -46,6 +52,25 @@ export class FireflyClient {
                 ? new HttpsAgent({ rejectUnauthorized: false })
                 : undefined,
         });
+    }
+
+    /**
+     * INR income or expense total for a Dhan date range (`GET /insight/{kind}/total`).
+     *
+     * @param kind - Firefly insight type
+     * @param start - Inclusive `YYYY-MM-DD`
+     * @param end - Inclusive `YYYY-MM-DD`
+     */
+    async insightTotal(kind: "income" | "expense", start: string, end: string): Promise<number> {
+        try {
+            const response = await this.http.get<InsightTotalEntry[]>(`/insight/${kind}/total`, {
+                params: { start, end },
+            });
+
+            return sumInrInsight(response.data ?? []);
+        } catch (error) {
+            throw fireflyHttpError(error, `GET /insight/${kind}/total`);
+        }
     }
 
     /**
@@ -280,6 +305,24 @@ function fireflyHttpError(error: unknown, action: string): Error {
 
 function trimSlash(url: string): string {
     return url.replace(/\/+$/, "");
+}
+
+function sumInrInsight(rows: InsightTotalEntry[]): number {
+    const inr = rows.filter((row) => !row.currency_code || row.currency_code === "INR");
+    const use = inr.length > 0 ? inr : rows;
+    let sum = 0;
+
+    for (const row of use) {
+        const parsed =
+            typeof row.difference_float === "number" && Number.isFinite(row.difference_float)
+                ? row.difference_float
+                : Number(row.difference);
+        if (Number.isFinite(parsed)) {
+            sum += Math.abs(parsed);
+        }
+    }
+
+    return sum;
 }
 
 function asOptionalString(value: unknown): string | undefined {
