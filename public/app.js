@@ -109,7 +109,10 @@
   }
 
   /**
+   * Formats SMS `received_at` for due cards.
+   *
    * @param {string | null | undefined} iso
+   * @returns {string | null}
    */
   function formatReceivedAt(iso) {
     if (!iso) {
@@ -246,8 +249,9 @@
         ? `Overdue ${day}`
         : `Due ${day}`
       : receivedAt
-        ? `SMS ${receivedAt}`
+        ? `Received ${receivedAt}`
         : "Due date unknown";
+    const badgeClass = overdue ? "overdue" : day ? "due" : "received";
     const amounts = [
       payload.minDue != null ? `min ${formatMoney(payload.minDue, payload.currency)}` : null,
       payload.totalDue != null ? `total ${formatMoney(payload.totalDue, payload.currency)}` : null,
@@ -263,7 +267,7 @@
         )}</span>
       </div>
       <p class="detail">
-        <span class="badge ${overdue ? "overdue" : "due"}">${escapeHtml(dueLabel)}</span>
+        <span class="badge ${badgeClass}">${escapeHtml(dueLabel)}</span>
         ${amounts ? ` · ${escapeHtml(amounts)}` : ""}
       </p>
       <p class="detail sms-id">sms ${escapeHtml(item.id)}${
