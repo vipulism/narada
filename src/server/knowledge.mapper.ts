@@ -1,5 +1,6 @@
 import {
     cardLast4FromBody,
+    dueBillerAlias,
     dueReminderKey,
     hasPayableDueAmount,
     isCardPaymentAckRow,
@@ -46,6 +47,7 @@ export interface KnowledgeDuePayload {
     accountName: string | null;
     bank: string | null;
     merchant: string | null;
+    dueParty?: string | null;
     classifier: string;
     classifierVersion: string;
     status?: DueAttentionStatus;
@@ -126,6 +128,8 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
     const extractedAmount = asFiniteNumber(data.amount);
     const totalDue = amounts.totalDue ?? null;
     const minDue = amounts.minDue ?? null;
+    const merchant = asOptionalString(data.merchant);
+    const dueParty = dueBillerAlias(merchant, source.body);
 
     return {
         type: "due",
@@ -133,7 +137,7 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
         occurredAt: source.occurredAt,
         payload: {
             kind: "due",
-            dueDate: asOptionalString(data.dueDate) ?? parseDueDate(source.body),
+            dueDate: asOptionalString(data.dueDate) ?? parseDueDate(source.body, source.occurredAt),
             minDue,
             totalDue,
             amount: totalDue ?? minDue ?? extractedAmount,
@@ -143,7 +147,8 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
             accountLast4: asOptionalString(data.accountLast4),
             accountName: asOptionalString(data.accountName),
             bank: asOptionalString(data.bank),
-            merchant: asOptionalString(data.merchant),
+            merchant: merchant ?? (dueParty === "airtel-broadband" ? "Airtel" : null),
+            dueParty,
             classifier: source.classifier,
             classifierVersion: source.classifierVersion,
         },
@@ -166,14 +171,7 @@ export function dedupeDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[]
             continue;
         }
 
-        dues.push({
-            smsId: item.id,
-            occurredAt: item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt),
-            dueDate: item.payload.dueDate,
-            accountLast4: item.payload.accountLast4,
-            amount: item.payload.amount,
-            item,
-        });
+        dues.push(dueReminderRow(item));
     }
 
     return [...keepLatestDueReminders(dues).map((row) => row.item), ...rest];
@@ -208,14 +206,10 @@ export function settleDueKnowledgeItems(
         }
         return [
             {
-                smsId: source.smsId,
-                occurredAt: source.occurredAt,
-                dueDate: item.type === "due" ? item.payload.dueDate : null,
+                ...dueReminderRow(item, source.body),
                 accountLast4:
                     (item.type === "due" ? item.payload.accountLast4 : null) ??
                     cardLast4FromBody(source.body),
-                amount: item.type === "due" ? item.payload.amount : null,
-                item,
             },
         ];
     });
@@ -260,9 +254,12 @@ export function knowledgeDueReminderKey(item: KnowledgeItem): string | undefined
 
     return dueReminderKey({
         smsId: item.id,
+        occurredAt: item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt),
         dueDate: item.payload.dueDate,
         accountLast4: item.payload.accountLast4,
         amount: item.payload.amount,
+        dueParty: item.payload.dueParty,
+        merchant: item.payload.merchant,
     });
 }
 
@@ -389,7 +386,26 @@ interface DueReminderRow {
     dueDate: string | null;
     accountLast4: string | null;
     amount: number | null;
+    dueParty?: string | null;
+    merchant?: string | null;
+    body?: string | null;
     item: KnowledgeItem;
+}
+
+function dueReminderRow(item: KnowledgeItem, body?: string | null): DueReminderRow {
+    const payload = item.type === "due" ? item.payload : undefined;
+
+    return {
+        smsId: item.id,
+        occurredAt: item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt),
+        dueDate: payload?.dueDate ?? null,
+        accountLast4: payload?.accountLast4 ?? null,
+        amount: payload?.amount ?? null,
+        dueParty: payload?.dueParty,
+        merchant: payload?.merchant,
+        body: body ?? null,
+        item,
+    };
 }
 
 /**

@@ -31,7 +31,7 @@ Completed:
 ✅ Dhan investment buckets: FD/MF/equity/SGB/EPF seeded; `investment` SMS → Firefly transfer (kind+bank dest); EPF snapshot-only
 ✅ SMS import follow-up: classify pending → rebuild `financial_events` → push ready rows to Firefly
 ✅ Import / knowledge read APIs: `GET /imports`, `GET /sms`, `GET /knowledge` (financial envelope, id = smsId)
-✅ Due feed: `GET /knowledge?kind=due` unique last4+dueDate+amount (undated still unique on last4+amount); paid when a received/credited SMS hits that last4 in-cycle; ₹0 outstanding omitted; overdue only if due date passed and unpaid
+✅ Due feed: `GET /knowledge?kind=due` unique last4+dueDate+amount (undated still unique on last4+amount in the same SMS month); Airtel WiFi/Fixedline collapse as one broadband biller; paid when a received/credited SMS hits that last4 in-cycle; ₹0 outstanding omitted; overdue only if due date passed and unpaid
 ✅ Push exceptions: `GET /knowledge?kind=exception` dry-run reasons (`blocked` / `skipped`) for unpushed `financial_events`
 ✅ Mixed timeline: `GET /timeline` (dues + exceptions + infra events; `type=financial` opt-in)
 ✅ Telegram attention: new dues + new/repeated Firefly blocked (seed then delta; no spend summaries)

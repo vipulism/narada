@@ -18,6 +18,10 @@ export interface DueReminderIdentity {
     firstRemindedAt?: Date;
     dueDate: string | null;
     accountLast4: string | null;
+    /** Canonical biller when last4 would split the same household bill. */
+    dueParty?: string | null;
+    merchant?: string | null;
+    body?: string | null;
     amount: number | null;
 }
 
@@ -105,10 +109,12 @@ const MONTHS: Record<string, string> = {
 
 /**
  * Bill due date from reminder wording (`YYYY-MM-DD`), including SBI `Payable by 27/08/2026`.
+ * `is due today` uses the SMS calendar day in IST. Statement `dated …` is not a due date.
  *
  * @param body - Raw SMS body
+ * @param occurredAt - SMS received time; required for `is due today`
  */
-export function parseDueDate(body: string): string | null {
+export function parseDueDate(body: string, occurredAt?: Date): string | null {
     const labeled = body.match(DUE_DATE_REGEX)?.[1] ?? body.match(PAYMENT_DUE_DATE_REGEX)?.[1];
 
     if (labeled) {
@@ -116,7 +122,15 @@ export function parseDueDate(body: string): string | null {
     }
 
     const ordinal = body.match(DUE_ON_ORDINAL_REGEX)?.[1];
-    return ordinal ? normalizeOrdinalDueDate(ordinal) : null;
+    if (ordinal) {
+        return normalizeOrdinalDueDate(ordinal);
+    }
+
+    if (/\bis due today\b/i.test(body) && occurredAt) {
+        return todayIstDate(occurredAt);
+    }
+
+    return null;
 }
 
 function normalizeDueDateToken(value: string): string | null {
@@ -220,27 +234,88 @@ export function cardLast4FromBody(body: string): string | null {
 }
 
 /**
- * One bill cycle: last4 + amount, plus due date when parsed.
- * Missing due date still collapses same last4+amount so a 3 Aug reminder and
- * an 18 Aug follow-up are one card. Missing last4 or amount stay unique by SMS id.
+ * Same utility biller across SMS wording (Airtel WiFi vs Fixedline).
+ *
+ * @param merchant - Extracted merchant if any
+ * @param body - Raw SMS body
+ */
+export function dueBillerAlias(
+    merchant?: string | null,
+    body?: string | null
+): string | null {
+    const text = [merchant, body]
+        .filter((value): value is string => Boolean(value && value.trim()))
+        .join(" ")
+        .toUpperCase()
+        .replace(/WI-FI/g, "WIFI")
+        .replace(/WI FI/g, "WIFI");
+
+    if (!text) {
+        return null;
+    }
+
+    const isAirtelBroadband =
+        text.includes("AIRTEL") &&
+        (text.includes("WIFI") ||
+            text.includes("FIXEDLINE") ||
+            text.includes("FIXED LINE") ||
+            text.includes("BROADBAND") ||
+            text.includes("XSTREAM"));
+
+    return isAirtelBroadband ? "airtel-broadband" : null;
+}
+
+/**
+ * One bill cycle: last4 or utility biller, plus due date or SMS month, plus amount.
+ * Airtel WiFi and Fixedline collapse. July ₹589 and August ₹589 stay two cycles.
+ * Missing last4/biller or amount stay unique by SMS id.
  *
  * @param row - Due reminder identity
  */
 export function dueReminderKey(
-    row: Pick<DueReminderIdentity, "smsId" | "dueDate" | "accountLast4" | "amount">
+    row: Pick<
+        DueReminderIdentity,
+        | "smsId"
+        | "occurredAt"
+        | "dueDate"
+        | "accountLast4"
+        | "amount"
+        | "dueParty"
+        | "merchant"
+        | "body"
+    >
 ): string {
-    const last4 = row.accountLast4?.trim() ?? "";
-    const dueDate = row.dueDate?.trim().slice(0, 10) ?? "";
     const amount =
         typeof row.amount === "number" && Number.isFinite(row.amount)
             ? row.amount.toFixed(2)
             : "";
+    const biller = dueBillerAlias(row.merchant, row.body) ?? row.dueParty?.trim() ?? "";
+    const last4 = row.accountLast4?.trim() ?? "";
+    const party = biller || last4;
+    const cycle = dueCycleBucket(row);
 
-    if (!last4 || !amount) {
+    if (!party || !amount) {
         return `sms:${row.smsId}`;
     }
 
-    return `due:${last4}|${dueDate || "*"}|${amount}`;
+    return `due:${party}|${cycle}|${amount}`;
+}
+
+function dueCycleBucket(
+    row: Pick<DueReminderIdentity, "dueDate" | "occurredAt">
+): string {
+    const due = row.dueDate?.trim().slice(0, 10);
+    if (due) {
+        return due;
+    }
+
+    if (row.occurredAt) {
+        return todayIstDate(
+            row.occurredAt instanceof Date ? row.occurredAt : new Date(row.occurredAt)
+        ).slice(0, 7);
+    }
+
+    return "*";
 }
 
 /**

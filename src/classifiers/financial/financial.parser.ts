@@ -79,7 +79,7 @@ export class FinancialParser {
             transactionType: this.extractTransactionType(body),
             bank: matchedAccount?.bank ?? this.extractBank(message),
             transactionDate: this.extractTransactionDate(body),
-            dueDate: this.extractDueDate(body),
+            dueDate: this.extractDueDate(body, message.receivedAt),
         };
 
     }
@@ -539,6 +539,13 @@ export class FinancialParser {
             return "Tata Play Fiber";
         }
 
+        if (
+            /\bairtel\b/i.test(body) &&
+            /wifi|wi-fi|fixedline|fixed\s+line|broadband|xstream/i.test(body)
+        ) {
+            return "Airtel";
+        }
+
         const regexes = [
             MERCHANT_AT_REGEX,
             MERCHANT_TO_REGEX,
@@ -813,8 +820,8 @@ export class FinancialParser {
         return this.normalizeTransactionDate(match[1]) ?? match[1];
     }
 
-    private extractDueDate(body: string): string | undefined {
-        return parseDueDate(body) ?? undefined;
+    private extractDueDate(body: string, receivedAt?: Date): string | undefined {
+        return parseDueDate(body, receivedAt) ?? undefined;
     }
 
     private normalizeTransactionDate(value: string): string | undefined {

@@ -1,12 +1,15 @@
 import { dueReminderKey } from "../classifiers/financial/financial.due";
 export interface DueAlert {
     smsId: number;
+    occurredAt: Date;
     dueDate: string | null;
     amount: number | null;
     minDue: number | null;
     totalDue: number | null;
     bank: string | null;
     accountLast4: string | null;
+    merchant?: string | null;
+    dueParty?: string | null;
 }
 
 /**
