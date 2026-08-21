@@ -1,4 +1,5 @@
 import { isCreditCardPaymentAck, isDueReminder } from "./financial.kind";
+import { DUE_DATE_REGEX, DUE_ON_ORDINAL_REGEX, PAYMENT_DUE_DATE_REGEX } from "./financial.regex";
 
 /**
  * Min and total due parsed from a statement / reminder SMS.
@@ -89,6 +90,78 @@ const MIN_DUE_REGEX =
 
 const TOTAL_DUE_REGEX =
     /total(?:\s+(?:amt|amount))?\s+due(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i;
+
+const MONTHS: Record<string, string> = {
+    JAN: "01",
+    FEB: "02",
+    MAR: "03",
+    APR: "04",
+    MAY: "05",
+    JUN: "06",
+    JUL: "07",
+    AUG: "08",
+    SEP: "09",
+    OCT: "10",
+    NOV: "11",
+    DEC: "12",
+};
+
+/**
+ * Bill due date from reminder wording (`YYYY-MM-DD`), including SBI `Payable by 27/08/2026`.
+ *
+ * @param body - Raw SMS body
+ */
+export function parseDueDate(body: string): string | null {
+    const labeled = body.match(DUE_DATE_REGEX)?.[1] ?? body.match(PAYMENT_DUE_DATE_REGEX)?.[1];
+
+    if (labeled) {
+        return normalizeDueDateToken(labeled);
+    }
+
+    const ordinal = body.match(DUE_ON_ORDINAL_REGEX)?.[1];
+    return ordinal ? normalizeOrdinalDueDate(ordinal) : null;
+}
+
+function normalizeDueDateToken(value: string): string | null {
+    const monthName = value.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/);
+
+    if (monthName) {
+        const month = MONTHS[monthName[2].toUpperCase()];
+        if (!month) {
+            return null;
+        }
+
+        return `${normalizeYear(monthName[3])}-${month}-${monthName[1].padStart(2, "0")}`;
+    }
+
+    const numeric = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+
+    if (!numeric) {
+        return null;
+    }
+
+    return `${normalizeYear(numeric[3])}-${numeric[2].padStart(2, "0")}-${numeric[1].padStart(2, "0")}`;
+}
+
+function normalizeOrdinalDueDate(value: string): string | null {
+    const match = value.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9}),?\s+(\d{2,4})$/i);
+
+    if (!match) {
+        return null;
+    }
+
+    const month = MONTHS[match[2].slice(0, 3).toUpperCase()];
+
+    if (!month) {
+        return null;
+    }
+
+    return `${normalizeYear(match[3])}-${month}-${match[1].padStart(2, "0")}`;
+}
+
+function normalizeYear(year: string): string {
+    return year.length === 2 ? `20${year}` : year;
+}
 
 function firstAmount(body: string, pattern: RegExp): number | undefined {
     const match = body.match(pattern);

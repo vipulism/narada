@@ -9,7 +9,7 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, settleDueStatuses } from "./financial.due";
+import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses } from "./financial.due";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -18,6 +18,7 @@ interface ExpectedFacts {
     merchant?: string;
     accountLast4?: string;
     amount?: number;
+    dueDate?: string;
     transactionType?: string;
 }
 
@@ -129,6 +130,20 @@ const CASES: RegressionCase[] = [
             subcategory: "bill",
             cashFlow: "NEUTRAL",
             accountLast4: "8561",
+            dueDate: "2025-12-27",
+        },
+    },
+    {
+        id: "18794-sbi-payable-by-due-date",
+        address: "JM-SBICRD-S",
+        body: "E-statement of SBI Credit Card ending XX61 dated 07/08/2026 has been mailed. If not received, SMS ENRS to 5676791. Total Amt Due Rs 6040; Min Amt Due Rs 200; Payable by 27/08/2026. Click https://sbicard.com/quickpaynet to pay your bill",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            accountLast4: "8561",
+            amount: 6040,
+            dueDate: "2026-08-27",
         },
     },
     {
@@ -1677,6 +1692,10 @@ export function runFinancialRegression(): void {
             failures.push(`${testCase.id}: amount ${data.amount} != ${expected.amount}`);
         }
 
+        if (expected.dueDate !== undefined && data.dueDate !== expected.dueDate) {
+            failures.push(`${testCase.id}: dueDate ${data.dueDate} != ${expected.dueDate}`);
+        }
+
         if (
             expected.transactionType !== undefined &&
             data.transactionType !== expected.transactionType
@@ -1715,6 +1734,18 @@ function runDueFeedRegression(): void {
 
     if (iciciAmounts.minDue !== 330 || iciciAmounts.totalDue !== 6447) {
         failures.push(`ICICI due amounts ${iciciAmounts.minDue}/${iciciAmounts.totalDue} != 330/6447`);
+    }
+
+    const sbiPayable =
+        "E-statement of SBI Credit Card ending XX61 dated 07/08/2026 has been mailed. If not received, SMS ENRS to 5676791. Total Amt Due Rs 6040; Min Amt Due Rs 200; Payable by 27/08/2026. Click https://sbicard.com/quickpaynet to pay your bill";
+    const sbiAmounts = parseDueAmounts(sbiPayable);
+
+    if (sbiAmounts.minDue !== 200 || sbiAmounts.totalDue !== 6040) {
+        failures.push(`SBI due amounts ${sbiAmounts.minDue}/${sbiAmounts.totalDue} != 200/6040`);
+    }
+
+    if (parseDueDate(sbiPayable) !== "2026-08-27") {
+        failures.push(`SBI Payable by due date ${parseDueDate(sbiPayable)} != 2026-08-27`);
     }
 
     const zeroDue =

@@ -7,8 +7,6 @@ import {
     CARD_BARE_LAST4_REGEX,
     CARD_LAST4_REGEX,
     CARD_MASKED_LAST4_REGEX,
-    DUE_DATE_REGEX,
-    DUE_ON_ORDINAL_REGEX,
     EPF_BALANCE_REGEX,
     FASTAG_LAST4_REGEX,
     FASTAG_TAG_LAST4_REGEX,
@@ -19,7 +17,6 @@ import {
     MERCHANT_AT_REGEX,
     MERCHANT_TO_REGEX,
     NEFT_REGEX,
-    PAYMENT_DUE_DATE_REGEX,
     RS_AMOUNT_REGEX,
     RTGS_REGEX,
     RUPEE_SYMBOL_AMOUNT_REGEX,
@@ -33,6 +30,7 @@ import { senderNormalize } from "../common/senderNormalizer";
 import { BANKS } from "./financial.constants";
 import { SenderInfo } from "../common/sender.model";
 import { inferOwnedAccountType, namesCreditCard } from "./financial.accountType";
+import { parseDueDate } from "./financial.due";
 import { KnownAccountIndex, loadKnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { isCreditCardPaymentAck, isDueReminder, isPaidBillReceipt, isSelfTransfer, isWalletTopUp, resolveOwnedTransferToken, selfTransferLast4s } from "./financial.kind";
@@ -823,43 +821,7 @@ export class FinancialParser {
     }
 
     private extractDueDate(body: string): string | undefined {
-        const iso = body.match(DUE_DATE_REGEX);
-
-        if (iso) {
-            return this.normalizeTransactionDate(iso[1]) ?? iso[1];
-        }
-
-        const numericDue = body.match(PAYMENT_DUE_DATE_REGEX);
-
-        if (numericDue) {
-            return this.normalizeTransactionDate(numericDue[1]) ?? numericDue[1];
-        }
-
-        const ordinal = body.match(DUE_ON_ORDINAL_REGEX);
-
-        if (ordinal) {
-            return this.normalizeOrdinalDueDate(ordinal[1]) ?? ordinal[1];
-        }
-
-        return undefined;
-    }
-
-    private normalizeOrdinalDueDate(value: string): string | undefined {
-        const match = value.match(
-            /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9}),?\s+(\d{2,4})$/i
-        );
-
-        if (!match) {
-            return undefined;
-        }
-
-        const month = MONTHS[match[2].slice(0, 3).toUpperCase()];
-
-        if (!month) {
-            return undefined;
-        }
-
-        return `${this.normalizeYear(match[3])}-${month}-${match[1].padStart(2, "0")}`;
+        return parseDueDate(body) ?? undefined;
     }
 
     private normalizeTransactionDate(value: string): string | undefined {
