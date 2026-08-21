@@ -1,6 +1,7 @@
 import {
     dueReminderKey,
     isCardPaymentAckRow,
+    isDueKnowledgeRow,
     keepLatestDueReminders,
     parseDueAmounts,
     settleDueStatuses,
@@ -187,16 +188,27 @@ export function settleDueKnowledgeItems(
     paymentSources: DueAnalysisSource[],
     today: string = todayIstDate()
 ): KnowledgeItem[] {
-    const dues: DueReminderRow[] = dueSources.map((source) => {
+    const dues: DueReminderRow[] = dueSources.flatMap((source) => {
+        const cashFlow =
+            typeof source.extractedData.cashFlow === "string"
+                ? source.extractedData.cashFlow
+                : undefined;
+
+        if (!isDueKnowledgeRow("bill", cashFlow, source.body)) {
+            return [];
+        }
+
         const item = toDueKnowledgeItem(source);
-        return {
-            smsId: source.smsId,
-            occurredAt: source.occurredAt,
-            dueDate: item.type === "due" ? item.payload.dueDate : null,
-            accountLast4: item.type === "due" ? item.payload.accountLast4 : null,
-            amount: item.type === "due" ? item.payload.amount : null,
-            item,
-        };
+        return [
+            {
+                smsId: source.smsId,
+                occurredAt: source.occurredAt,
+                dueDate: item.type === "due" ? item.payload.dueDate : null,
+                accountLast4: item.type === "due" ? item.payload.accountLast4 : null,
+                amount: item.type === "due" ? item.payload.amount : null,
+                item,
+            },
+        ];
     });
     const unique = keepLatestDueReminders(dues);
     const payments: CardPaymentAck[] = paymentSources.flatMap((source) => {

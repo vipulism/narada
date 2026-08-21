@@ -33,6 +33,7 @@ export interface CardPaymentAck {
 
 /**
  * True when an analysis row is a due reminder that never posts to the ledger.
+ * Credit-card payment received/credited SMS stay out of the due list.
  *
  * @param subcategory - sms_analysis.subcategory
  * @param cashFlow - extracted cashFlow
@@ -43,7 +44,13 @@ export function isDueKnowledgeRow(
     cashFlow: string | undefined,
     body: string
 ): boolean {
-    return subcategory === "bill" && cashFlow === "NEUTRAL" && isDueReminder(body.toUpperCase());
+    const upper = body.toUpperCase();
+    return (
+        subcategory === "bill" &&
+        cashFlow === "NEUTRAL" &&
+        isDueReminder(upper) &&
+        !isCreditCardPaymentAck(upper)
+    );
 }
 
 /**
@@ -59,12 +66,7 @@ export function isCardPaymentAckRow(
     body: string
 ): boolean {
     const upper = body.toUpperCase();
-    return (
-        subcategory === "bill" &&
-        cashFlow === "NEUTRAL" &&
-        isCreditCardPaymentAck(upper) &&
-        !isDueReminder(upper)
-    );
+    return subcategory === "bill" && cashFlow === "NEUTRAL" && isCreditCardPaymentAck(upper);
 }
 
 /**

@@ -769,6 +769,18 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "18912-hsbc-received-payment-inr-ack",
+        address: "BPHSBCIN",
+        body: "Dear Customer, we have received a payment of INR 2350 for credit card ending 4433 on 18-AUG-26. Thank you for using HSBC credit card.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 2350,
+            accountLast4: "4433",
+        },
+    },
+    {
         id: "7725-icici-cardless-cash-expense",
         address: "AX-ICICIB",
         body: "Dear Customer, INR 10,000.00 has been withdrawn on 15-Dec-22, through a Cardless Cash withdrawal, at ICICI Bank ATM. Info:CCW*S1CPN289*5362674*Cardles. Call on 18002662 for any dispute or SMS BLOCK 412 to 9215676766 . Visit bit.ly/Cardlesstrnx . T&C apply.",
@@ -1701,6 +1713,36 @@ function runDueFeedRegression(): void {
 
     if (!isCardPaymentAckRow("bill", "NEUTRAL", paymentAck)) {
         failures.push("CC payment ack should settle dues");
+    }
+
+    const hsbcPay =
+        "Dear Customer, we have received a payment of INR 2350 for credit card ending 4433 on 18-AUG-26. Thank you for using HSBC credit card.";
+
+    if (isDueKnowledgeRow("bill", "NEUTRAL", hsbcPay)) {
+        failures.push("HSBC payment received SMS must not be a due card");
+    }
+
+    if (!isCardPaymentAckRow("bill", "NEUTRAL", hsbcPay)) {
+        failures.push("HSBC payment received SMS should settle the card due");
+    }
+
+    const hsbcDue = {
+        smsId: 18900,
+        occurredAt: new Date("2026-08-10T10:00:00+05:30"),
+        dueDate: null,
+        accountLast4: "4433",
+        amount: 2350,
+    };
+    const hsbcPaid = {
+        smsId: 18912,
+        occurredAt: new Date("2026-08-18T19:25:00+05:30"),
+        accountLast4: "4433",
+        amount: 2350,
+    };
+    const hsbcSettled = settleDueStatuses([hsbcDue], [hsbcPaid], "2026-08-21");
+
+    if (hsbcSettled.get(18900) !== "paid") {
+        failures.push(`HSBC 4433 payment ack should pay the open due, got ${hsbcSettled.get(18900)}`);
     }
 
     const due1687 = {
