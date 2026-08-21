@@ -4,9 +4,10 @@ import { createImportsRouter } from './routes/imports.route';
 import { createKnowledgeRouter } from './routes/knowledge.route';
 import { createServiceRoutes } from './routes/services.route';
 import { createSmsRouter } from './routes/sms.route';
+import { createTimelineRouter } from './routes/timeline.route';
 
 /**
- * Starts the HTTP API (health, events, services, imports, SMS, knowledge).
+ * Starts the HTTP API (health, events, services, imports, SMS, knowledge, timeline).
  */
 export function startServer() {
 
@@ -21,6 +22,7 @@ export function startServer() {
   app.use(createImportsRouter());
   app.use(createSmsRouter());
   app.use(createKnowledgeRouter());
+  app.use(createTimelineRouter());
 
   app.listen(port, () => {
     console.log(`Narada HTTP listening on :${port}`);

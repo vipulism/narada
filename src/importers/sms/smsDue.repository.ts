@@ -19,6 +19,8 @@ export interface ListDueOptions {
     limit: number;
     last4?: string;
     bank?: string;
+    from?: Date;
+    to?: Date;
     classifier: string;
     classifierVersion: string;
 }
@@ -30,7 +32,7 @@ export class SmsDueRepository {
     /**
      * Lists due reminders for the preferred classifier version.
      *
-     * @param options - Page, last4, bank, classifier identity
+     * @param options - Page, last4, bank, from/to, classifier identity
      */
     async list(options: ListDueOptions): Promise<{ items: DueAnalysisSource[]; total: number }> {
         const db = getDb();
@@ -162,6 +164,16 @@ function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[
     if (options.bank) {
         where.push("JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.bank')) = ?");
         params.push(options.bank);
+    }
+
+    if (options.from) {
+        where.push("s.received_at >= ?");
+        params.push(options.from);
+    }
+
+    if (options.to) {
+        where.push("s.received_at <= ?");
+        params.push(options.to);
     }
 
     return { whereSql: `WHERE ${where.join(" AND ")}`, params };

@@ -213,4 +213,51 @@ Due item:
 }
 ```
 
-Not implemented: `GET /knowledge/search`, `GET /timeline`.
+Not implemented: `GET /knowledge/search`.
+
+---
+
+## Timeline
+
+Mixed attention feed. Default types: `due`, `exception`, `event`. Posted ledger rows are **opt-in** (`type=financial`) so this is not a Firefly clone.
+
+```text
+GET /timeline
+```
+
+| Query | Meaning |
+|---|---|
+| `from` / `to` | ISO datetime |
+| `type` | `due`, `exception`, `event`, `financial` (comma or repeated) |
+| `page` / `limit` | Same envelope as `/knowledge` |
+
+Without Firefly env, `exception` items are skipped; dues and infra still list.
+
+```bash
+curl "http://192.168.1.32:4000/timeline"
+curl "http://192.168.1.32:4000/timeline?type=due,event"
+curl "http://192.168.1.32:4000/timeline?from=2026-08-01T00:00:00.000Z&type=exception"
+```
+
+Event item (`narada_events`):
+
+```json
+{
+  "type": "event",
+  "id": "evt-powercast-failed",
+  "occurredAt": "2026-08-21T00:10:00.000Z",
+  "payload": {
+    "eventType": "SERVICE_FAILED",
+    "severity": "critical",
+    "message": "PowerCast Health failed",
+    "source": "http-checker",
+    "status": "processed",
+    "serviceId": "powercast-health",
+    "serviceName": "PowerCast Health",
+    "critical": true
+  }
+}
+```
+
+Due and exception items use the same payloads as `GET /knowledge?kind=due` and `kind=exception`.
+

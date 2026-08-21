@@ -7,6 +7,8 @@ export interface GetEventsOptions {
   limit: number;
   status?: string;
   type?: string;
+  from?: Date;
+  to?: Date;
 }
 
 export const saveReceivedEvent = async (event: NaradaEvent) => {
@@ -108,6 +110,16 @@ export const getEvents = async (options: GetEventsOptions): Promise<{ items: Nar
     params.push(options.type);
   }
 
+  if (options.from) {
+    where.push("created_at >= ?");
+    params.push(options.from);
+  }
+
+  if (options.to) {
+    where.push("created_at <= ?");
+    params.push(options.to);
+  }
+
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const sql = `
@@ -153,3 +165,56 @@ export const getEventById = async (eventId: string) => {
 
   return events[0] || null;
 }
+
+/** Homelab event row for GET /timeline. */
+export interface TimelineEventRow {
+  id: string;
+  source: string;
+  eventType: string;
+  severity: string;
+  message: string;
+  status: string;
+  occurredAt: Date;
+  serviceId: string | null;
+  serviceName: string | null;
+  critical: boolean | null;
+}
+
+/**
+ * Newest narada_events for the mixed timeline (created_at window).
+ *
+ * @param options - Optional from/to and fetch cap
+ */
+export async function listEventsForTimeline(options: {
+  from?: Date;
+  to?: Date;
+  limit: number;
+}): Promise<TimelineEventRow[]> {
+  const result = await getEvents({
+    page: 1,
+    limit: options.limit,
+    from: options.from,
+    to: options.to,
+  });
+
+  return (result.items as unknown as Array<Record<string, unknown>>).map(rowToTimelineEvent);
+}
+
+function rowToTimelineEvent(row: Record<string, unknown>): TimelineEventRow {
+  const createdAt = row.created_at ?? row.timestamp ?? row.occurredAt;
+
+  return {
+    id: String(row.id),
+    source: String(row.source ?? ""),
+    eventType: String(row.type ?? ""),
+    severity: String(row.severity ?? ""),
+    message: String(row.message ?? ""),
+    status: String(row.status ?? ""),
+    occurredAt: createdAt instanceof Date ? createdAt : new Date(String(createdAt)),
+    serviceId: row.service_id != null ? String(row.service_id) : null,
+    serviceName: row.service_name != null ? String(row.service_name) : null,
+    critical:
+      row.service_critical == null ? null : Boolean(row.service_critical),
+  };
+}
+

@@ -33,6 +33,7 @@ Completed:
 ✅ Import / knowledge read APIs: `GET /imports`, `GET /sms`, `GET /knowledge` (financial envelope, id = smsId)
 ✅ Due feed: `GET /knowledge?kind=due` from `sms_analysis` bill+NEUTRAL (min/total due, never posted to Dhan)
 ✅ Push exceptions: `GET /knowledge?kind=exception` dry-run reasons (`blocked` / `skipped`) for unpushed `financial_events`
+✅ Mixed timeline: `GET /timeline` (dues + exceptions + infra events; `type=financial` opt-in)
 
 
 In Progress:
@@ -42,7 +43,6 @@ In Progress:
 
 Not Implemented:
 
-- `GET /timeline` (dues + infra + exceptions; not a Firefly clone)
 - Telegram for dues / blocked pushes
 - Attention-only dashboard (no Money charts)
 - `GET /knowledge/search`
