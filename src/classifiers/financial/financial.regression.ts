@@ -9,7 +9,7 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, parseDueAmounts, settleDueStatuses } from "./financial.due";
+import { dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, settleDueStatuses } from "./financial.due";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1793,6 +1793,36 @@ function runDueFeedRegression(): void {
 
     if (matched.get(18000) === "paid") {
         failures.push("older ₹100 due must not steal the ₹2350 payment");
+    }
+
+    const bill3Aug = {
+        smsId: 18761,
+        occurredAt: new Date("2026-08-03T20:05:00+05:30"),
+        dueDate: null,
+        accountLast4: "4433",
+        amount: 2350,
+    };
+    const paid18Aug = {
+        smsId: 18912,
+        occurredAt: new Date("2026-08-18T19:25:00+05:30"),
+        accountLast4: "4433",
+        amount: 2350,
+    };
+
+    if (dueReminderKey(bill3Aug) !== dueReminderKey({ ...paid18Aug, dueDate: null })) {
+        failures.push("undated HSBC 4433 ₹2350 reminders must share a due key");
+    }
+
+    const collapsed = keepLatestDueReminders([bill3Aug, { ...paid18Aug, dueDate: null }]);
+
+    if (collapsed.length !== 1 || collapsed[0].smsId !== 18912) {
+        failures.push("3 Aug + 18 Aug same last4/amount should be one due card");
+    }
+
+    const paidFrom3Aug = settleDueStatuses([bill3Aug], [paid18Aug], "2026-08-21");
+
+    if (paidFrom3Aug.get(18761) !== "paid") {
+        failures.push(`18 Aug HSBC credit should pay the 3 Aug bill, got ${paidFrom3Aug.get(18761)}`);
     }
 
     const due1687 = {
