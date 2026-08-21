@@ -1,6 +1,6 @@
 import { RowDataPacket } from "mysql2";
 import { getDb } from "../../db/mariaConnection";
-import { isDueKnowledgeRow } from "../../classifiers/financial/financial.due";
+import { isCardPaymentAckRow, isDueKnowledgeRow } from "../../classifiers/financial/financial.due";
 
 /** Analysis row that can become a due knowledge item. */
 export interface DueAnalysisSource {
@@ -126,6 +126,55 @@ export class SmsDueRepository {
 
         return source;
     }
+
+    /**
+     * Lists credit-card received/credited payment acks for matching dues.
+     *
+     * @param options - Cap, optional last4, classifier identity
+     */
+    async listCardPaymentAcks(options: {
+        limit: number;
+        last4?: string;
+        classifier: string;
+        classifierVersion: string;
+    }): Promise<DueAnalysisSource[]> {
+        const db = getDb();
+        const { whereSql, params } = paymentAckWhere(options);
+
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                s.id AS sms_id,
+                s.received_at,
+                s.body,
+                s.address,
+                a.subcategory,
+                a.classifier,
+                a.classifier_version,
+                a.extracted_data
+            FROM sms_analysis a
+            JOIN sms_messages s ON s.id = a.sms_id
+            ${whereSql}
+            ORDER BY s.received_at DESC, s.id DESC
+            LIMIT ?
+            `,
+            [...params, options.limit]
+        );
+
+        return rows.flatMap((row) => {
+            const source = rowToSource(row);
+            const cashFlow =
+                typeof source.extractedData.cashFlow === "string"
+                    ? source.extractedData.cashFlow
+                    : undefined;
+
+            if (!isCardPaymentAckRow(asOptionalString(row.subcategory), cashFlow, source.body)) {
+                return [];
+            }
+
+            return [source];
+        });
+    }
 }
 
 function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[] } {
@@ -174,6 +223,40 @@ function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[
     if (options.to) {
         where.push("s.received_at <= ?");
         params.push(options.to);
+    }
+
+    return { whereSql: `WHERE ${where.join(" AND ")}`, params };
+}
+
+function paymentAckWhere(options: {
+    last4?: string;
+    classifier: string;
+    classifierVersion: string;
+}): { whereSql: string; params: unknown[] } {
+    const where = [
+        "a.classifier = ?",
+        "a.classifier_version = ?",
+        "a.category = 'FINANCIAL'",
+        "a.subcategory = 'bill'",
+        "JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.cashFlow')) = 'NEUTRAL'",
+        `(
+            UPPER(s.body) LIKE '%RECEIVED TOWARDS%'
+            OR UPPER(s.body) LIKE '%CREDITED TO YOUR CARD%'
+            OR UPPER(s.body) LIKE '%CREDITED TO YOUR %CARD%'
+            OR UPPER(s.body) LIKE '%WAS CREDITED TO YOUR CARD%'
+            OR UPPER(s.body) LIKE '%WE HAVE RECEIVED%'
+            OR UPPER(s.body) LIKE '%CONFIRM RECEIPT%'
+            OR UPPER(s.body) LIKE '%RECEIVED A PAYMENT%'
+            OR UPPER(s.body) LIKE '%RECEIVED AND CREDITED%'
+        )`,
+        "UPPER(s.body) NOT LIKE '%SPENT%'",
+        "UPPER(s.body) NOT LIKE '%DEBITED%'",
+    ];
+    const params: unknown[] = [options.classifier, options.classifierVersion];
+
+    if (options.last4) {
+        where.push("JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.accountLast4')) = ?");
+        params.push(options.last4);
     }
 
     return { whereSql: `WHERE ${where.join(" AND ")}`, params };

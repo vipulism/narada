@@ -1,5 +1,4 @@
 import { Request, Response, Router } from "express";
-import { CLASSIFIERS } from "../../classifiers/classifier.registry";
 import {
     collectPushExceptions,
     isFireflyConfigured,
@@ -9,10 +8,8 @@ import {
 } from "../../connectors/firefly/firefly.exceptions";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
-import { SmsDueRepository } from "../../importers/sms/smsDue.repository";
+import { loadSettledDueKnowledge } from "../due.feed";
 import {
-    dedupeDueKnowledgeItems,
-    toDueKnowledgeItem,
     toExceptionKnowledgeItem,
     toKnowledgeItem,
 } from "../knowledge.mapper";
@@ -25,12 +22,10 @@ import {
 } from "../pagination";
 
 const events = new FinancialEventRepository();
-const dues = new SmsDueRepository();
-const DUE_FETCH_CAP = 500;
 
 /**
  * GET /knowledge and GET /knowledge/:id.
- * `kind=due` reads unique bill+NEUTRAL reminders; `kind=exception` dry-runs unpushed Dhan posts.
+ * `kind=due` reads unpaid unique bills (paid when a received/credited SMS matches last4). `kind=exception` dry-runs unpushed Dhan posts.
  */
 export function createKnowledgeRouter(): Router {
     const router = Router();
@@ -52,16 +47,12 @@ async function listKnowledge(req: Request, res: Response): Promise<void> {
     const status = parseExceptionStatus(optionalQueryString(req.query.status));
 
     if (kind === "due") {
-        const preferred = preferredClassifier();
-        const result = await dues.list({
-            page: 1,
-            limit: DUE_FETCH_CAP,
+        const dueStatus = optionalQueryString(req.query.status);
+        const unique = await loadSettledDueKnowledge({
             last4,
             bank,
-            classifier: preferred.name,
-            classifierVersion: preferred.version,
+            status: dueStatus,
         });
-        const unique = dedupeDueKnowledgeItems(result.items.map(toDueKnowledgeItem));
         const start = (page - 1) * limit;
 
         res.status(200).json({
@@ -72,7 +63,7 @@ async function listKnowledge(req: Request, res: Response): Promise<void> {
                 last4: last4 ?? null,
                 bank: bank ?? null,
                 pushed: null,
-                status: null,
+                status: dueStatus ?? "unpaid",
             },
         });
         return;
@@ -178,11 +169,11 @@ async function getKnowledge(req: Request, res: Response): Promise<void> {
         return;
     }
 
-    const preferred = preferredClassifier();
-    const due = await dues.getBySmsId(id, preferred.name, preferred.version);
+    const settled = await loadSettledDueKnowledge({ status: "all" });
+    const due = settled.find((item) => item.id === id);
 
     if (due) {
-        res.status(200).json(toDueKnowledgeItem(due));
+        res.status(200).json(due);
         return;
     }
 
@@ -203,17 +194,4 @@ function parseExceptionStatus(value: string | undefined): PushExceptionStatus | 
     }
 
     return undefined;
-}
-
-function preferredClassifier(): { name: string; version: string } {
-    const classifier = CLASSIFIERS[0];
-
-    if (!classifier) {
-        throw new Error("No SMS classifiers registered");
-    }
-
-    return {
-        name: classifier.name,
-        version: classifier.version,
-    };
 }

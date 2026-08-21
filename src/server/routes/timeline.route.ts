@@ -1,16 +1,13 @@
 import { Request, Response, Router } from "express";
-import { CLASSIFIERS } from "../../classifiers/classifier.registry";
 import {
     collectPushExceptions,
     isFireflyConfigured,
     loadExceptionPlanner,
 } from "../../connectors/firefly/firefly.exceptions";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
-import { SmsDueRepository } from "../../importers/sms/smsDue.repository";
 import { listEventsForTimeline } from "../../repositories/event.repository";
+import { loadSettledDueKnowledge } from "../due.feed";
 import {
-    dedupeDueKnowledgeItems,
-    toDueKnowledgeItem,
     toExceptionKnowledgeItem,
     toKnowledgeItem,
 } from "../knowledge.mapper";
@@ -30,7 +27,6 @@ import {
 
 const STREAM_CAP = 500;
 const events = new FinancialEventRepository();
-const dues = new SmsDueRepository();
 
 /**
  * GET /timeline — mixed due + exception + infra events (optional financial).
@@ -88,17 +84,7 @@ async function listTimeline(req: Request, res: Response): Promise<void> {
 }
 
 async function loadDueItems(from?: Date, to?: Date): Promise<TimelineItem[]> {
-    const preferred = preferredClassifier();
-    const result = await dues.list({
-        page: 1,
-        limit: STREAM_CAP,
-        from,
-        to,
-        classifier: preferred.name,
-        classifierVersion: preferred.version,
-    });
-
-    return dedupeDueKnowledgeItems(result.items.map(toDueKnowledgeItem));
+    return loadSettledDueKnowledge({ from, to });
 }
 
 async function loadExceptionItems(from?: Date, to?: Date): Promise<TimelineItem[]> {
@@ -120,19 +106,6 @@ async function loadExceptionItems(from?: Date, to?: Date): Promise<TimelineItem[
     } catch {
         return [];
     }
-}
-
-function preferredClassifier(): { name: string; version: string } {
-    const classifier = CLASSIFIERS[0];
-
-    if (!classifier) {
-        throw new Error("No SMS classifiers registered");
-    }
-
-    return {
-        name: classifier.name,
-        version: classifier.version,
-    };
 }
 
 /** Exported for merge unit tests. */
