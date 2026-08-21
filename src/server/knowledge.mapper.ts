@@ -6,6 +6,7 @@ import {
     isDueKnowledgeRow,
     keepLatestDueReminders,
     parseDueAmounts,
+    parseDueDate,
     settleDueStatuses,
     todayIstDate,
     type CardPaymentAck,
@@ -132,7 +133,7 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
         occurredAt: source.occurredAt,
         payload: {
             kind: "due",
-            dueDate: asOptionalString(data.dueDate),
+            dueDate: asOptionalString(data.dueDate) ?? parseDueDate(source.body),
             minDue,
             totalDue,
             amount: totalDue ?? minDue ?? extractedAmount,

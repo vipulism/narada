@@ -218,9 +218,11 @@ export const TRANSACTION_DATE_REGEX =
  * Matches:
  * Payment due on 20-Jan-23
  * due by 30-NOV-21
+ * Payable by 27/08/2026
+ * to be paid by 30-Nov-24
  */
 export const DUE_DATE_REGEX =
-    /(?:payment\s+due\s+on|is\s+due\s+on|due\s+by|to\s+be\s+paid\s+by|due\s+date)\s+(\d{1,2}[-/](?:[A-Za-z]{3}|\d{1,2})[-/]\d{2,4})/i;
+    /(?:payment\s+due\s+on|is\s+due\s+on|due\s+by|to\s+be\s+paid\s+by|payable\s+by|pay\s+by|due\s+date)\s+(\d{1,2}[-/](?:[A-Za-z]{3}|\d{1,2})[-/]\d{2,4})/i;
 
 /**
  * Matches:

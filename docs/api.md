@@ -193,7 +193,7 @@ Exception item (unpushed posted event that dry-run will not POST). Needs `FIREFL
 
 `status: "blocked"` example reason: `"transfer missing counterparty_last4"`.
 
-Due item. `occurredAt` is the SMS `received_at`. Home cards show that time when `payload.dueDate` is missing.
+Due item. `occurredAt` is the SMS `received_at`. Home cards show that time when `payload.dueDate` is missing. `dueDate` is read from the SMS body (`Payable by`, `to be paid by`, `due on`) even if older analysis omitted it.
 
 ```json
 {
