@@ -46,6 +46,17 @@ Provides asynchronous event processing and reliable delivery.
 
 ---
 
+## Telegram
+
+Service health change alerts, plus attention digests after SMS ingest:
+
+- New card/bill **dues** (not payment acks)
+- **New** Firefly blocked pushes, then **still blocked** once on the next scan
+
+No spend summaries (Dhan already reports). First scan seeds ids and does not send. Skipped (before opening) rows are not alerted.
+
+---
+
 ## Firefly III (Dhan)
 
 Receives posted financial events from Narada.
