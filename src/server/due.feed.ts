@@ -1,8 +1,11 @@
 import { CLASSIFIERS } from "../classifiers/classifier.registry";
 import { todayIstDate } from "../classifiers/financial/financial.due";
+import { DueMarkRepository } from "../db/repositories/dueMark.repository";
 import { SmsDueRepository } from "../importers/sms/smsDue.repository";
 import {
+    applyManualDueMarks,
     filterDueKnowledgeItems,
+    knowledgeDueReminderKey,
     settleDueKnowledgeItems,
     type KnowledgeItem,
 } from "./knowledge.mapper";
@@ -10,6 +13,7 @@ import { matchesKnowledgeQuery } from "./knowledge.query";
 
 const DUE_FETCH_CAP = 500;
 const dues = new SmsDueRepository();
+const marks = new DueMarkRepository();
 
 /**
  * Unique due bills with paid/overdue/open from received/credited card SMS.
@@ -42,7 +46,10 @@ export async function loadSettledDueKnowledge(options?: {
         }),
     ]);
 
-    const settled = settleDueKnowledgeItems(dueResult.items, payments);
+    const settled = applyManualDueMarks(
+        settleDueKnowledgeItems(dueResult.items, payments),
+        await marks.listKeys()
+    );
     const bodies = new Map(dueResult.items.map((row) => [row.smsId, row.body]));
 
     return filterDueKnowledgeItems(settled, options?.status)
@@ -84,4 +91,39 @@ function preferredClassifier(): { name: string; version: string } {
         name: classifier.name,
         version: classifier.version,
     };
+}
+
+/**
+ * Marks or unmarks a due bill as paid in Narada. Does not post to Dhan.
+ *
+ * @param smsId - Due knowledge id (`sms_messages.id`)
+ * @param paid - True to mark paid, false to clear the mark
+ */
+export async function setDuePaidMark(
+    smsId: number,
+    paid: boolean
+): Promise<KnowledgeItem | undefined> {
+    const current = (await loadSettledDueKnowledge({ status: "all" })).find(
+        (item) => item.type === "due" && item.id === smsId
+    );
+
+    if (!current) {
+        return undefined;
+    }
+
+    const key = knowledgeDueReminderKey(current);
+
+    if (!key) {
+        return undefined;
+    }
+
+    if (paid) {
+        await marks.markPaid(key, smsId);
+    } else {
+        await marks.unmarkPaid(key);
+    }
+
+    return (await loadSettledDueKnowledge({ status: "all" })).find(
+        (item) => item.type === "due" && item.id === smsId
+    );
 }

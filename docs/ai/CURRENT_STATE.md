@@ -36,6 +36,7 @@ Completed:
 ✅ Mixed timeline: `GET /timeline` (dues + exceptions + infra events; `type=financial` opt-in)
 ✅ Telegram attention: new dues + new/repeated Firefly blocked (seed then delta; no spend summaries)
 ✅ Attention-only dashboard at `GET /` (dues, blocked pushes, services, last import; no Money charts)
+✅ Manual due paid mark (`POST /knowledge/:id/paid`) when the issuer credit SMS is missing
 ✅ Attention search: Home filter/sort/search plus `GET /knowledge/search?q=` (dues + exceptions, not the ledger)
 
 
