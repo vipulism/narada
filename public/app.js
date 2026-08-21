@@ -109,6 +109,29 @@
   }
 
   /**
+   * Formats SMS `received_at` for due cards.
+   *
+   * @param {string | null | undefined} iso
+   * @returns {string | null}
+   */
+  function formatReceivedAt(iso) {
+    if (!iso) {
+      return null;
+    }
+    const received = new Date(iso);
+    if (Number.isNaN(received.getTime())) {
+      return null;
+    }
+    return received.toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  /**
    * @returns {string}
    */
   function todayDate() {
@@ -220,11 +243,15 @@
     const title = [payload.bank, payload.accountLast4 ? `····${payload.accountLast4}` : null]
       .filter(Boolean)
       .join(" ");
+    const receivedAt = formatReceivedAt(item.occurredAt);
     const dueLabel = day
       ? overdue
         ? `Overdue ${day}`
         : `Due ${day}`
-      : "Due date unknown";
+      : receivedAt
+        ? `Received ${receivedAt}`
+        : "Due date unknown";
+    const badgeClass = overdue ? "overdue" : day ? "due" : "received";
     const amounts = [
       payload.minDue != null ? `min ${formatMoney(payload.minDue, payload.currency)}` : null,
       payload.totalDue != null ? `total ${formatMoney(payload.totalDue, payload.currency)}` : null,
@@ -240,10 +267,12 @@
         )}</span>
       </div>
       <p class="detail">
-        <span class="badge ${overdue ? "overdue" : "due"}">${escapeHtml(dueLabel)}</span>
+        <span class="badge ${badgeClass}">${escapeHtml(dueLabel)}</span>
         ${amounts ? ` · ${escapeHtml(amounts)}` : ""}
       </p>
-      <p class="detail sms-id">sms ${escapeHtml(item.id)}</p>
+      <p class="detail sms-id">sms ${escapeHtml(item.id)}${
+        receivedAt ? ` · received ${escapeHtml(receivedAt)}` : ""
+      }</p>
       ${duePaidAction(item)}
     </article>`;
   }
