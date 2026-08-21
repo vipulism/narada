@@ -1,0 +1,5 @@
+CREATE TABLE due_marks (
+    reminder_key VARCHAR(80) NOT NULL PRIMARY KEY,
+    sms_id BIGINT NOT NULL,
+    marked_paid_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

@@ -8,7 +8,7 @@ import {
 } from "../../connectors/firefly/firefly.exceptions";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
-import { loadSettledDueKnowledge } from "../due.feed";
+import { loadSettledDueKnowledge, setDuePaidMark } from "../due.feed";
 import {
     toExceptionKnowledgeItem,
     toKnowledgeItem,
@@ -32,14 +32,16 @@ import {
 const events = new FinancialEventRepository();
 
 /**
- * GET /knowledge, GET /knowledge/search, and GET /knowledge/:id.
- * `kind=due` reads unpaid unique bills (paid when a received/credited SMS matches last4). `kind=exception` dry-runs unpushed Dhan posts.
+ * GET /knowledge, GET /knowledge/search, GET /knowledge/:id, and POST/DELETE /knowledge/:id/paid.
+ * `kind=due` reads unpaid unique bills (paid when a received/credited SMS matches last4, or a manual mark). `kind=exception` dry-runs unpushed Dhan posts.
  */
 export function createKnowledgeRouter(): Router {
     const router = Router();
 
     router.get("/knowledge/search", searchKnowledge);
     router.get("/knowledge", listKnowledge);
+    router.post("/knowledge/:id/paid", markDuePaid);
+    router.delete("/knowledge/:id/paid", unmarkDuePaid);
     router.get("/knowledge/:id", getKnowledge);
 
     return router;
@@ -201,6 +203,48 @@ async function getKnowledge(req: Request, res: Response): Promise<void> {
     }
 
     res.status(404).json({ message: "Knowledge not found" });
+}
+
+/**
+ * POST /knowledge/:id/paid — manual paid mark for a due (not a Dhan post).
+ */
+async function markDuePaid(req: Request, res: Response): Promise<void> {
+    await respondDuePaidMark(req, res, true);
+}
+
+/**
+ * DELETE /knowledge/:id/paid — clear a manual paid mark.
+ */
+async function unmarkDuePaid(req: Request, res: Response): Promise<void> {
+    await respondDuePaidMark(req, res, false);
+}
+
+async function respondDuePaidMark(
+    req: Request,
+    res: Response,
+    paid: boolean
+): Promise<void> {
+    const id = optionalPositiveInt(req.params.id);
+
+    if (!id) {
+        res.status(404).json({ message: "Knowledge not found" });
+        return;
+    }
+
+    try {
+        const item = await setDuePaidMark(id, paid);
+
+        if (!item) {
+            res.status(404).json({ message: "Due not found" });
+            return;
+        }
+
+        res.status(200).json(item);
+    } catch (error) {
+        res.status(500).json({
+            message: error instanceof Error ? error.message : "Could not update due mark",
+        });
+    }
 }
 
 /**

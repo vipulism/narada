@@ -321,6 +321,15 @@ h2 {
   color: var(--muted);
 }
 
+.card-actions {
+  margin: 0.55rem 0 0;
+}
+
+.mark-due {
+  font-size: 0.82rem;
+  padding: 0.28rem 0.75rem;
+}
+
 .empty,
 .error {
   margin: 0;

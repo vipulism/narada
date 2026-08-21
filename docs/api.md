@@ -47,7 +47,7 @@ GET /imports?limit=1
 GET /health
 ```
 
-Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), and sort. Those map to `q`, `from`, `status`, `sort`, and `order`. The query string on `/` is kept in sync (`/?since=6&status=overdue`).
+Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). The query string on `/` is kept in sync (`/?since=6&status=overdue`).
 
 ---
 
@@ -135,7 +135,7 @@ curl "http://192.168.1.32:4000/sms/18897"
 
 Posted `financial_events` by default. `id` is the SMS id (stable across event rebuilds), not `financial_events.id`.
 
-Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS. A later **received / credited to that last4** SMS marks the cycle `paid` (hidden by default). Overdue is only when the due date has passed **and** no such payment-ack exists. `GET /knowledge/:id` still returns that individual SMS.
+Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS. A later **received / credited to that last4** SMS marks the cycle `paid` (hidden by default). You can also **mark paid** in Narada (`POST /knowledge/:id/paid`) when the issuer SMS is missing. Overdue is only when the due date has passed **and** there is no payment-ack and no manual mark. `GET /knowledge/:id` still returns that individual SMS.
 
 ```text
 GET /knowledge
@@ -166,6 +166,8 @@ curl "http://192.168.1.32:4000/knowledge?kind=due&status=overdue&sort=amount&ord
 curl "http://192.168.1.32:4000/knowledge?kind=due&q=1687"
 curl "http://192.168.1.32:4000/knowledge/search?q=YES"
 curl "http://192.168.1.32:4000/knowledge/18849"
+curl -X POST "http://192.168.1.32:4000/knowledge/8843/paid"
+curl -X DELETE "http://192.168.1.32:4000/knowledge/8843/paid"
 ```
 
 Exception item (unpushed posted event that dry-run will not POST). Needs `FIREFLY_URL` + `FIREFLY_TOKEN`. Missing config → `503`.
@@ -211,7 +213,8 @@ Due item:
     "merchant": null,
     "classifier": "regex-financial",
     "classifierVersion": "1.3.25",
-    "status": "overdue"
+    "status": "overdue",
+    "markedPaid": false
   }
 }
 ```

@@ -1,4 +1,5 @@
 import {
+    dueReminderKey,
     isCardPaymentAckRow,
     keepLatestDueReminders,
     parseDueAmounts,
@@ -44,6 +45,7 @@ export interface KnowledgeDuePayload {
     classifier: string;
     classifierVersion: string;
     status?: DueAttentionStatus;
+    markedPaid?: boolean;
 }
 
 /** Push dry-run failure for an unpushed posted event. */
@@ -221,6 +223,61 @@ export function settleDueKnowledgeItems(
     return unique
         .map((row) => withDueStatus(row.item, statuses.get(row.smsId) ?? "open"))
         .sort(compareDueAttention);
+}
+
+/**
+ * Stable due-cycle key used to collapse reminders and store paid marks.
+ *
+ * @param item - Knowledge envelope
+ */
+export function knowledgeDueReminderKey(item: KnowledgeItem): string | undefined {
+    if (item.type !== "due") {
+        return undefined;
+    }
+
+    return dueReminderKey({
+        smsId: item.id,
+        dueDate: item.payload.dueDate,
+        accountLast4: item.payload.accountLast4,
+        amount: item.payload.amount,
+    });
+}
+
+/**
+ * Forces `paid` when the user marked that bill cycle paid in Narada.
+ *
+ * @param items - Settled due envelopes
+ * @param markedKeys - Keys from `due_marks`
+ */
+export function applyManualDueMarks(items: KnowledgeItem[], markedKeys: Set<string>): KnowledgeItem[] {
+    if (markedKeys.size === 0) {
+        return items.map((item) => withMarkedPaid(item, false));
+    }
+
+    return items.map((item) => {
+        const key = knowledgeDueReminderKey(item);
+        const marked = Boolean(key && markedKeys.has(key));
+
+        if (marked && item.type === "due") {
+            return withMarkedPaid(withDueStatus(item, "paid"), true);
+        }
+
+        return withMarkedPaid(item, false);
+    });
+}
+
+function withMarkedPaid(item: KnowledgeItem, markedPaid: boolean): KnowledgeItem {
+    if (item.type !== "due") {
+        return item;
+    }
+
+    return {
+        ...item,
+        payload: {
+            ...item.payload,
+            markedPaid,
+        },
+    };
 }
 
 /**

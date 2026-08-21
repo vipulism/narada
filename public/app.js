@@ -244,7 +244,26 @@
         ${amounts ? ` · ${escapeHtml(amounts)}` : ""}
       </p>
       <p class="detail sms-id">sms ${escapeHtml(item.id)}</p>
+      ${duePaidAction(item)}
     </article>`;
+  }
+
+  /**
+   * @param {object} item
+   */
+  function duePaidAction(item) {
+    const payload = item.payload || {};
+    if (payload.markedPaid) {
+      return `<p class="card-actions"><button type="button" class="btn mark-due" data-unpaid="${escapeHtml(
+        item.id
+      )}">Undo paid</button></p>`;
+    }
+    if (payload.status === "paid") {
+      return "";
+    }
+    return `<p class="card-actions"><button type="button" class="btn mark-due" data-paid="${escapeHtml(
+      item.id
+    )}">Mark paid</button></p>`;
   }
 
   /**
@@ -581,6 +600,42 @@
   els.refresh?.addEventListener("click", () => {
     void load();
   });
+
+  els.dues?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const paidId = target.getAttribute("data-paid");
+    const unpaidId = target.getAttribute("data-unpaid");
+    if (paidId) {
+      void markDue(paidId, true, target);
+    } else if (unpaidId) {
+      void markDue(unpaidId, false, target);
+    }
+  });
+
+  /**
+   * @param {string} id
+   * @param {boolean} paid
+   * @param {HTMLElement} button
+   */
+  async function markDue(id, paid, button) {
+    button.setAttribute("disabled", "true");
+    try {
+      const res = await fetch(`/knowledge/${id}/paid`, {
+        method: paid ? "POST" : "DELETE",
+        headers: { Accept: "application/json" },
+      });
+      if (!res.ok) {
+        throw new Error("Could not update due");
+      }
+      await load();
+    } catch {
+      button.removeAttribute("disabled");
+      window.alert("Could not update this due. Try refresh.");
+    }
+  }
 
   els.toolbar?.addEventListener("submit", (event) => {
     event.preventDefault();
