@@ -9,7 +9,7 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses } from "./financial.due";
+import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses } from "./financial.due";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1080,6 +1080,19 @@ const CASES: RegressionCase[] = [
             subcategory: "bill",
             cashFlow: "NEUTRAL",
             amount: 351,
+            merchant: "Airtel",
+        },
+    },
+    {
+        id: "airtel-wifi-due-bill",
+        address: "AD-AIRBIL-S",
+        body: "REMINDER: Bill of Rs. 351 for Airtel Wi-Fi account no. 01142311413 dated 06-JUN-26 is due today. To pay via Airtel Thanks App, click i.airtel.in/BBpayBills. Please ignore if paid.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 351,
+            merchant: "Airtel",
         },
     },
     {
@@ -1854,6 +1867,46 @@ function runDueFeedRegression(): void {
 
     if (paidFrom3Aug.get(18761) !== "paid") {
         failures.push(`18 Aug HSBC credit should pay the 3 Aug bill, got ${paidFrom3Aug.get(18761)}`);
+    }
+
+    const airtelWifi =
+        "REMINDER: Bill of Rs. 351 for Airtel Wi-Fi account no. 01142311413 dated 06-JUN-26 is due today. Please ignore if paid.";
+    const airtelFixed =
+        "REMINDER: Bill of Rs. 351 for Airtel Fixedline account no. 01142311413 dated 06-JUN-26 is due today. Please ignore if paid.";
+
+    if (dueBillerAlias(null, airtelWifi) !== "airtel-broadband") {
+        failures.push("Airtel Wi-Fi should alias to airtel-broadband");
+    }
+
+    if (dueBillerAlias(null, airtelFixed) !== dueBillerAlias(null, airtelWifi)) {
+        failures.push("Airtel Fixedline and Wi-Fi must be the same biller");
+    }
+
+    const wifiDue = {
+        smsId: 1,
+        occurredAt: new Date("2026-06-06T10:00:00+05:30"),
+        dueDate: null,
+        accountLast4: null,
+        amount: 351,
+        body: airtelWifi,
+    };
+    const fixedDue = {
+        smsId: 2,
+        occurredAt: new Date("2026-06-07T10:00:00+05:30"),
+        dueDate: null,
+        accountLast4: "1413",
+        amount: 351,
+        body: airtelFixed,
+    };
+
+    if (dueReminderKey(wifiDue) !== dueReminderKey(fixedDue)) {
+        failures.push("Airtel Wi-Fi and Fixedline dues must share a cycle key");
+    }
+
+    const airtelCollapsed = keepLatestDueReminders([wifiDue, fixedDue]);
+
+    if (airtelCollapsed.length !== 1 || airtelCollapsed[0].smsId !== 2) {
+        failures.push("Airtel Wi-Fi + Fixedline should be one due card");
     }
 
     const due1687 = {

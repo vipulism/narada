@@ -119,6 +119,8 @@ async function loadDues(): Promise<DueAlert[]> {
                 totalDue: item.payload.totalDue,
                 bank: item.payload.bank,
                 accountLast4: item.payload.accountLast4,
+                merchant: item.payload.merchant,
+                dueParty: item.payload.dueParty,
             },
         ];
     });

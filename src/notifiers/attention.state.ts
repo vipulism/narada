@@ -7,6 +7,8 @@ export interface DueAlert {
     totalDue: number | null;
     bank: string | null;
     accountLast4: string | null;
+    merchant?: string | null;
+    dueParty?: string | null;
 }
 
 /**
