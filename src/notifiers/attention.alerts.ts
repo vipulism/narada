@@ -1,3 +1,4 @@
+import { todayIstDate } from "../classifiers/financial/financial.due";
 import {
     collectPushExceptions,
     isFireflyConfigured,
@@ -5,15 +6,15 @@ import {
 } from "../connectors/firefly/firefly.exceptions";
 import { loadFireflyClient } from "../connectors/firefly/firefly.client";
 import { FinancialEventRepository } from "../db/repositories/financialEvent.repository";
-import { todayIstDate } from "../classifiers/financial/financial.due";
 import { loadSettledDueKnowledge } from "../server/due.feed";
-import { AttentionAlertState, BlockedAlert, DueAlert } from "./attention.state";
 import {
     formatBlockedDigest,
     formatDailyAttentionDigest,
     formatDueDigest,
-    type DhanDigestStatus,
+    istComparableMonthRanges,
+    type DhanMonthStats,
 } from "./attention.digest";
+import { AttentionAlertState, BlockedAlert, DueAlert } from "./attention.state";
 import { TelegramNotifier } from "./telegram.notifier";
 
 const state = new AttentionAlertState();
@@ -59,7 +60,7 @@ export async function runAttentionAlerts(): Promise<void> {
 }
 
 /**
- * Sends today's unpaid dues (due date + remaining days) and Dhan push status.
+ * Sends today's unpaid dues plus Dhan this-month vs last-month income/expense.
  * Runs at 08:00 IST. Does not replace the new-due / blocked delta pings.
  */
 export async function runDailyAttentionDigest(): Promise<void> {
@@ -70,11 +71,9 @@ export async function runDailyAttentionDigest(): Promise<void> {
 
     try {
         const today = todayIstDate();
-        const [dues, dhan] = await Promise.all([loadDues(), loadDhanStatus()]);
+        const [dues, dhan] = await Promise.all([loadDues(), loadDhanMonthStats(today)]);
         await telegram.sendHtml(formatDailyAttentionDigest(dues, dhan, today));
-        console.info(
-            `daily attention digest sent: dues=${dues.length} dhan=${dhan.reachable ? "ok" : "down"}`
-        );
+        console.info(`daily attention digest sent: dues=${dues.length} dhan=${dhan.error ? "down" : "ok"}`);
     } catch (error) {
         console.error("Daily attention digest failed", error);
     }
@@ -135,37 +134,36 @@ async function loadBlocked(): Promise<BlockedAlert[]> {
     }
 }
 
-async function loadDhanStatus(): Promise<DhanDigestStatus> {
-    let lastPushedAt: Date | null = null;
-
-    try {
-        lastPushedAt = await events.latestFireflyPushAt();
-    } catch (error) {
-        console.error("Dhan last-push lookup failed", error);
-    }
+async function loadDhanMonthStats(today: string): Promise<DhanMonthStats> {
+    const ranges = istComparableMonthRanges(today);
 
     if (!isFireflyConfigured()) {
-        return { configured: false, reachable: false, blocked: 0, lastPushedAt };
+        return { configured: false, ...ranges };
     }
 
     try {
-        await loadFireflyClient().ping();
-        const blocked = await loadBlocked();
+        const client = loadFireflyClient();
+        const [thisIncome, thisExpense, lastIncome, lastExpense] = await Promise.all([
+            client.insightTotal("income", ranges.thisStart, ranges.thisEnd),
+            client.insightTotal("expense", ranges.thisStart, ranges.thisEnd),
+            client.insightTotal("income", ranges.lastStart, ranges.lastEnd),
+            client.insightTotal("expense", ranges.lastStart, ranges.lastEnd),
+        ]);
 
         return {
             configured: true,
-            reachable: true,
-            blocked: blocked.length,
-            lastPushedAt,
+            ...ranges,
+            thisIncome,
+            thisExpense,
+            lastIncome,
+            lastExpense,
         };
     } catch (error) {
-        const message = error instanceof Error ? error.message : "Dhan ping failed";
+        const message = error instanceof Error ? error.message : "Dhan insight failed";
 
         return {
             configured: true,
-            reachable: false,
-            blocked: 0,
-            lastPushedAt,
+            ...ranges,
             error: message,
         };
     }

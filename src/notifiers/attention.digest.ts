@@ -2,14 +2,62 @@ import { daysUntilDue, formatRemainingDays } from "../classifiers/financial/fina
 import { BlockedAlert, DueAlert } from "./attention.state";
 
 const DIGEST_CAP = 8;
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** Dhan (Firefly) snapshot for the daily Telegram digest. */
-export interface DhanDigestStatus {
+/** This-month vs last-month Dhan income/expense for the daily Telegram digest. */
+export interface DhanMonthStats {
     configured: boolean;
-    reachable: boolean;
-    blocked: number;
-    lastPushedAt: Date | null;
+    thisLabel: string;
+    lastLabel: string;
+    thisStart: string;
+    thisEnd: string;
+    lastStart: string;
+    lastEnd: string;
+    thisIncome?: number;
+    thisExpense?: number;
+    lastIncome?: number;
+    lastExpense?: number;
     error?: string;
+}
+
+/**
+ * Inclusive IST ranges: 1st→today vs the same days last month (clamped).
+ *
+ * @param today - `YYYY-MM-DD` in IST
+ */
+export function istComparableMonthRanges(today: string): {
+    thisStart: string;
+    thisEnd: string;
+    lastStart: string;
+    lastEnd: string;
+    thisLabel: string;
+    lastLabel: string;
+} {
+    const day = parseIsoDay(today);
+
+    if (!day) {
+        return {
+            thisStart: today,
+            thisEnd: today,
+            lastStart: today,
+            lastEnd: today,
+            thisLabel: today,
+            lastLabel: today,
+        };
+    }
+
+    const thisStart = { year: day.year, month: day.month, day: 1 };
+    const lastStart = addCalendarMonths(thisStart, -1);
+    const lastEnd = addCalendarMonths(day, -1);
+
+    return {
+        thisStart: formatIsoDay(thisStart),
+        thisEnd: formatIsoDay(day),
+        lastStart: formatIsoDay(lastStart),
+        lastEnd: formatIsoDay(lastEnd),
+        thisLabel: `${MONTH_LABELS[day.month - 1]} ${thisStart.day}–${day.day}`,
+        lastLabel: `${MONTH_LABELS[lastStart.month - 1]} ${lastStart.day}–${lastEnd.day}`,
+    };
 }
 
 /**
@@ -54,45 +102,77 @@ export function formatBlockedDigest(title: string, rows: BlockedAlert[]): string
 }
 
 /**
- * Morning unpaid-dues list plus Dhan reachability / blocked / last push.
+ * Morning unpaid-dues list plus Dhan this-month vs last-month income/expense.
  *
  * @param dues - Unpaid due reminders (paid already filtered)
- * @param dhan - Firefly status
+ * @param dhan - Firefly month stats
  * @param today - `YYYY-MM-DD` IST
  */
 export function formatDailyAttentionDigest(
     dues: DueAlert[],
-    dhan: DhanDigestStatus,
+    dhan: DhanMonthStats,
     today: string
 ): string {
     const heading = `📅 <b>Daily attention</b> (${escapeHtml(today)})`;
     const dueBlock = formatDueDigest("Dues", dues, today) ?? "📬 <b>Dues</b>\n• nothing unpaid";
 
-    return `${heading}\n\n${dueBlock}\n\n${formatDhanStatus(dhan)}`;
+    return `${heading}\n\n${dueBlock}\n\n${formatDhanMonthStats(dhan)}`;
 }
 
 /**
- * One-line Dhan status for Telegram.
+ * This month vs last month (same days) income and expenses from Dhan.
  *
- * @param status - Reachability, blocked count, last push
+ * @param stats - Loaded Firefly totals
  */
-export function formatDhanStatus(status: DhanDigestStatus): string {
-    if (!status.configured) {
+export function formatDhanMonthStats(stats: DhanMonthStats): string {
+    if (!stats.configured) {
         return "📒 <b>Dhan</b>\n• not configured";
     }
 
-    const last = status.lastPushedAt
-        ? `last push ${formatIstStamp(status.lastPushedAt)}`
-        : "no pushes yet";
-
-    if (!status.reachable) {
-        const detail = status.error ? ` — ${escapeHtml(truncate(status.error, 80))}` : "";
-        return `📒 <b>Dhan</b>\n• unreachable${detail}\n• ${escapeHtml(last)}`;
+    if (stats.error || stats.thisIncome == null || stats.thisExpense == null) {
+        const detail = stats.error ? ` — ${escapeHtml(truncate(stats.error, 80))}` : "";
+        return `📒 <b>Dhan</b>\n• unavailable${detail}`;
     }
 
-    const blocked = status.blocked === 0 ? "no blocked pushes" : `${status.blocked} blocked`;
+    const lastIncome = stats.lastIncome ?? 0;
+    const lastExpense = stats.lastExpense ?? 0;
+    const thisLine = `• ${stats.thisLabel}: in ${formatInr(stats.thisIncome)} · out ${formatInr(stats.thisExpense)}`;
+    const lastLine = `• ${stats.lastLabel}: in ${formatInr(lastIncome)} · out ${formatInr(lastExpense)}`;
+    const incomeLine = `• ${monthOverMonthPhrase("income", stats.thisIncome, lastIncome)}`;
+    const expenseLine = `• ${monthOverMonthPhrase("expenses", stats.thisExpense, lastExpense)}`;
 
-    return `📒 <b>Dhan</b>\n• reachable · ${blocked} · ${escapeHtml(last)}`;
+    return `📒 <b>Dhan</b>\n${escapeHtml(thisLine)}\n${escapeHtml(lastLine)}\n${escapeHtml(incomeLine)}\n${escapeHtml(
+        expenseLine
+    )}`;
+}
+
+/**
+ * Human percent change vs last month. Null previous is treated as zero.
+ *
+ * @param noun - `income` or `expenses`
+ * @param current - This-month total
+ * @param previous - Same-days last month
+ */
+export function monthOverMonthPhrase(noun: string, current: number, previous: number): string {
+    if (previous === 0 && current === 0) {
+        return `${noun} same as last month`;
+    }
+
+    if (previous === 0) {
+        return `${noun} ${formatInr(current)} this month (₹0 last month)`;
+    }
+
+    const pct = Math.round(((current - previous) / previous) * 100);
+
+    if (pct === 0) {
+        return `${noun} same as last month`;
+    }
+
+    if (pct > 0) {
+        return `${noun} ${pct}% more than last month`;
+    }
+
+    return `${noun} ${Math.abs(pct)}% less than last month`;
 }
 
 function formatDueLine(row: DueAlert, today?: string): string {
@@ -120,16 +200,42 @@ function formatDueLine(row: DueAlert, today?: string): string {
     }`;
 }
 
-function formatIstStamp(at: Date): string {
-    return new Intl.DateTimeFormat("en-IN", {
-        timeZone: "Asia/Kolkata",
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-    }).format(at);
+function formatInr(amount: number): string {
+    return `₹${Math.round(amount).toLocaleString("en-IN")}`;
+}
+
+function parseIsoDay(value: string): { year: number; month: number; day: number } | null {
+    const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (!match) {
+        return null;
+    }
+
+    return {
+        year: Number(match[1]),
+        month: Number(match[2]),
+        day: Number(match[3]),
+    };
+}
+
+function formatIsoDay(day: { year: number; month: number; day: number }): string {
+    return `${day.year}-${String(day.month).padStart(2, "0")}-${String(day.day).padStart(2, "0")}`;
+}
+
+function addCalendarMonths(
+    day: { year: number; month: number; day: number },
+    delta: number
+): { year: number; month: number; day: number } {
+    const monthIndex = day.year * 12 + (day.month - 1) + delta;
+    const year = Math.floor(monthIndex / 12);
+    const month = (monthIndex % 12) + 1;
+    const last = lastDayOfMonth(year, month);
+
+    return { year, month, day: Math.min(day.day, last) };
+}
+
+function lastDayOfMonth(year: number, month: number): number {
+    return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 function truncate(value: string, max: number): string {

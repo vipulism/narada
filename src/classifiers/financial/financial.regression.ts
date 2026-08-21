@@ -10,7 +10,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { formatDailyAttentionDigest, formatDhanStatus, formatDueDigest } from "../../notifiers/attention.digest";
+import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, istComparableMonthRanges, monthOverMonthPhrase } from "../../notifiers/attention.digest";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -2026,35 +2026,65 @@ function runAttentionDigestRegression(): void {
         failures.push(`daily due line missing date/eta: ${dueLine}`);
     }
 
-    const dhanOk = formatDhanStatus({
-        configured: true,
-        reachable: true,
-        blocked: 2,
-        lastPushedAt: null,
-    });
+    const ranges = istComparableMonthRanges("2026-08-21");
 
-    if (!dhanOk.includes("reachable") || !dhanOk.includes("2 blocked")) {
-        failures.push(`dhan ok status ${dhanOk}`);
+    if (ranges.thisStart !== "2026-08-01" || ranges.thisEnd !== "2026-08-21") {
+        failures.push(`Aug MTD range ${ranges.thisStart}..${ranges.thisEnd}`);
     }
 
-    const dhanDown = formatDhanStatus({
+    if (ranges.lastStart !== "2026-07-01" || ranges.lastEnd !== "2026-07-21") {
+        failures.push(`Jul same-days range ${ranges.lastStart}..${ranges.lastEnd}`);
+    }
+
+    const feb = istComparableMonthRanges("2026-03-31");
+
+    if (feb.lastEnd !== "2026-02-28") {
+        failures.push(`31 Mar vs Feb should clamp to 28, got ${feb.lastEnd}`);
+    }
+
+    if (monthOverMonthPhrase("income", 120000, 100000) !== "income 20% more than last month") {
+        failures.push(`20% more phrase ${monthOverMonthPhrase("income", 120000, 100000)}`);
+    }
+
+    if (monthOverMonthPhrase("expenses", 45000, 52000) !== "expenses 13% less than last month") {
+        failures.push(`13% less phrase ${monthOverMonthPhrase("expenses", 45000, 52000)}`);
+    }
+
+    const dhanOk = formatDhanMonthStats({
         configured: true,
-        reachable: false,
-        blocked: 0,
-        lastPushedAt: new Date("2026-08-21T07:12:00+05:30"),
-        error: "Firefly GET /about failed (network)",
+        ...ranges,
+        thisIncome: 80000,
+        thisExpense: 45000,
+        lastIncome: 70000,
+        lastExpense: 52000,
     });
 
-    if (!dhanDown.includes("unreachable") || !dhanDown.includes("last push")) {
+    if (
+        !dhanOk.includes("Aug 1–21") ||
+        !dhanOk.includes("in ₹80,000") ||
+        !dhanOk.includes("out ₹45,000") ||
+        !dhanOk.includes("Jul 1–21") ||
+        !dhanOk.includes("income 14% more than last month") ||
+        !dhanOk.includes("expenses 13% less than last month")
+    ) {
+        failures.push(`dhan month stats ${dhanOk}`);
+    }
+
+    const dhanDown = formatDhanMonthStats({
+        configured: true,
+        ...ranges,
+        error: "Firefly GET /insight/expense/total failed (network)",
+    });
+
+    if (!dhanDown.includes("unavailable")) {
         failures.push(`dhan down status ${dhanDown}`);
     }
 
-    const daily = formatDailyAttentionDigest([], {
-        configured: false,
-        reachable: false,
-        blocked: 0,
-        lastPushedAt: null,
-    }, "2026-08-21");
+    const daily = formatDailyAttentionDigest(
+        [],
+        { configured: false, ...ranges },
+        "2026-08-21"
+    );
 
     if (!daily.includes("nothing unpaid") || !daily.includes("not configured")) {
         failures.push(`empty daily digest ${daily}`);

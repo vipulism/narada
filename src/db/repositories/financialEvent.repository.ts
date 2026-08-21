@@ -297,25 +297,6 @@ export class FinancialEventRepository {
 
         return rows.map(rowToEvent);
     }
-
-    /**
-     * Newest Firefly push time, if any row has been posted to Dhan.
-     *
-     * @returns Latest `firefly_pushed_at`, or null when nothing has been pushed
-     */
-    async latestFireflyPushAt(): Promise<Date | null> {
-        const db = getDb();
-        const [rows] = await db.query<RowDataPacket[]>(
-            `
-            SELECT MAX(firefly_pushed_at) AS last_pushed_at
-            FROM financial_events
-            WHERE firefly_pushed_at IS NOT NULL
-            `
-        );
-        const value = rows[0]?.last_pushed_at;
-
-        return value ? new Date(value) : null;
-    }
 }
 
 /** Pagination and filters for GET /knowledge. */

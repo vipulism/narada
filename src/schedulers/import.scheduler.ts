@@ -6,7 +6,7 @@ import { runSmsLedgerFollowUp } from "../importers/sms/smsLedger.followUp";
 
 /**
  * Watches the Syncthing SMS folder, then classify → events → Firefly.
- * Also sends the 08:00 IST unpaid-dues + Dhan Telegram digest.
+ * Also sends the 08:00 IST unpaid-dues + Dhan month-stats Telegram digest.
  *
  * @returns Resolves when the first scan is scheduled
  */
