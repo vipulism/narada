@@ -1,5 +1,6 @@
 import { parseDueAmounts } from "../classifiers/financial/financial.due";
 import { FinancialEvent } from "../classifiers/financial/financial.model";
+import type { PushException } from "../connectors/firefly/firefly.exceptions";
 import type { DueAnalysisSource } from "../importers/sms/smsDue.repository";
 
 /** Posted financial event as a knowledge envelope. */
@@ -36,6 +37,19 @@ export interface KnowledgeDuePayload {
     classifierVersion: string;
 }
 
+/** Push dry-run failure for an unpushed posted event. */
+export interface KnowledgeExceptionPayload {
+    kind: string;
+    amount: number;
+    currency: string;
+    accountLast4: string | null;
+    counterpartyLast4: string | null;
+    bank: string | null;
+    merchant: string | null;
+    status: "blocked" | "skipped";
+    reason: string;
+}
+
 /** One knowledge item. `id` is `sms_messages.id` (stable across event rebuilds). */
 export type KnowledgeItem =
     | {
@@ -49,6 +63,12 @@ export type KnowledgeItem =
           id: number;
           occurredAt: Date;
           payload: KnowledgeDuePayload;
+      }
+    | {
+          type: "exception";
+          id: number;
+          occurredAt: Date;
+          payload: KnowledgeExceptionPayload;
       };
 
 /**
@@ -111,6 +131,32 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
             merchant: asOptionalString(data.merchant),
             classifier: source.classifier,
             classifierVersion: source.classifierVersion,
+        },
+    };
+}
+
+/**
+ * Wraps a blocked or skipped Firefly dry-run for GET /knowledge?kind=exception.
+ *
+ * @param exception - Unpushed event plus dry-run reason
+ */
+export function toExceptionKnowledgeItem(exception: PushException): KnowledgeItem {
+    const event = exception.event;
+
+    return {
+        type: "exception",
+        id: event.smsId,
+        occurredAt: event.occurredAt,
+        payload: {
+            kind: event.kind,
+            amount: event.amount,
+            currency: event.currency,
+            accountLast4: event.accountLast4 ?? null,
+            counterpartyLast4: event.counterpartyLast4 ?? null,
+            bank: event.bank ?? null,
+            merchant: event.merchant ?? null,
+            status: exception.status,
+            reason: exception.reason,
         },
     };
 }

@@ -127,17 +127,43 @@ Filters:
 
 | Query | Meaning |
 |---|---|
-| `kind` | `expense`, `income`, `bill`, `transfer`, `investment`, `epf`, or `due` |
+| `kind` | `expense`, `income`, `bill`, `transfer`, `investment`, `epf`, `due`, or `exception` |
 | `last4` | source or counterparty last4 (dues: extracted account last4) |
 | `bank` | e.g. `YES Bank` |
-| `pushed` | `true` / `false` — Dhan journal id (ignored when `kind=due`) |
+| `pushed` | `true` / `false` — Dhan journal id (ignored when `kind=due` or `kind=exception`) |
+| `status` | `blocked` / `skipped` — only with `kind=exception` |
 
 ```bash
 curl "http://192.168.1.32:4000/knowledge?kind=investment"
 curl "http://192.168.1.32:4000/knowledge?kind=due"
+curl "http://192.168.1.32:4000/knowledge?kind=exception"
+curl "http://192.168.1.32:4000/knowledge?kind=exception&status=blocked"
 curl "http://192.168.1.32:4000/knowledge?last4=1412&pushed=true"
 curl "http://192.168.1.32:4000/knowledge/18849"
 ```
+
+Exception item (unpushed posted event that dry-run will not POST). Needs `FIREFLY_URL` + `FIREFLY_TOKEN`. Missing config → `503`.
+
+```json
+{
+  "type": "exception",
+  "id": 17531,
+  "occurredAt": "2026-03-30T06:30:00.000Z",
+  "payload": {
+    "kind": "expense",
+    "amount": 50,
+    "currency": "INR",
+    "accountLast4": "5940",
+    "counterpartyLast4": null,
+    "bank": "FASTag",
+    "merchant": "Shipra Mall",
+    "status": "skipped",
+    "reason": "before Firefly opening 2026-08-16 for last4 5940"
+  }
+}
+```
+
+`status: "blocked"` example reason: `"transfer missing counterparty_last4"`.
 
 Due item:
 

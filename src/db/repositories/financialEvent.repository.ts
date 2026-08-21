@@ -246,6 +246,53 @@ export class FinancialEventRepository {
 
         return rows[0] ? rowToEvent(rows[0]) : null;
     }
+
+    /**
+     * Unpushed posted events, newest first. Used by GET /knowledge?kind=exception.
+     *
+     * @param options - Optional last4 / bank filters
+     */
+    async listUnpushed(options: {
+        last4?: string;
+        bank?: string;
+    }): Promise<FinancialEvent[]> {
+        const db = getDb();
+        const { whereSql, params } = financialEventWhere({
+            page: 1,
+            limit: 1,
+            last4: options.last4,
+            bank: options.bank,
+            pushed: false,
+        });
+
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                sms_id,
+                kind,
+                cash_flow,
+                amount,
+                currency,
+                account_last4,
+                counterparty_last4,
+                account_name,
+                bank,
+                merchant,
+                transaction_type,
+                occurred_at,
+                classifier,
+                classifier_version,
+                firefly_transaction_id,
+                firefly_pushed_at
+            FROM financial_events
+            ${whereSql}
+            ORDER BY occurred_at DESC, sms_id DESC
+            `,
+            params
+        );
+
+        return rows.map(rowToEvent);
+    }
 }
 
 /** Pagination and filters for GET /knowledge. */
