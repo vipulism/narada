@@ -20,7 +20,7 @@ Current focus (see `docs/ai/current_goals/005.md`):
 - Push exceptions (`GET /knowledge?kind=exception`) ✅
 - Mixed `GET /timeline` (dues + infra + exceptions) ✅
 - Telegram for dues / blocked pushes ✅
-- Dashboard later: Home = attention only (no Money charts)
+- Dashboard: Home = attention only (no Money charts) ✅
 
 ---
 
@@ -260,7 +260,7 @@ GET /documents
 
 # Dashboard Roadmap
 
-Dhan (Firefly III) is the money UI. Narada dashboard, if built, is attention-only.
+Dhan (Firefly III) is the money UI. Narada `GET /` is attention-only (dues, blocked pushes, services, last import).
 
 ### Monitoring
 

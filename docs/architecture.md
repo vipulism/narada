@@ -677,6 +677,10 @@ Narada exposes APIs for both monitoring and knowledge domains.
 Current APIs:
 
 ```text
+GET /
+
+GET /dashboard
+
 GET /services
 
 GET /services/stream
@@ -696,16 +700,16 @@ GET /sms/:id
 GET /knowledge
 
 GET /knowledge/:id
+
+GET /timeline
 ```
 
-`GET /knowledge` currently returns posted `financial_events` only (`type: "financial"`, `id` = SMS id). Search and timeline are later.
+`GET /` is the attention-only dashboard. `GET /knowledge` defaults to posted `financial_events` (`type: "financial"`, `id` = SMS id). `kind=due` and `kind=exception` are attention feeds. `GET /timeline` mixes dues, exceptions, and infra events.
 
 Future APIs:
 
 ```text
 GET /knowledge/search
-
-GET /timeline
 
 GET /documents
 ```

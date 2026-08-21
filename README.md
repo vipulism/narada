@@ -18,6 +18,7 @@ Inspired by Narada — the divine messenger from Hindu mythology — this projec
 * Configurable slow-response threshold
 * SMS Backup XML import and regex financial classification
 * Firefly III (Dhan) ledger push from posted financial events
+* Attention-only home at `GET /` (dues, blocked pushes, services — not a Firefly clone)
 * Lightweight Node.js + TypeScript architecture
 * Docker deployment via Compose
 

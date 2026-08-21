@@ -35,16 +35,16 @@ Completed:
 ✅ Push exceptions: `GET /knowledge?kind=exception` dry-run reasons (`blocked` / `skipped`) for unpushed `financial_events`
 ✅ Mixed timeline: `GET /timeline` (dues + exceptions + infra events; `type=financial` opt-in)
 ✅ Telegram attention: new dues + new/repeated Firefly blocked (seed then delta; no spend summaries)
+✅ Attention-only dashboard at `GET /` (dues, blocked pushes, services, last import; no Money charts)
 
 
 In Progress:
 
-🚧 Attention layer (dues, push exceptions, mixed timeline) — see `docs/ai/current_goals/005.md`
+🚧 Attention layer remaining: `GET /knowledge/search` — see `docs/ai/current_goals/005.md`
 
 
 Not Implemented:
 
-- Attention-only dashboard (no Money charts)
 - `GET /knowledge/search`
 - RAG
 - Vector DB
