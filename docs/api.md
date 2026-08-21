@@ -32,6 +32,23 @@ GET /health
 
 ---
 
+## Dashboard
+
+Attention-only HTML at `GET /` (dues, blocked Firefly pushes, service strip, last SMS import). `GET /dashboard` redirects to `/`. No transaction list, charts, or budgets — those stay in Dhan.
+
+The page reads:
+
+```text
+GET /knowledge?kind=due
+GET /knowledge?kind=exception&status=blocked
+GET /services
+GET /services/stream
+GET /imports?limit=1
+GET /health
+```
+
+---
+
 ## Monitoring
 
 ```text

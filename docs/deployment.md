@@ -2,7 +2,7 @@
 
 This guide explains how to deploy Narada on the Mandara homelab server using Docker Compose / Dockge.
 
-Narada should be deployed before building the dashboard so it can collect real Docker events, persist real data, and expose APIs/SSE for the dashboard.
+Narada serves an attention-only dashboard at `GET /` (dues, blocked Firefly pushes, service strip, last SMS import). Ledger charts stay in Dhan.
 
 ---
 
@@ -360,6 +360,7 @@ After deployment, verify:
 ```bash
 docker logs narada
 curl http://192.168.1.32:4000/health
+curl -I http://192.168.1.32:4000/
 curl http://192.168.1.32:4000/events
 curl http://192.168.1.32:4000/services
 curl -N http://192.168.1.32:4000/services/stream
@@ -377,6 +378,7 @@ Docker source started
 /events returns paginated event response
 /services returns latest service status
 /services/stream keeps the SSE connection open
+GET / serves the attention-only dashboard HTML
 /sms and /knowledge return paginated knowledge envelopes
 /imports is empty until the next new/changed SMS XML
 ```
