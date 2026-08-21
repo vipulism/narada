@@ -10,13 +10,17 @@ This roadmap focuses on long-term platform evolution rather than individual impl
 
 ## Current Sprint
 
-🚧 Knowledge surface
+🚧 Attention layer — not a Firefly clone
 
-SMS ingestion, regex financial extraction, Firefly III (Dhan) push, and read APIs for imports / SMS / posted financial knowledge are in place.
+Posted ledger lives in Dhan. Narada should surface what Dhan never stores.
 
-Current focus:
+Current focus (see `docs/ai/current_goals/005.md`):
 
-- Timeline and knowledge search (not started)
+- Due SMS feed (`bill` + NEUTRAL)
+- Push exceptions (blocked / unpushed / before opening)
+- Mixed `GET /timeline` (dues + infra + exceptions)
+- Telegram for dues / blocked pushes
+- Dashboard later: Home = attention only (no Money charts)
 
 ---
 
@@ -256,6 +260,8 @@ GET /documents
 
 # Dashboard Roadmap
 
+Dhan (Firefly III) is the money UI. Narada dashboard, if built, is attention-only.
+
 ### Monitoring
 
 - Service Health
@@ -263,14 +269,24 @@ GET /documents
 - Container Status
 - Notification History
 
-### Knowledge
+### Attention (Narada)
 
-- SMS Timeline
-- Financial Timeline
+- Due reminders (SMS bills that never post)
+- Push exceptions (blocked / unpushed)
+- Last import status
+- SMS inbox (classify / skip)
+
+### Knowledge (later)
+
+- Mixed timeline (dues + infra + exceptions)
 - Documents
-- Bills
-- Upcoming Payments
 - Calendar
+
+### Do not build (use Dhan)
+
+- Transaction list
+- Net worth / charts / budgets
+- Account reconciliation
 
 ### Intelligence
 

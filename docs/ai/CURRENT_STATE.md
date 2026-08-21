@@ -35,13 +35,17 @@ Completed:
 
 In Progress:
 
-🚧 Timeline / knowledge search
+🚧 Attention layer (dues, push exceptions, mixed timeline) — see `docs/ai/current_goals/005.md`
 
 
 Not Implemented:
 
+- Due / exception HTTP feed
+- `GET /timeline` (dues + infra + exceptions; not a Firefly clone)
+- Telegram for dues / blocked pushes
+- Attention-only dashboard (no Money charts)
+- `GET /knowledge/search`
 - RAG
 - Vector DB
 - AI extraction
 - Bank importer
-- Timeline / knowledge search
