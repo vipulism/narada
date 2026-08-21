@@ -18,6 +18,9 @@ export interface DueReminderIdentity {
     dueDate: string | null;
     accountLast4: string | null;
     amount: number | null;
+    dueParty?: string | null;
+    merchant?: string | null;
+    body?: string | null;
 }
 
 /** Attention state after matching card payment-ack SMS. */
@@ -147,27 +150,65 @@ export function cardLast4FromBody(body: string): string | null {
 }
 
 /**
+ * Same utility biller across SMS wording (Airtel WiFi vs Fixedline).
+ *
+ * @param merchant - Extracted merchant if any
+ * @param body - Raw SMS body
+ */
+export function dueBillerAlias(
+    merchant?: string | null,
+    body?: string | null
+): string | null {
+    const text = [merchant, body]
+        .filter((value): value is string => Boolean(value && value.trim()))
+        .join(" ")
+        .toUpperCase()
+        .replace(/WI-FI/g, "WIFI")
+        .replace(/WI FI/g, "WIFI");
+
+    if (!text) {
+        return null;
+    }
+
+    const isAirtelBroadband =
+        text.includes("AIRTEL") &&
+        (text.includes("WIFI") ||
+            text.includes("FIXEDLINE") ||
+            text.includes("FIXED LINE") ||
+            text.includes("BROADBAND") ||
+            text.includes("XSTREAM"));
+
+    return isAirtelBroadband ? "airtel-broadband" : null;
+}
+
+/**
  * One bill cycle: last4 + amount, plus due date when parsed.
  * Missing due date still collapses same last4+amount so a 3 Aug reminder and
- * an 18 Aug follow-up are one card. Missing last4 or amount stay unique by SMS id.
+ * an 18 Aug follow-up are one card. Utility SMS without a card last4 collapse
+ * on biller alias (Airtel WiFi and Airtel Fixedline are the same broadband).
  *
  * @param row - Due reminder identity
  */
 export function dueReminderKey(
-    row: Pick<DueReminderIdentity, "smsId" | "dueDate" | "accountLast4" | "amount">
+    row: Pick<
+        DueReminderIdentity,
+        "smsId" | "dueDate" | "accountLast4" | "amount" | "dueParty" | "merchant" | "body"
+    >
 ): string {
-    const last4 = row.accountLast4?.trim() ?? "";
     const dueDate = row.dueDate?.trim().slice(0, 10) ?? "";
     const amount =
         typeof row.amount === "number" && Number.isFinite(row.amount)
             ? row.amount.toFixed(2)
             : "";
+    const biller = dueBillerAlias(row.merchant, row.body) ?? row.dueParty?.trim() ?? "";
+    const last4 = row.accountLast4?.trim() ?? "";
+    const party = biller || last4;
 
-    if (!last4 || !amount) {
+    if (!party || !amount) {
         return `sms:${row.smsId}`;
     }
 
-    return `due:${last4}|${dueDate || "*"}|${amount}`;
+    return `due:${party}|${dueDate || "*"}|${amount}`;
 }
 
 /**

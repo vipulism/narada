@@ -1,5 +1,6 @@
 import {
     cardLast4FromBody,
+    dueBillerAlias,
     dueReminderKey,
     hasPayableDueAmount,
     isCardPaymentAckRow,
@@ -45,6 +46,7 @@ export interface KnowledgeDuePayload {
     accountName: string | null;
     bank: string | null;
     merchant: string | null;
+    dueParty?: string | null;
     classifier: string;
     classifierVersion: string;
     status?: DueAttentionStatus;
@@ -125,6 +127,8 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
     const extractedAmount = asFiniteNumber(data.amount);
     const totalDue = amounts.totalDue ?? null;
     const minDue = amounts.minDue ?? null;
+    const merchant = asOptionalString(data.merchant);
+    const dueParty = dueBillerAlias(merchant, source.body);
 
     return {
         type: "due",
@@ -142,7 +146,8 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
             accountLast4: asOptionalString(data.accountLast4),
             accountName: asOptionalString(data.accountName),
             bank: asOptionalString(data.bank),
-            merchant: asOptionalString(data.merchant),
+            merchant: merchant ?? (dueParty === "airtel-broadband" ? "Airtel" : null),
+            dueParty,
             classifier: source.classifier,
             classifierVersion: source.classifierVersion,
         },
@@ -171,6 +176,8 @@ export function dedupeDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[]
             dueDate: item.payload.dueDate,
             accountLast4: item.payload.accountLast4,
             amount: item.payload.amount,
+            dueParty: item.payload.dueParty,
+            merchant: item.payload.merchant,
             item,
         });
     }
@@ -214,6 +221,9 @@ export function settleDueKnowledgeItems(
                     (item.type === "due" ? item.payload.accountLast4 : null) ??
                     cardLast4FromBody(source.body),
                 amount: item.type === "due" ? item.payload.amount : null,
+                dueParty: item.type === "due" ? item.payload.dueParty : null,
+                merchant: item.type === "due" ? item.payload.merchant : null,
+                body: source.body,
                 item,
             },
         ];
@@ -262,6 +272,8 @@ export function knowledgeDueReminderKey(item: KnowledgeItem): string | undefined
         dueDate: item.payload.dueDate,
         accountLast4: item.payload.accountLast4,
         amount: item.payload.amount,
+        dueParty: item.payload.dueParty,
+        merchant: item.payload.merchant,
     });
 }
 
@@ -388,6 +400,9 @@ interface DueReminderRow {
     dueDate: string | null;
     accountLast4: string | null;
     amount: number | null;
+    dueParty?: string | null;
+    merchant?: string | null;
+    body?: string | null;
     item: KnowledgeItem;
 }
 

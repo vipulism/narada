@@ -541,6 +541,13 @@ export class FinancialParser {
             return "Tata Play Fiber";
         }
 
+        if (
+            /\bairtel\b/i.test(body) &&
+            /wifi|wi-fi|fixedline|fixed\s+line|broadband|xstream/i.test(body)
+        ) {
+            return "Airtel";
+        }
+
         const regexes = [
             MERCHANT_AT_REGEX,
             MERCHANT_TO_REGEX,
