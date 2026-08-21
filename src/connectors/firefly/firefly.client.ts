@@ -49,6 +49,19 @@ export class FireflyClient {
     }
 
     /**
+     * Cheap reachability check (`GET /about`).
+     *
+     * @returns Resolves when Dhan answers
+     */
+    async ping(): Promise<void> {
+        try {
+            await this.http.get("/about");
+        } catch (error) {
+            throw fireflyHttpError(error, "GET /about");
+        }
+    }
+
+    /**
      * Asset and liability accounts only (banks, cards, loans).
      */
     async listLedgerAccounts(): Promise<FireflyAccount[]> {

@@ -50,8 +50,9 @@ Provides asynchronous event processing and reliable delivery.
 
 Service health change alerts, plus attention digests after SMS ingest:
 
-- New card/bill **dues** (not payment acks)
+- New card/bill **dues** (not payment acks), with due date and remaining / overdue days when parsed
 - **New** Firefly blocked pushes, then **still blocked** once on the next scan
+- **Daily** at 08:00 IST: unpaid dues plus Dhan status (reachable or not, blocked-push count, last successful push). No spend/balance summary.
 
 No spend summaries (Dhan already reports). First scan seeds ids and does not send. Skipped (before opening) rows are not alerted.
 

@@ -9,7 +9,8 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses } from "./financial.due";
+import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
+import { formatDailyAttentionDigest, formatDhanStatus, formatDueDigest } from "../../notifiers/attention.digest";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1971,6 +1972,18 @@ function runDueFeedRegression(): void {
         failures.push(`future due should be open, got ${upcoming.get(1)}`);
     }
 
+    if (daysUntilDue("2026-08-16", "2026-08-21") !== -5) {
+        failures.push("16 Aug vs 21 Aug should be 5 days overdue");
+    }
+
+    if (formatRemainingDays(daysUntilDue("2026-08-21", "2026-08-21")) !== "today") {
+        failures.push("due today should label today");
+    }
+
+    if (formatRemainingDays(daysUntilDue("2026-09-02", "2026-08-21")) !== "12 days left") {
+        failures.push("2 Sep vs 21 Aug should be 12 days left");
+    }
+
     if (failures.length > 0) {
         throw new Error(`due feed regression failed:\n${failures.join("\n")}`);
     }
@@ -1990,3 +2003,64 @@ console.log("firefly map regression ok");
 
 runDueFeedRegression();
 console.log("due feed regression ok");
+
+runAttentionDigestRegression();
+console.log("attention digest regression ok");
+
+function runAttentionDigestRegression(): void {
+    const failures: string[] = [];
+    const airtel = {
+        smsId: 18850,
+        occurredAt: new Date("2026-08-16T07:21:00+05:30"),
+        dueDate: "2026-08-16",
+        amount: 589,
+        minDue: null,
+        totalDue: null,
+        bank: null,
+        accountLast4: null,
+        merchant: "Airtel",
+    };
+    const dueLine = formatDueDigest("Dues", [airtel], "2026-08-21");
+
+    if (!dueLine?.includes("Airtel") || !dueLine.includes("5 days overdue") || !dueLine.includes("due 2026-08-16")) {
+        failures.push(`daily due line missing date/eta: ${dueLine}`);
+    }
+
+    const dhanOk = formatDhanStatus({
+        configured: true,
+        reachable: true,
+        blocked: 2,
+        lastPushedAt: null,
+    });
+
+    if (!dhanOk.includes("reachable") || !dhanOk.includes("2 blocked")) {
+        failures.push(`dhan ok status ${dhanOk}`);
+    }
+
+    const dhanDown = formatDhanStatus({
+        configured: true,
+        reachable: false,
+        blocked: 0,
+        lastPushedAt: new Date("2026-08-21T07:12:00+05:30"),
+        error: "Firefly GET /about failed (network)",
+    });
+
+    if (!dhanDown.includes("unreachable") || !dhanDown.includes("last push")) {
+        failures.push(`dhan down status ${dhanDown}`);
+    }
+
+    const daily = formatDailyAttentionDigest([], {
+        configured: false,
+        reachable: false,
+        blocked: 0,
+        lastPushedAt: null,
+    }, "2026-08-21");
+
+    if (!daily.includes("nothing unpaid") || !daily.includes("not configured")) {
+        failures.push(`empty daily digest ${daily}`);
+    }
+
+    if (failures.length > 0) {
+        throw new Error(`attention digest regression failed:\n${failures.join("\n")}`);
+    }
+}

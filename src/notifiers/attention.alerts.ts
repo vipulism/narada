@@ -3,16 +3,24 @@ import {
     isFireflyConfigured,
     loadExceptionPlanner,
 } from "../connectors/firefly/firefly.exceptions";
+import { loadFireflyClient } from "../connectors/firefly/firefly.client";
 import { FinancialEventRepository } from "../db/repositories/financialEvent.repository";
+import { todayIstDate } from "../classifiers/financial/financial.due";
 import { loadSettledDueKnowledge } from "../server/due.feed";
 import { AttentionAlertState, BlockedAlert, DueAlert } from "./attention.state";
+import {
+    formatBlockedDigest,
+    formatDailyAttentionDigest,
+    formatDueDigest,
+    type DhanDigestStatus,
+} from "./attention.digest";
 import { TelegramNotifier } from "./telegram.notifier";
-
-const DIGEST_CAP = 8;
 
 const state = new AttentionAlertState();
 const events = new FinancialEventRepository();
 const telegram = new TelegramNotifier();
+
+export { formatBlockedDigest, formatDailyAttentionDigest, formatDueDigest };
 
 /**
  * Seeds on first run, then Telegrams new dues and new/repeated Firefly blocks.
@@ -51,55 +59,25 @@ export async function runAttentionAlerts(): Promise<void> {
 }
 
 /**
- * Builds HTML for new due rows. Empty when there are none.
- *
- * @param title - Digest heading
- * @param rows - New due reminders
+ * Sends today's unpaid dues (due date + remaining days) and Dhan push status.
+ * Runs at 08:00 IST. Does not replace the new-due / blocked delta pings.
  */
-export function formatDueDigest(title: string, rows: DueAlert[]): string | undefined {
-    if (rows.length === 0) {
-        return undefined;
+export async function runDailyAttentionDigest(): Promise<void> {
+    if (!process.env.TELEGRAM_BOT_TOKEN?.trim() || !process.env.TELEGRAM_CHAT_ID?.trim()) {
+        console.info("Skip daily attention digest: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing");
+        return;
     }
 
-    const lines = rows.slice(0, DIGEST_CAP).map((row) => {
-        const who = row.accountLast4
-            ? [row.bank, `…${row.accountLast4}`].filter(Boolean).join(" ")
-            : [row.bank, row.merchant].filter(Boolean).join(" ");
-        const when = row.dueDate ? `due ${row.dueDate}` : "due";
-        const total = row.totalDue ?? row.amount;
-        const min = row.minDue;
-        const money = [
-            total != null ? `₹${total}` : undefined,
-            min != null ? `min ₹${min}` : undefined,
-        ]
-            .filter(Boolean)
-            .join(" · ");
-
-        return `• ${escapeHtml(who || `#${row.smsId}`)} — ${escapeHtml(when)}${money ? ` · ${escapeHtml(money)}` : ""}`;
-    });
-
-    const extra = rows.length > DIGEST_CAP ? `\n… +${rows.length - DIGEST_CAP} more` : "";
-
-    return `📬 <b>${escapeHtml(title)}</b> (${rows.length})\n${lines.join("\n")}${extra}`;
-}
-
-/**
- * Builds HTML for blocked Firefly rows. Empty when there are none.
- *
- * @param title - Digest heading
- * @param rows - Blocked exceptions
- */
-export function formatBlockedDigest(title: string, rows: BlockedAlert[]): string | undefined {
-    if (rows.length === 0) {
-        return undefined;
+    try {
+        const today = todayIstDate();
+        const [dues, dhan] = await Promise.all([loadDues(), loadDhanStatus()]);
+        await telegram.sendHtml(formatDailyAttentionDigest(dues, dhan, today));
+        console.info(
+            `daily attention digest sent: dues=${dues.length} dhan=${dhan.reachable ? "ok" : "down"}`
+        );
+    } catch (error) {
+        console.error("Daily attention digest failed", error);
     }
-
-    const lines = rows.slice(0, DIGEST_CAP).map((row) => {
-        return `• #${row.smsId} ${escapeHtml(row.kind)} ₹${row.amount} — ${escapeHtml(row.reason)}`;
-    });
-    const extra = rows.length > DIGEST_CAP ? `\n… +${rows.length - DIGEST_CAP} more` : "";
-
-    return `🚫 <b>${escapeHtml(title)}</b> (${rows.length})\n${lines.join("\n")}${extra}`;
 }
 
 async function loadDues(): Promise<DueAlert[]> {
@@ -157,9 +135,38 @@ async function loadBlocked(): Promise<BlockedAlert[]> {
     }
 }
 
-function escapeHtml(value: string): string {
-    return value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+async function loadDhanStatus(): Promise<DhanDigestStatus> {
+    let lastPushedAt: Date | null = null;
+
+    try {
+        lastPushedAt = await events.latestFireflyPushAt();
+    } catch (error) {
+        console.error("Dhan last-push lookup failed", error);
+    }
+
+    if (!isFireflyConfigured()) {
+        return { configured: false, reachable: false, blocked: 0, lastPushedAt };
+    }
+
+    try {
+        await loadFireflyClient().ping();
+        const blocked = await loadBlocked();
+
+        return {
+            configured: true,
+            reachable: true,
+            blocked: blocked.length,
+            lastPushedAt,
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Dhan ping failed";
+
+        return {
+            configured: true,
+            reachable: false,
+            blocked: 0,
+            lastPushedAt,
+            error: message,
+        };
+    }
 }
