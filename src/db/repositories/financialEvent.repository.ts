@@ -255,6 +255,8 @@ export class FinancialEventRepository {
     async listUnpushed(options: {
         last4?: string;
         bank?: string;
+        from?: Date;
+        to?: Date;
     }): Promise<FinancialEvent[]> {
         const db = getDb();
         const { whereSql, params } = financialEventWhere({
@@ -262,6 +264,8 @@ export class FinancialEventRepository {
             limit: 1,
             last4: options.last4,
             bank: options.bank,
+            from: options.from,
+            to: options.to,
             pushed: false,
         });
 
@@ -303,6 +307,8 @@ export interface ListFinancialEventsOptions {
     last4?: string;
     bank?: string;
     pushed?: boolean;
+    from?: Date;
+    to?: Date;
 }
 
 function financialEventWhere(options: ListFinancialEventsOptions): {
@@ -331,6 +337,16 @@ function financialEventWhere(options: ListFinancialEventsOptions): {
         where.push("firefly_transaction_id IS NOT NULL");
     } else if (options.pushed === false) {
         where.push("firefly_transaction_id IS NULL");
+    }
+
+    if (options.from) {
+        where.push("occurred_at >= ?");
+        params.push(options.from);
+    }
+
+    if (options.to) {
+        where.push("occurred_at <= ?");
+        params.push(options.to);
     }
 
     return {
