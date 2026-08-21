@@ -1761,6 +1761,40 @@ function runDueFeedRegression(): void {
         failures.push(`HSBC 4433 payment ack should pay the open due, got ${hsbcSettled.get(18900)}`);
     }
 
+    const olderUndated = {
+        smsId: 18000,
+        occurredAt: new Date("2026-07-20T10:00:00+05:30"),
+        dueDate: null,
+        accountLast4: "4433",
+        amount: 100,
+    };
+    const statement18912 = {
+        smsId: 18912,
+        occurredAt: new Date("2026-08-18T19:25:00+05:30"),
+        dueDate: null,
+        accountLast4: "4433",
+        amount: 2350,
+    };
+    const paymentBeforeStatement = {
+        smsId: 18911,
+        occurredAt: new Date("2026-08-18T19:00:00+05:30"),
+        accountLast4: "4433",
+        amount: 2350,
+    };
+    const matched = settleDueStatuses(
+        [olderUndated, statement18912],
+        [paymentBeforeStatement],
+        "2026-08-21"
+    );
+
+    if (matched.get(18912) !== "paid") {
+        failures.push(`₹2350 HSBC ack should pay the ₹2350 statement, got ${matched.get(18912)}`);
+    }
+
+    if (matched.get(18000) === "paid") {
+        failures.push("older ₹100 due must not steal the ₹2350 payment");
+    }
+
     const due1687 = {
         smsId: 1,
         occurredAt: new Date("2026-04-05T10:00:00+05:30"),

@@ -132,6 +132,21 @@ export function hasPayableDueAmount(payload: {
 }
 
 /**
+ * Visible card last4 from common issuer phrasing.
+ *
+ * @param body - SMS body
+ */
+export function cardLast4FromBody(body: string): string | null {
+    const upper = body.toUpperCase();
+    const match =
+        upper.match(/ENDING(?:\s+WITH)?\s+(?:X{2,4}-)?(\d{4})\b/) ??
+        upper.match(/\bXXXX-(\d{4})\b/) ??
+        upper.match(/\bXX(\d{4})\b/);
+
+    return match?.[1] ?? null;
+}
+
+/**
  * One bill cycle: last4 + due date + amount. Missing fields stay unique by SMS id
  * so unknown rows are not collapsed together.
  *
@@ -224,8 +239,9 @@ export function todayIstDate(now = new Date()): string {
 }
 
 /**
- * Marks each due paid when a later received/credited SMS hits the same last4
- * in that bill cycle. Otherwise overdue when due date is before today (IST).
+ * Marks each due paid when a received/credited SMS hits the same last4
+ * in that bill cycle. Prefer the due whose amount matches, then the closest
+ * reminder time, so an older open cycle does not steal a later payment.
  *
  * @param dues - Unique due reminders
  * @param payments - Card payment-ack SMS
@@ -280,25 +296,22 @@ export function settleDueStatuses(
         );
         const used = new Set<number>();
 
-        for (let index = 0; index < sortedDues.length; index += 1) {
-            const due = sortedDues[index];
-            const next = sortedDues[index + 1];
-            const windowStart = firstRemindedMs(due) - 2 * MS_DAY;
-            const nextStart = next ? firstRemindedMs(next) : Number.POSITIVE_INFINITY;
-            const cycleEnd = dueCycleEndMs(due);
-            const windowEnd = Math.min(nextStart, cycleEnd);
-
-            const payment = sortedPays.find(
-                (row) =>
-                    !used.has(row.smsId) &&
-                    occurredAtMs(row) >= windowStart &&
-                    occurredAtMs(row) < windowEnd
+        for (const payment of sortedPays) {
+            const candidates = sortedDues.filter(
+                (due) => !used.has(due.smsId) && paymentFitsDue(due, payment, sortedDues)
             );
 
-            if (payment) {
-                used.add(payment.smsId);
-                status.set(due.smsId, "paid");
-            } else {
+            if (candidates.length === 0) {
+                continue;
+            }
+
+            candidates.sort((left, right) => comparePaymentFit(payment, left, right));
+            used.add(candidates[0].smsId);
+            status.set(candidates[0].smsId, "paid");
+        }
+
+        for (const due of sortedDues) {
+            if (!status.has(due.smsId)) {
                 status.set(due.smsId, statusFromDueDate(due.dueDate, today));
             }
         }
@@ -309,6 +322,51 @@ export function settleDueStatuses(
 
 function dueDay(dueDate: string | null | undefined): string {
     return dueDate?.trim().slice(0, 10) ?? "";
+}
+
+function paymentFitsDue(
+    due: DueReminderIdentity,
+    payment: CardPaymentAck,
+    orderedDues: DueReminderIdentity[]
+): boolean {
+    const index = orderedDues.indexOf(due);
+    const next = orderedDues[index + 1];
+    const payAt = occurredAtMs(payment);
+    const reminded = firstRemindedMs(due);
+    const windowStart = reminded - 2 * MS_DAY;
+    const nextStart = next ? firstRemindedMs(next) : Number.POSITIVE_INFINITY;
+    const windowEnd = Math.min(nextStart, dueCycleEndMs(due));
+
+    if (payAt >= windowStart && payAt < windowEnd) {
+        return true;
+    }
+
+    return amountDistance(payment, due) <= 1 && Math.abs(payAt - reminded) <= 14 * MS_DAY;
+}
+
+function comparePaymentFit(
+    payment: CardPaymentAck,
+    left: DueReminderIdentity,
+    right: DueReminderIdentity
+): number {
+    const byAmount = amountDistance(payment, left) - amountDistance(payment, right);
+
+    if (byAmount !== 0) {
+        return byAmount;
+    }
+
+    return (
+        Math.abs(occurredAtMs(payment) - firstRemindedMs(left)) -
+        Math.abs(occurredAtMs(payment) - firstRemindedMs(right))
+    );
+}
+
+function amountDistance(payment: CardPaymentAck, due: DueReminderIdentity): number {
+    if (payment.amount == null || due.amount == null) {
+        return 1_000_000;
+    }
+
+    return Math.abs(payment.amount - due.amount);
 }
 
 function statusFromDueDate(dueDate: string | null, today: string): DueAttentionStatus {
