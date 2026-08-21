@@ -42,7 +42,7 @@ Completed:
 
 In Progress:
 
-🚧 Attention layer remaining: close duplicate shipped issues `#34`–`#37` (`#32` and `#38` are closed) — see `docs/ai/current_goals/005.md`
+None. Attention layer (`005`) is complete. Later: insurance premium from email (`006`).
 
 
 Not Implemented:

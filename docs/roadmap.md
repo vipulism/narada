@@ -10,11 +10,13 @@ This roadmap focuses on long-term platform evolution rather than individual impl
 
 ## Current Sprint
 
-🚧 Attention layer — not a Firefly clone
+✅ Attention layer — not a Firefly clone (`docs/ai/current_goals/005.md`)
 
-Posted ledger lives in Dhan. Narada should surface what Dhan never stores.
+Posted ledger lives in Dhan. Narada surfaces what Dhan never stores (dues, blocked pushes, Telegram digest).
 
-Current focus (see `docs/ai/current_goals/005.md`):
+Later (not this sprint): insurance premium from email — `docs/ai/current_goals/006.md`.
+
+Done:
 
 - Due SMS feed (`GET /knowledge?kind=due`) ✅
 - Push exceptions (`GET /knowledge?kind=exception`) ✅
