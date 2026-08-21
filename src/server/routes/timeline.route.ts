@@ -9,6 +9,7 @@ import { FinancialEventRepository } from "../../db/repositories/financialEvent.r
 import { SmsDueRepository } from "../../importers/sms/smsDue.repository";
 import { listEventsForTimeline } from "../../repositories/event.repository";
 import {
+    dedupeDueKnowledgeItems,
     toDueKnowledgeItem,
     toExceptionKnowledgeItem,
     toKnowledgeItem,
@@ -97,7 +98,7 @@ async function loadDueItems(from?: Date, to?: Date): Promise<TimelineItem[]> {
         classifierVersion: preferred.version,
     });
 
-    return result.items.map(toDueKnowledgeItem);
+    return dedupeDueKnowledgeItems(result.items.map(toDueKnowledgeItem));
 }
 
 async function loadExceptionItems(from?: Date, to?: Date): Promise<TimelineItem[]> {

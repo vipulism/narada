@@ -1,6 +1,4 @@
-/**
- * A due reminder considered for Telegram.
- */
+import { dueReminderKey } from "../classifiers/financial/financial.due";
 export interface DueAlert {
     smsId: number;
     dueDate: string | null;
@@ -37,7 +35,7 @@ export interface AttentionDelta {
  */
 export class AttentionAlertState {
     private seeded = false;
-    private readonly dueIds = new Set<number>();
+    private readonly dueKeys = new Set<string>();
     private readonly blocked = new Map<number, { scans: number; alert: BlockedAlert }>();
 
     /**
@@ -49,7 +47,7 @@ export class AttentionAlertState {
     diff(dues: DueAlert[], blocked: BlockedAlert[]): AttentionDelta {
         if (!this.seeded) {
             for (const due of dues) {
-                this.dueIds.add(due.smsId);
+                this.dueKeys.add(dueReminderKey(due));
             }
 
             for (const row of blocked) {
@@ -69,8 +67,10 @@ export class AttentionAlertState {
         const newDues: DueAlert[] = [];
 
         for (const due of dues) {
-            if (!this.dueIds.has(due.smsId)) {
-                this.dueIds.add(due.smsId);
+            const key = dueReminderKey(due);
+
+            if (!this.dueKeys.has(key)) {
+                this.dueKeys.add(key);
                 newDues.push(due);
             }
         }

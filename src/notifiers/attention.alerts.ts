@@ -6,7 +6,7 @@ import {
 } from "../connectors/firefly/firefly.exceptions";
 import { FinancialEventRepository } from "../db/repositories/financialEvent.repository";
 import { SmsDueRepository } from "../importers/sms/smsDue.repository";
-import { toDueKnowledgeItem } from "../server/knowledge.mapper";
+import { toDueKnowledgeItem, dedupeDueKnowledgeItems } from "../server/knowledge.mapper";
 import { AttentionAlertState, BlockedAlert, DueAlert } from "./attention.state";
 import { TelegramNotifier } from "./telegram.notifier";
 
@@ -120,30 +120,22 @@ async function loadDues(): Promise<DueAlert[]> {
         classifierVersion: preferred.version,
     });
 
-    return result.items.map((source) => {
-        const item = toDueKnowledgeItem(source);
-
+    return dedupeDueKnowledgeItems(result.items.map(toDueKnowledgeItem)).flatMap((item) => {
         if (item.type !== "due") {
-            return {
-                smsId: source.smsId,
-                dueDate: null,
-                amount: null,
-                minDue: null,
-                totalDue: null,
-                bank: null,
-                accountLast4: null,
-            };
+            return [];
         }
 
-        return {
-            smsId: source.smsId,
-            dueDate: item.payload.dueDate,
-            amount: item.payload.amount,
-            minDue: item.payload.minDue,
-            totalDue: item.payload.totalDue,
-            bank: item.payload.bank,
-            accountLast4: item.payload.accountLast4,
-        };
+        return [
+            {
+                smsId: item.id,
+                dueDate: item.payload.dueDate,
+                amount: item.payload.amount,
+                minDue: item.payload.minDue,
+                totalDue: item.payload.totalDue,
+                bank: item.payload.bank,
+                accountLast4: item.payload.accountLast4,
+            },
+        ];
     });
 }
 

@@ -133,7 +133,7 @@ curl "http://192.168.1.32:4000/sms/18897"
 
 Posted `financial_events` by default. `id` is the SMS id (stable across event rebuilds), not `financial_events.id`.
 
-Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`).
+Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS. `GET /knowledge/:id` still returns that individual SMS.
 
 ```text
 GET /knowledge
