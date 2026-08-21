@@ -147,8 +147,9 @@ export function cardLast4FromBody(body: string): string | null {
 }
 
 /**
- * One bill cycle: last4 + due date + amount. Missing fields stay unique by SMS id
- * so unknown rows are not collapsed together.
+ * One bill cycle: last4 + amount, plus due date when parsed.
+ * Missing due date still collapses same last4+amount so a 3 Aug reminder and
+ * an 18 Aug follow-up are one card. Missing last4 or amount stay unique by SMS id.
  *
  * @param row - Due reminder identity
  */
@@ -162,11 +163,11 @@ export function dueReminderKey(
             ? row.amount.toFixed(2)
             : "";
 
-    if (!last4 || !dueDate || !amount) {
+    if (!last4 || !amount) {
         return `sms:${row.smsId}`;
     }
 
-    return `due:${last4}|${dueDate}|${amount}`;
+    return `due:${last4}|${dueDate || "*"}|${amount}`;
 }
 
 /**
@@ -329,19 +330,21 @@ function paymentFitsDue(
     payment: CardPaymentAck,
     orderedDues: DueReminderIdentity[]
 ): boolean {
-    const index = orderedDues.indexOf(due);
-    const next = orderedDues[index + 1];
     const payAt = occurredAtMs(payment);
     const reminded = firstRemindedMs(due);
+    const cycleEnd = dueCycleEndMs(due);
     const windowStart = reminded - 2 * MS_DAY;
-    const nextStart = next ? firstRemindedMs(next) : Number.POSITIVE_INFINITY;
-    const windowEnd = Math.min(nextStart, dueCycleEndMs(due));
 
-    if (payAt >= windowStart && payAt < windowEnd) {
-        return true;
+    if (amountDistance(payment, due) <= 1) {
+        return payAt >= windowStart && payAt <= cycleEnd;
     }
 
-    return amountDistance(payment, due) <= 1 && Math.abs(payAt - reminded) <= 14 * MS_DAY;
+    const index = orderedDues.indexOf(due);
+    const next = orderedDues[index + 1];
+    const nextStart = next ? firstRemindedMs(next) : Number.POSITIVE_INFINITY;
+    const windowEnd = Math.min(nextStart, cycleEnd);
+
+    return payAt >= windowStart && payAt <= windowEnd;
 }
 
 function comparePaymentFit(
@@ -355,10 +358,15 @@ function comparePaymentFit(
         return byAmount;
     }
 
-    return (
-        Math.abs(occurredAtMs(payment) - firstRemindedMs(left)) -
-        Math.abs(occurredAtMs(payment) - firstRemindedMs(right))
-    );
+    const payAt = occurredAtMs(payment);
+    const leftIssued = firstRemindedMs(left) <= payAt ? 0 : 1;
+    const rightIssued = firstRemindedMs(right) <= payAt ? 0 : 1;
+
+    if (leftIssued !== rightIssued) {
+        return leftIssued - rightIssued;
+    }
+
+    return firstRemindedMs(left) - firstRemindedMs(right);
 }
 
 function amountDistance(payment: CardPaymentAck, due: DueReminderIdentity): number {
