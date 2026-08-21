@@ -60,7 +60,7 @@ export function parseDockerPsNames(output: string): string[] {
 }
 
 /**
- * Locked parse cases for docker ps JSON.
+ * Locked parse cases for `docker ps` JSON names and snapshot events.
  */
 export function runDockerSnapshotRegression(): void {
     const failures: string[] = [];
