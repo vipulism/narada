@@ -3,7 +3,7 @@
 Completed:
 
 ✅ HTTP Monitoring
-✅ Docker Events
+✅ Docker Events (live `docker ps` reconcile on boot and every 5 min so Home matches Dockge, not last kill/die)
 ✅ RabbitMQ Events
 ✅ Telegram Notifications
 ✅ Event APIs
