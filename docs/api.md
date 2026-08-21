@@ -135,7 +135,7 @@ curl "http://192.168.1.32:4000/sms/18897"
 
 Posted `financial_events` by default. `id` is the SMS id (stable across event rebuilds), not `financial_events.id`.
 
-Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS. A later **received / credited to that last4** SMS marks the cycle `paid` (hidden by default). You can also **mark paid** in Narada (`POST /knowledge/:id/paid`) when the issuer SMS is missing. Overdue is only when the due date has passed **and** there is no payment-ack and no manual mark. `GET /knowledge/:id` still returns that individual SMS.
+Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS. A later **received / credited to that last4** SMS (HDFC `received towards`, HSBC `we have received a payment of`, CRED `was received for your … credit card`) marks the cycle `paid` (hidden by default) and does **not** appear as its own due card. Statement SMS with **₹0** outstanding are omitted. You can also **mark paid** in Narada (`POST /knowledge/:id/paid`) when the issuer SMS is missing. Overdue is only when the due date has passed **and** there is no payment-ack and no manual mark. `GET /knowledge/:id` still returns that individual SMS.
 
 ```text
 GET /knowledge

@@ -20,7 +20,7 @@ Completed:
 ✅ Wallet top-up successful (Milkbasket etc.) is expense, not income
 ✅ IMPS debit to another owned last4 (no CREDITED word) is transfer
 ✅ e-Insurance account policy credit is skip; PhonePe `has requested Rs` is skip
-✅ HSBC `received a payment of` on a live card is bill; cardless cash withdrawal is expense
+✅ HSBC `received a payment of` on a live card is bill (payment ack, not a due card); cardless cash withdrawal is expense
 ✅ PayZapp wallet debit is expense; PhonePe/BSES payment successful is expense
 ✅ CDSL share credit, BK Crowns, and CAMS e-insurance account noise are skip
 ✅ CRED Club / CRED credited from savings is bill; YES funds-trf to owned a/c is transfer
@@ -31,7 +31,7 @@ Completed:
 ✅ Dhan investment buckets: FD/MF/equity/SGB/EPF seeded; `investment` SMS → Firefly transfer (kind+bank dest); EPF snapshot-only
 ✅ SMS import follow-up: classify pending → rebuild `financial_events` → push ready rows to Firefly
 ✅ Import / knowledge read APIs: `GET /imports`, `GET /sms`, `GET /knowledge` (financial envelope, id = smsId)
-✅ Due feed: `GET /knowledge?kind=due` unique last4+dueDate+amount; paid when a received/credited SMS hits that last4 in-cycle; overdue only if due date passed and unpaid
+✅ Due feed: `GET /knowledge?kind=due` unique last4+dueDate+amount; paid when a received/credited SMS hits that last4 in-cycle; ₹0 outstanding omitted; overdue only if due date passed and unpaid
 ✅ Push exceptions: `GET /knowledge?kind=exception` dry-run reasons (`blocked` / `skipped`) for unpushed `financial_events`
 ✅ Mixed timeline: `GET /timeline` (dues + exceptions + infra events; `type=financial` opt-in)
 ✅ Telegram attention: new dues + new/repeated Firefly blocked (seed then delta; no spend summaries)

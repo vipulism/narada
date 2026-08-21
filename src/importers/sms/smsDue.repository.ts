@@ -69,7 +69,7 @@ export class SmsDueRepository {
         );
 
         return {
-            items: rows.map(rowToSource),
+            items: rows.flatMap((row) => dueSourceIfReminder(row)),
             total: Number(countRows[0]?.total ?? 0),
         };
     }
@@ -185,7 +185,11 @@ function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[
         "a.subcategory = 'bill'",
         "JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.cashFlow')) = 'NEUTRAL'",
         `(
-            JSON_EXTRACT(a.extracted_data, '$.dueDate') IS NOT NULL
+            (
+                JSON_EXTRACT(a.extracted_data, '$.dueDate') IS NOT NULL
+                AND JSON_TYPE(JSON_EXTRACT(a.extracted_data, '$.dueDate')) <> 'NULL'
+                AND JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.dueDate')) <> ''
+            )
             OR UPPER(s.body) LIKE '%IS DUE ON%'
             OR UPPER(s.body) LIKE '%IS DUE BY%'
             OR UPPER(s.body) LIKE '%IS DUE TODAY%'
@@ -200,6 +204,11 @@ function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[
         )`,
         "UPPER(s.body) NOT LIKE '%RECEIVED TOWARDS YOUR CREDIT CARD%'",
         "UPPER(s.body) NOT LIKE '%CREDITED TO YOUR CARD%'",
+        "UPPER(s.body) NOT LIKE '%RECEIVED A PAYMENT%'",
+        "UPPER(s.body) NOT LIKE '%WE HAVE RECEIVED%'",
+        "UPPER(s.body) NOT LIKE '%WAS RECEIVED FOR%'",
+        "UPPER(s.body) NOT LIKE '%CONFIRM RECEIPT%'",
+        "UPPER(s.body) NOT LIKE '%RECEIVED AND CREDITED%'",
         "UPPER(s.body) NOT LIKE '%SPENT%'",
         "UPPER(s.body) NOT LIKE '%DEBITED%'",
     ];
@@ -260,6 +269,20 @@ function paymentAckWhere(options: {
     }
 
     return { whereSql: `WHERE ${where.join(" AND ")}`, params };
+}
+
+function dueSourceIfReminder(row: RowDataPacket): DueAnalysisSource[] {
+    const source = rowToSource(row);
+    const cashFlow =
+        typeof source.extractedData.cashFlow === "string"
+            ? source.extractedData.cashFlow
+            : undefined;
+
+    if (!isDueKnowledgeRow("bill", cashFlow, source.body)) {
+        return [];
+    }
+
+    return [source];
 }
 
 function rowToSource(row: RowDataPacket): DueAnalysisSource {

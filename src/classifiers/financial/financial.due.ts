@@ -33,6 +33,7 @@ export interface CardPaymentAck {
 
 /**
  * True when an analysis row is a due reminder that never posts to the ledger.
+ * Credit-card payment received/credited SMS stay out of the due list.
  *
  * @param subcategory - sms_analysis.subcategory
  * @param cashFlow - extracted cashFlow
@@ -43,7 +44,13 @@ export function isDueKnowledgeRow(
     cashFlow: string | undefined,
     body: string
 ): boolean {
-    return subcategory === "bill" && cashFlow === "NEUTRAL" && isDueReminder(body.toUpperCase());
+    const upper = body.toUpperCase();
+    return (
+        subcategory === "bill" &&
+        cashFlow === "NEUTRAL" &&
+        isDueReminder(upper) &&
+        !isCreditCardPaymentAck(upper)
+    );
 }
 
 /**
@@ -59,12 +66,7 @@ export function isCardPaymentAckRow(
     body: string
 ): boolean {
     const upper = body.toUpperCase();
-    return (
-        subcategory === "bill" &&
-        cashFlow === "NEUTRAL" &&
-        isCreditCardPaymentAck(upper) &&
-        !isDueReminder(upper)
-    );
+    return subcategory === "bill" && cashFlow === "NEUTRAL" && isCreditCardPaymentAck(upper);
 }
 
 /**
@@ -94,6 +96,39 @@ function firstAmount(body: string, pattern: RegExp): number | undefined {
 
     const parsed = Number(match[1].replace(/,/g, "").trim());
     return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * Amount the operator would pay: total due, else min due, else extracted amount.
+ *
+ * @param payload - Due knowledge amounts
+ */
+export function payableDueAmount(payload: {
+    amount?: number | null;
+    minDue?: number | null;
+    totalDue?: number | null;
+}): number | null {
+    for (const value of [payload.totalDue, payload.minDue, payload.amount]) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * False when the SMS names a nil outstanding (₹0). Unknown amounts still list.
+ *
+ * @param payload - Due knowledge amounts
+ */
+export function hasPayableDueAmount(payload: {
+    amount?: number | null;
+    minDue?: number | null;
+    totalDue?: number | null;
+}): boolean {
+    const payable = payableDueAmount(payload);
+    return payable === null || payable > 0;
 }
 
 /**

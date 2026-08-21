@@ -1,6 +1,8 @@
 import {
     dueReminderKey,
+    hasPayableDueAmount,
     isCardPaymentAckRow,
+    isDueKnowledgeRow,
     keepLatestDueReminders,
     parseDueAmounts,
     settleDueStatuses,
@@ -187,16 +189,31 @@ export function settleDueKnowledgeItems(
     paymentSources: DueAnalysisSource[],
     today: string = todayIstDate()
 ): KnowledgeItem[] {
-    const dues: DueReminderRow[] = dueSources.map((source) => {
+    const dues: DueReminderRow[] = dueSources.flatMap((source) => {
+        const cashFlow =
+            typeof source.extractedData.cashFlow === "string"
+                ? source.extractedData.cashFlow
+                : undefined;
+
+        if (!isDueKnowledgeRow("bill", cashFlow, source.body)) {
+            return [];
+        }
+
         const item = toDueKnowledgeItem(source);
-        return {
-            smsId: source.smsId,
-            occurredAt: source.occurredAt,
-            dueDate: item.type === "due" ? item.payload.dueDate : null,
-            accountLast4: item.type === "due" ? item.payload.accountLast4 : null,
-            amount: item.type === "due" ? item.payload.amount : null,
-            item,
-        };
+
+        if (item.type === "due" && !hasPayableDueAmount(item.payload)) {
+            return [];
+        }
+        return [
+            {
+                smsId: source.smsId,
+                occurredAt: source.occurredAt,
+                dueDate: item.type === "due" ? item.payload.dueDate : null,
+                accountLast4: item.type === "due" ? item.payload.accountLast4 : null,
+                amount: item.type === "due" ? item.payload.amount : null,
+                item,
+            },
+        ];
     });
     const unique = keepLatestDueReminders(dues);
     const payments: CardPaymentAck[] = paymentSources.flatMap((source) => {
@@ -310,15 +327,19 @@ export function filterDueKnowledgeItems(
     items: KnowledgeItem[],
     status: string | undefined
 ): KnowledgeItem[] {
+    const actionable = items.filter(
+        (item) => item.type !== "due" || hasPayableDueAmount(item.payload)
+    );
+
     if (status === "all") {
-        return items;
+        return actionable;
     }
 
     if (status === "open" || status === "overdue" || status === "paid") {
-        return items.filter((item) => item.type === "due" && item.payload.status === status);
+        return actionable.filter((item) => item.type === "due" && item.payload.status === status);
     }
 
-    return items.filter((item) => item.type === "due" && item.payload.status !== "paid");
+    return actionable.filter((item) => item.type === "due" && item.payload.status !== "paid");
 }
 
 function compareDueAttention(left: KnowledgeItem, right: KnowledgeItem): number {

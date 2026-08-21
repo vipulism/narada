@@ -9,7 +9,7 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { isCardPaymentAckRow, isDueKnowledgeRow, parseDueAmounts, settleDueStatuses } from "./financial.due";
+import { isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, parseDueAmounts, settleDueStatuses } from "./financial.due";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -765,6 +765,18 @@ const CASES: RegressionCase[] = [
             subcategory: "bill",
             cashFlow: "NEUTRAL",
             amount: 4327.9,
+            accountLast4: "4433",
+        },
+    },
+    {
+        id: "18912-hsbc-received-payment-inr-ack",
+        address: "BPHSBCIN",
+        body: "Dear Customer, we have received a payment of INR 2350 for credit card ending 4433 on 18-AUG-26. Thank you for using HSBC credit card.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 2350,
             accountLast4: "4433",
         },
     },
@@ -1692,6 +1704,22 @@ function runDueFeedRegression(): void {
         failures.push(`ICICI due amounts ${iciciAmounts.minDue}/${iciciAmounts.totalDue} != 330/6447`);
     }
 
+    const zeroDue =
+        "Total Due INR 0.00 & Min Due INR 0.00 to be paid by 30-Nov-24 on ICICI Bank Credit Card XX0004.";
+    const zeroAmounts = parseDueAmounts(zeroDue);
+
+    if (zeroAmounts.minDue !== 0 || zeroAmounts.totalDue !== 0) {
+        failures.push(`zero due amounts ${zeroAmounts.minDue}/${zeroAmounts.totalDue} != 0/0`);
+    }
+
+    if (hasPayableDueAmount({ minDue: 0, totalDue: 0, amount: 0 })) {
+        failures.push("₹0 outstanding must not be an attention due");
+    }
+
+    if (!hasPayableDueAmount({ minDue: 330, totalDue: 6447, amount: 6447 })) {
+        failures.push("positive due must stay on the list");
+    }
+
     const paymentAck =
         "DEAR HDFCBANK CARDMEMBER, PAYMENT OF Rs. 430.00 RECEIVED TOWARDS YOUR CREDIT CARD ENDING WITH 1687 ON 26-4-2026.YOUR AVAILABLE LIMIT IS RS. 796252.09";
 
@@ -1701,6 +1729,36 @@ function runDueFeedRegression(): void {
 
     if (!isCardPaymentAckRow("bill", "NEUTRAL", paymentAck)) {
         failures.push("CC payment ack should settle dues");
+    }
+
+    const hsbcPay =
+        "Dear Customer, we have received a payment of INR 2350 for credit card ending 4433 on 18-AUG-26. Thank you for using HSBC credit card.";
+
+    if (isDueKnowledgeRow("bill", "NEUTRAL", hsbcPay)) {
+        failures.push("HSBC payment received SMS must not be a due card");
+    }
+
+    if (!isCardPaymentAckRow("bill", "NEUTRAL", hsbcPay)) {
+        failures.push("HSBC payment received SMS should settle the card due");
+    }
+
+    const hsbcDue = {
+        smsId: 18900,
+        occurredAt: new Date("2026-08-10T10:00:00+05:30"),
+        dueDate: null,
+        accountLast4: "4433",
+        amount: 2350,
+    };
+    const hsbcPaid = {
+        smsId: 18912,
+        occurredAt: new Date("2026-08-18T19:25:00+05:30"),
+        accountLast4: "4433",
+        amount: 2350,
+    };
+    const hsbcSettled = settleDueStatuses([hsbcDue], [hsbcPaid], "2026-08-21");
+
+    if (hsbcSettled.get(18900) !== "paid") {
+        failures.push(`HSBC 4433 payment ack should pay the open due, got ${hsbcSettled.get(18900)}`);
     }
 
     const due1687 = {
