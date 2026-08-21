@@ -51,3 +51,5 @@ Not Implemented:
 - Vector DB
 - AI extraction
 - Bank importer
+- Gmail importer (LIC / insurance premium due + payment confirmation; no SMS for these)
+- Insurance premium attention — see `docs/ai/current_goals/006.md`
