@@ -8,6 +8,7 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
+import { isDueKnowledgeRow, parseDueAmounts } from "./financial.due";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1637,6 +1638,43 @@ export function runFinancialRegression(): void {
     }
 }
 
+/**
+ * Locked min/total due parse and due-vs-payment-ack split.
+ */
+function runDueFeedRegression(): void {
+    const failures: string[] = [];
+    const yesDue =
+        "Dear Cardmember, Payment of YES BANK Credit Card ending 0336 is due on 05/06/23. Min due is Rs.467.96 & Total Due Rs.9359.17. Please pay before the last date to avoid charges. Kindly ignore if already paid.";
+    const yesAmounts = parseDueAmounts(yesDue);
+
+    if (yesAmounts.minDue !== 467.96 || yesAmounts.totalDue !== 9359.17) {
+        failures.push(`YES due amounts ${yesAmounts.minDue}/${yesAmounts.totalDue} != 467.96/9359.17`);
+    }
+
+    if (!isDueKnowledgeRow("bill", "NEUTRAL", yesDue)) {
+        failures.push("YES due should be due knowledge");
+    }
+
+    const iciciDue =
+        "Total Due INR 6447 & Min Due INR 330 to be paid by 30-Nov-24 on ICICI Bank Credit Card XX0004.";
+    const iciciAmounts = parseDueAmounts(iciciDue);
+
+    if (iciciAmounts.minDue !== 330 || iciciAmounts.totalDue !== 6447) {
+        failures.push(`ICICI due amounts ${iciciAmounts.minDue}/${iciciAmounts.totalDue} != 330/6447`);
+    }
+
+    const paymentAck =
+        "DEAR HDFCBANK CARDMEMBER, PAYMENT OF Rs. 430.00 RECEIVED TOWARDS YOUR CREDIT CARD ENDING WITH 1687 ON 26-4-2026.YOUR AVAILABLE LIMIT IS RS. 796252.09";
+
+    if (isDueKnowledgeRow("bill", "NEUTRAL", paymentAck)) {
+        failures.push("CC payment ack must not be due knowledge");
+    }
+
+    if (failures.length > 0) {
+        throw new Error(`due feed regression failed:\n${failures.join("\n")}`);
+    }
+}
+
 runFinancialRegression();
 console.log(`classify regression ok: ${CASES.length} cases`);
 
@@ -1648,3 +1686,6 @@ console.log("dhan resolve regression ok");
 
 runFireflyMapRegression();
 console.log("firefly map regression ok");
+
+runDueFeedRegression();
+console.log("due feed regression ok");

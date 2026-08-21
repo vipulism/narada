@@ -114,7 +114,9 @@ curl "http://192.168.1.32:4000/sms/18897"
 
 ## Knowledge
 
-Posted `financial_events` only. `id` is the SMS id (stable across event rebuilds), not `financial_events.id`.
+Posted `financial_events` by default. `id` is the SMS id (stable across event rebuilds), not `financial_events.id`.
+
+Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`).
 
 ```text
 GET /knowledge
@@ -125,15 +127,40 @@ Filters:
 
 | Query | Meaning |
 |---|---|
-| `kind` | `expense`, `income`, `bill`, `transfer`, `investment`, `epf` |
-| `last4` | source or counterparty last4 |
+| `kind` | `expense`, `income`, `bill`, `transfer`, `investment`, `epf`, or `due` |
+| `last4` | source or counterparty last4 (dues: extracted account last4) |
 | `bank` | e.g. `YES Bank` |
-| `pushed` | `true` / `false` — whether Dhan has a journal id |
+| `pushed` | `true` / `false` — Dhan journal id (ignored when `kind=due`) |
 
 ```bash
 curl "http://192.168.1.32:4000/knowledge?kind=investment"
+curl "http://192.168.1.32:4000/knowledge?kind=due"
 curl "http://192.168.1.32:4000/knowledge?last4=1412&pushed=true"
 curl "http://192.168.1.32:4000/knowledge/18849"
+```
+
+Due item:
+
+```json
+{
+  "type": "due",
+  "id": 8843,
+  "occurredAt": "2023-05-20T10:00:00.000Z",
+  "payload": {
+    "kind": "due",
+    "dueDate": "2023-06-05",
+    "minDue": 467.96,
+    "totalDue": 9359.17,
+    "amount": 9359.17,
+    "currency": "INR",
+    "accountLast4": "0336",
+    "accountName": null,
+    "bank": "YES Bank",
+    "merchant": null,
+    "classifier": "regex-financial",
+    "classifierVersion": "1.3.25"
+  }
+}
 ```
 
 ```json
