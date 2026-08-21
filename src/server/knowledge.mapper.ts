@@ -1,4 +1,5 @@
 import {
+    cardLast4FromBody,
     dueReminderKey,
     hasPayableDueAmount,
     isCardPaymentAckRow,
@@ -209,7 +210,9 @@ export function settleDueKnowledgeItems(
                 smsId: source.smsId,
                 occurredAt: source.occurredAt,
                 dueDate: item.type === "due" ? item.payload.dueDate : null,
-                accountLast4: item.type === "due" ? item.payload.accountLast4 : null,
+                accountLast4:
+                    (item.type === "due" ? item.payload.accountLast4 : null) ??
+                    cardLast4FromBody(source.body),
                 amount: item.type === "due" ? item.payload.amount : null,
                 item,
             },
@@ -230,7 +233,9 @@ export function settleDueKnowledgeItems(
             {
                 smsId: source.smsId,
                 occurredAt: source.occurredAt,
-                accountLast4: asOptionalString(source.extractedData.accountLast4),
+                accountLast4:
+                    asOptionalString(source.extractedData.accountLast4) ??
+                    cardLast4FromBody(source.body),
                 amount: asFiniteNumber(source.extractedData.amount),
             },
         ];
