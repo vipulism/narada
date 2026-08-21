@@ -42,7 +42,7 @@ Completed:
 
 In Progress:
 
-🚧 Attention layer remaining: close shipped GitHub issues `#32`–`#38` — see `docs/ai/current_goals/005.md`
+None. Attention layer (`005`) is complete. Later: insurance premium from email (`006`).
 
 
 Not Implemented:
