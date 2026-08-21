@@ -1,5 +1,6 @@
 import {
     dueReminderKey,
+    hasPayableDueAmount,
     isCardPaymentAckRow,
     isDueKnowledgeRow,
     keepLatestDueReminders,
@@ -199,6 +200,10 @@ export function settleDueKnowledgeItems(
         }
 
         const item = toDueKnowledgeItem(source);
+
+        if (item.type === "due" && !hasPayableDueAmount(item.payload)) {
+            return [];
+        }
         return [
             {
                 smsId: source.smsId,
@@ -322,15 +327,19 @@ export function filterDueKnowledgeItems(
     items: KnowledgeItem[],
     status: string | undefined
 ): KnowledgeItem[] {
+    const actionable = items.filter(
+        (item) => item.type !== "due" || hasPayableDueAmount(item.payload)
+    );
+
     if (status === "all") {
-        return items;
+        return actionable;
     }
 
     if (status === "open" || status === "overdue" || status === "paid") {
-        return items.filter((item) => item.type === "due" && item.payload.status === status);
+        return actionable.filter((item) => item.type === "due" && item.payload.status === status);
     }
 
-    return items.filter((item) => item.type === "due" && item.payload.status !== "paid");
+    return actionable.filter((item) => item.type === "due" && item.payload.status !== "paid");
 }
 
 function compareDueAttention(left: KnowledgeItem, right: KnowledgeItem): number {

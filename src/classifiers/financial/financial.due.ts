@@ -99,6 +99,39 @@ function firstAmount(body: string, pattern: RegExp): number | undefined {
 }
 
 /**
+ * Amount the operator would pay: total due, else min due, else extracted amount.
+ *
+ * @param payload - Due knowledge amounts
+ */
+export function payableDueAmount(payload: {
+    amount?: number | null;
+    minDue?: number | null;
+    totalDue?: number | null;
+}): number | null {
+    for (const value of [payload.totalDue, payload.minDue, payload.amount]) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * False when the SMS names a nil outstanding (₹0). Unknown amounts still list.
+ *
+ * @param payload - Due knowledge amounts
+ */
+export function hasPayableDueAmount(payload: {
+    amount?: number | null;
+    minDue?: number | null;
+    totalDue?: number | null;
+}): boolean {
+    const payable = payableDueAmount(payload);
+    return payable === null || payable > 0;
+}
+
+/**
  * One bill cycle: last4 + due date + amount. Missing fields stay unique by SMS id
  * so unknown rows are not collapsed together.
  *

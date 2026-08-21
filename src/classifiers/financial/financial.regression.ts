@@ -9,7 +9,7 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { isCardPaymentAckRow, isDueKnowledgeRow, parseDueAmounts, settleDueStatuses } from "./financial.due";
+import { isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, parseDueAmounts, settleDueStatuses } from "./financial.due";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -1702,6 +1702,22 @@ function runDueFeedRegression(): void {
 
     if (iciciAmounts.minDue !== 330 || iciciAmounts.totalDue !== 6447) {
         failures.push(`ICICI due amounts ${iciciAmounts.minDue}/${iciciAmounts.totalDue} != 330/6447`);
+    }
+
+    const zeroDue =
+        "Total Due INR 0.00 & Min Due INR 0.00 to be paid by 30-Nov-24 on ICICI Bank Credit Card XX0004.";
+    const zeroAmounts = parseDueAmounts(zeroDue);
+
+    if (zeroAmounts.minDue !== 0 || zeroAmounts.totalDue !== 0) {
+        failures.push(`zero due amounts ${zeroAmounts.minDue}/${zeroAmounts.totalDue} != 0/0`);
+    }
+
+    if (hasPayableDueAmount({ minDue: 0, totalDue: 0, amount: 0 })) {
+        failures.push("₹0 outstanding must not be an attention due");
+    }
+
+    if (!hasPayableDueAmount({ minDue: 330, totalDue: 6447, amount: 6447 })) {
+        failures.push("positive due must stay on the list");
     }
 
     const paymentAck =
