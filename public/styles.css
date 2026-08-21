@@ -314,6 +314,17 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
+.due-eta {
+  margin-left: 0.35rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  color: var(--due);
+}
+
+.due-eta[data-tone="overdue"] {
+  color: var(--blocked);
+}
+
 .detail {
   margin: 0.35rem 0 0;
   color: var(--muted);

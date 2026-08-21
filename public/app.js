@@ -142,13 +142,59 @@
   }
 
   /**
+   * India calendar day `YYYY-MM-DD` (same clock as due overdue).
+   *
+   * @returns {string}
+   */
+  function todayIstDate() {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+  }
+
+  /**
    * @param {string | null | undefined} dueDate
    */
   function dueDay(dueDate) {
     if (!dueDate) {
       return null;
     }
-    return String(dueDate).slice(0, 10);
+    const day = String(dueDate).slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+  }
+
+  /**
+   * Whole calendar days from today IST to the due date (negative if overdue).
+   *
+   * @param {string} day - `YYYY-MM-DD`
+   * @returns {number | null}
+   */
+  function daysUntilDue(day) {
+    const due = Date.parse(`${day}T00:00:00+05:30`);
+    const today = Date.parse(`${todayIstDate()}T00:00:00+05:30`);
+    if (Number.isNaN(due) || Number.isNaN(today)) {
+      return null;
+    }
+    return Math.round((due - today) / 86_400_000);
+  }
+
+  /**
+   * @param {number | null} days
+   * @returns {string | null}
+   */
+  function formatRemainingDays(days) {
+    if (days == null || !Number.isFinite(days)) {
+      return null;
+    }
+    if (days === 0) {
+      return "today";
+    }
+    if (days === 1) {
+      return "1 day left";
+    }
+    if (days > 1) {
+      return `${days} days left`;
+    }
+    const overdue = Math.abs(days);
+    return overdue === 1 ? "1 day overdue" : `${overdue} days overdue`;
   }
 
   /**
@@ -244,6 +290,8 @@
       .filter(Boolean)
       .join(" ");
     const receivedAt = formatReceivedAt(item.occurredAt);
+    const remaining = day ? formatRemainingDays(daysUntilDue(day)) : null;
+    const remainingTone = overdue ? "overdue" : "due";
     const dueLabel = day
       ? overdue
         ? `Overdue ${day}`
@@ -267,7 +315,11 @@
         )}</span>
       </div>
       <p class="detail">
-        <span class="badge ${badgeClass}">${escapeHtml(dueLabel)}</span>
+        <span class="badge ${badgeClass}">${escapeHtml(dueLabel)}</span>${
+          remaining
+            ? ` <span class="due-eta" data-tone="${remainingTone}">${escapeHtml(remaining)}</span>`
+            : ""
+        }
         ${amounts ? ` · ${escapeHtml(amounts)}` : ""}
       </p>
       <p class="detail sms-id">sms ${escapeHtml(item.id)}${
