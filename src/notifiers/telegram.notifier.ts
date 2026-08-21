@@ -19,7 +19,7 @@ export class TelegramNotifier implements Notifier {
     }
 
     /**
-     * Posts HTML text to Telegram. No-op is not used — missing env throws.
+     * Posts HTML text to the configured Telegram chat.
      *
      * @param text - HTML body (`parse_mode=HTML`)
      */
