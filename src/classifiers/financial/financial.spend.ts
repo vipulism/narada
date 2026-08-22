@@ -134,6 +134,8 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
             "WESTSIDE",
             "CROMA",
             "RELIANCE DIGITAL",
+            "TANISHQ",
+            "TITAN COMPANY",
             "GARMENTS",
             "BOUTIQUE",
             "FOOTWEAR",
@@ -721,6 +723,10 @@ export function spendMerchantLabel(merchant?: string | null): string {
 
     if (!trimmed) {
         return "Unknown";
+    }
+
+    if (/titan\s*company/i.test(trimmed) || /\btanishq\b/i.test(trimmed)) {
+        return "Tanishq";
     }
 
     const vpa = trimmed.match(/^([^@\s]+)@([A-Za-z0-9.]+)$/);

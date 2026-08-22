@@ -563,6 +563,10 @@ export class FinancialParser {
             return "Milkbasket";
         }
 
+        if (/titan\s*company/i.test(body) || /\btanishq\b/i.test(body)) {
+            return "Tanishq";
+        }
+
         if (/\bbses\b/i.test(body)) {
             return "BSES";
         }

@@ -742,6 +742,19 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "hdfc-titan-company-tanishq",
+        address: "JM-HDFCBK-S",
+        body: "Spent Rs.280047 On HDFC Bank Card 3019 At _TITAN COMPANY LI.. On 2026-07-31:18:14:09.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 3019 to 7308080808",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 280047,
+            accountLast4: "3019",
+            merchant: "Tanishq",
+        },
+    },
+    {
         id: "18927-icici-amazon-pay",
         address: "AX-ICICIT-S",
         body: "INR 845.27 spent using ICICI Bank Card XX0004 on 20-Aug-26 on AMAZON PAY IN E. Avl Limit: INR 10,26,779.78. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.",
@@ -2629,6 +2642,14 @@ function runAttentionDigestRegression(): void {
 
     if (spendMerchantLabel("ramesh-kirana@okaxis") !== "Ramesh Kirana") {
         failures.push(`UPI VPA label ${spendMerchantLabel("ramesh-kirana@okaxis")}`);
+    }
+
+    if (spendMerchantLabel("_TITAN COMPANY LI..") !== "Tanishq") {
+        failures.push(`Titan Company catalog label ${spendMerchantLabel("_TITAN COMPANY LI..")}`);
+    }
+
+    if (spendBucket("_TITAN COMPANY LI..") !== "shopping" || spendBucket("Tanishq") !== "shopping") {
+        failures.push("Tanishq / Titan Company should be shopping");
     }
 
     if (merchantCatalogKey("paytmqr5wpzku@ptys") !== "paytm qr") {
