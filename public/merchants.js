@@ -650,9 +650,6 @@
     if (els.smsDialogAssign instanceof HTMLFormElement) {
       els.smsDialogAssign.hidden = true;
     }
-    if (els.smsDialogDhan) {
-      els.smsDialogDhan.hidden = true;
-    }
     if (els.smsDialogAssignMeta) {
       els.smsDialogAssignMeta.hidden = true;
       els.smsDialogAssignMeta.textContent = "";
