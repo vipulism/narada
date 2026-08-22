@@ -149,7 +149,7 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
     },
     {
         bucket: "transport",
-        needles: ["OLA", "UBER", "METRO", "IRCTC", "RAPIDO", "FASTAG", "TOLL", "UBER INDIA"],
+        needles: ["OLA", "UBER", "METRO", "IRCTC", "RAPIDO", "FASTAG", "TOLL", "UBER INDIA", "PARKING"],
     },
     {
         bucket: "utilities",
@@ -209,6 +209,8 @@ const LARGE_MERCHANT_INR = 5000;
 const LARGE_MERCHANT_CAP = 3;
 const SAMPLE_SMS_CAP = 3;
 const SMS_OWN_MERCHANT_PREFIX = "sms:";
+/** Mall names also contain MALL (shopping); parking / FASTag / toll stay Transport. */
+const TRANSPORT_BEFORE_SHOPPING = ["PARKING", "FASTAG", "TOLL"];
 
 /** Per-SMS category and/or merchant catalog move. */
 export interface SmsSpendOverride {
@@ -451,6 +453,10 @@ export function spendBucket(merchant?: string | null, body?: string | null): Spe
 
     if (!text) {
         return "other";
+    }
+
+    if (TRANSPORT_BEFORE_SHOPPING.some((needle) => text.includes(needle))) {
+        return "transport";
     }
 
     for (const row of BUCKET_KEYWORDS) {

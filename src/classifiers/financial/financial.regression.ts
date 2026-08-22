@@ -2701,6 +2701,13 @@ function runAttentionDigestRegression(): void {
         failures.push("IKEA should be shopping and Netflix subscriptions");
     }
 
+    if (
+        spendBucket("Mall Parking") !== "transport" ||
+        spendBucket("Shipra Mall", "txn of INR 50 using IDFC FIRST Bank FASTag 5940") !== "transport"
+    ) {
+        failures.push("mall parking / FASTag at mall should be transport, not shopping");
+    }
+
     if (spendBucket("RAMESH KIRANA") !== "grocery" || spendBucket("sharma-kirana@okaxis") !== "grocery") {
         failures.push("UPI kirana names should be grocery");
     }
