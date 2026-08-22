@@ -77,6 +77,7 @@ export function eventCatalogKey(
  * @param cap - Max updates this call
  * @param overrides - Optional per-SMS merchant moves
  * @param aliases - Optional rename / merge map
+ * @param bucketLabels - Labels for user-created buckets
  */
 export async function applyMerchantCategoryToDhan(
     client: FireflyClient,
@@ -85,7 +86,8 @@ export async function applyMerchantCategoryToDhan(
     categoryName: string,
     cap = DHAN_RECATEGORIZE_CAP,
     overrides?: ReadonlyMap<number, SmsSpendOverride>,
-    aliases?: ReadonlyMap<string, MerchantAlias>
+    aliases?: ReadonlyMap<string, MerchantAlias>,
+    bucketLabels?: ReadonlyMap<string, string>
 ): Promise<DhanRecategorizeStats> {
     const parser = new FinancialParser();
     const matched = pushedExpensesForMerchant(events, key, parser, overrides, aliases);
@@ -106,7 +108,9 @@ export async function applyMerchantCategoryToDhan(
         }
 
         const overrideCategory = overrides?.get(event.smsId)?.category;
-        const name = overrideCategory ? spendBucketLabel(overrideCategory) : categoryName;
+        const name = overrideCategory
+            ? spendBucketLabel(overrideCategory, bucketLabels)
+            : categoryName;
 
         try {
             await client.updateTransactionCategory(id, name);
@@ -134,6 +138,7 @@ export async function applyMerchantCategoryToDhan(
  * @param cap - Max updates this call
  * @param overrides - Optional per-SMS category / merchant moves
  * @param aliases - Optional rename / merge map
+ * @param bucketLabels - Labels for user-created buckets
  */
 export async function applyAssignedCategoriesToDhan(
     client: FireflyClient,
@@ -141,7 +146,8 @@ export async function applyAssignedCategoriesToDhan(
     work: Array<{ key: string; categoryName: string }>,
     cap = DHAN_RECATEGORIZE_CAP,
     overrides?: ReadonlyMap<number, SmsSpendOverride>,
-    aliases?: ReadonlyMap<string, MerchantAlias>
+    aliases?: ReadonlyMap<string, MerchantAlias>,
+    bucketLabels?: ReadonlyMap<string, string>
 ): Promise<DhanRecategorizeStats> {
     const parser = new FinancialParser();
     const byKey = new Map(work.map((row) => [row.key, row.categoryName]));
@@ -153,7 +159,7 @@ export async function applyAssignedCategoriesToDhan(
         const override = overrides?.get(event.smsId);
         const key = eventCatalogKey(event, parser, override, aliases);
         const categoryName = override?.category
-            ? spendBucketLabel(override.category)
+            ? spendBucketLabel(override.category, bucketLabels)
             : byKey.get(key);
 
         return categoryName ? [{ event, categoryName }] : [];
@@ -197,11 +203,13 @@ export async function applyAssignedCategoriesToDhan(
  * @param client - Authenticated Firefly client
  * @param fireflyTransactionId - Stored journal id
  * @param category - Spend bucket
+ * @param bucketLabels - Labels for user-created buckets
  */
 export async function applySmsCategoryToDhan(
     client: FireflyClient,
     fireflyTransactionId: string,
-    category: SpendBucket
+    category: SpendBucket,
+    bucketLabels?: ReadonlyMap<string, string>
 ): Promise<DhanRecategorizeStats> {
     const stats: DhanRecategorizeStats = {
         matched: 1,
@@ -212,7 +220,10 @@ export async function applySmsCategoryToDhan(
     };
 
     try {
-        await client.updateTransactionCategory(fireflyTransactionId, spendBucketLabel(category));
+        await client.updateTransactionCategory(
+            fireflyTransactionId,
+            spendBucketLabel(category, bucketLabels)
+        );
         stats.updated = 1;
     } catch (error) {
         stats.failed = 1;

@@ -53,7 +53,7 @@ Home has search, a **past 6 months** since filter (3 / 12 / all time), due statu
 
 ## Merchants
 
-SMS expense merchants from `financial_events`, with optional user spend categories. Expenses stored without a merchant are re-parsed from the SMS body on this list (HDFC `&#10;` UPI `At shop@vpa`, ICICI `spent … on MERCHANT`) so they do not collapse into one Unknown row. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
+SMS expense merchants from `financial_events`, with optional user spend categories. Built-in buckets include Education (school / tuition keywords). Extra buckets are created on the Merchants page (`spend_buckets`) and then assigned like the builtins. Expenses stored without a merchant are re-parsed from the SMS body on this list (HDFC `&#10;` UPI `At shop@vpa`, ICICI `spent … on MERCHANT`) so they do not collapse into one Unknown row. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
 
 Open an SMS from the merchant row to change **that SMS only**: a category dropdown (overrides the merchant bucket) and a merchant-item dropdown (move it to another catalog row, or **This SMS only** to split it out). The other SMS in the group stay put.
 
@@ -63,6 +63,8 @@ GET /merchants/sms?key=blinkit
 GET /merchants/sms/:smsId
 PUT /merchants
 PUT /merchants/sms/:smsId
+POST /merchants/buckets
+DELETE /merchants/buckets/:key
 POST /merchants/apply
 ```
 
@@ -81,6 +83,9 @@ curl "http://192.168.1.32:4000/merchants?status=uncategorized"
 curl -X PUT "http://192.168.1.32:4000/merchants" \
   -H "Content-Type: application/json" \
   -d '{"key":"paytm qr","label":"Paytm QR","category":"grocery","applyToDhan":true}'
+curl -X POST "http://192.168.1.32:4000/merchants/buckets" \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Pets"}'
 curl -X POST "http://192.168.1.32:4000/merchants/apply" \
   -H "Content-Type: application/json" \
   -d '{"key":"paytm qr"}'
@@ -92,7 +97,9 @@ curl -X POST "http://192.168.1.32:4000/merchants/apply" \
   -d '{"all":true}'
 ```
 
-`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label` (rename display; omit `category` to only rename), optional `mergeInto` (fold this key into another catalog id; later SMS with the old spelling follow the merge), optional `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only. Rename / merge persist in `merchant_aliases`.
+`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label` (rename display; omit `category` to only rename), optional `mergeInto` (fold this key into another catalog id; later SMS with the old spelling follow the merge), optional `category` (builtin `grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `education`, `other`, or a custom slug from `POST /merchants/buckets`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only. Rename / merge persist in `merchant_aliases`.
+
+`POST /merchants/buckets` body: `label` (1–64 chars) and optional `key` (slug). Built-in names are rejected. `DELETE /merchants/buckets/:key` removes a custom bucket only when no merchant or SMS still uses it.
 
 `PUT /merchants/sms/:smsId` body: optional `category` (same buckets, or `null`/`""` to inherit the merchant), optional `merchantKey` (`""` = pattern group, `__own__` = this SMS as its own row, or another catalog key), and optional `applyToDhan` for that one journal. Stored in `sms_spend_overrides`. The SMS preview also has **Apply this SMS in Dhan**.
 

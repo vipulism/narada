@@ -5,6 +5,7 @@ import { FinancialEventRepository } from "../../db/repositories/financialEvent.r
 import { MerchantCategoryRepository } from "../../db/repositories/merchantCategory.repository";
 import { SmsSpendOverrideRepository } from "../../db/repositories/smsSpendOverride.repository";
 import { MerchantAliasRepository } from "../../db/repositories/merchantAlias.repository";
+import { SpendBucketRepository } from "../../db/repositories/spendBucket.repository";
 import { loadKnownAccountIndex } from "../../classifiers/financial/knownAccounts";
 import { loadFireflyClient } from "../../connectors/firefly/firefly.client";
 import {
@@ -70,9 +71,19 @@ async function main(): Promise<void> {
     const assigned = await new MerchantCategoryRepository().listBucketMap();
     const smsOverrideMap = await new SmsSpendOverrideRepository().listAll();
     const aliases = await new MerchantAliasRepository().listAll();
+    const bucketLabels = await new SpendBucketRepository().labelMap();
     const events = await new FinancialEventRepository().listAll();
     const rows = events.map((event) =>
-        planFireflyTransaction(event, firefly, owned, openings, assigned, smsOverrideMap, aliases)
+        planFireflyTransaction(
+            event,
+            firefly,
+            owned,
+            openings,
+            assigned,
+            smsOverrideMap,
+            aliases,
+            bucketLabels
+        )
     );
     const ready = rows.filter((row) => row.ok);
     const skipped = rows.filter((row) => !row.ok && row.skip);

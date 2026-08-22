@@ -1,11 +1,13 @@
 import { Request, Response, Router } from "express";
 import {
     buildMerchantCatalog,
+    isBuiltinSpendBucket,
     isOwnSmsMerchantKey,
     isSpendBucket,
     merchantCatalogKey,
     ownSmsMerchantKey,
     ownSmsMerchantLabel,
+    parseNewSpendBucket,
     resolveMerchantAlias,
     resolveSpendBucket,
     spendBucketLabel,
@@ -14,6 +16,7 @@ import {
     type MerchantAlias,
     type MerchantCatalogItem,
     type SpendBucket,
+    type SpendBucketOption,
 } from "../../classifiers/financial/financial.spend";
 import { isFireflyConfigured } from "../../connectors/firefly/firefly.exceptions";
 import { loadFireflyClient } from "../../connectors/firefly/firefly.client";
@@ -28,6 +31,7 @@ import { FinancialEventRepository } from "../../db/repositories/financialEvent.r
 import { MerchantCategoryRepository } from "../../db/repositories/merchantCategory.repository";
 import { SmsSpendOverrideRepository } from "../../db/repositories/smsSpendOverride.repository";
 import { MerchantAliasRepository } from "../../db/repositories/merchantAlias.repository";
+import { SpendBucketRepository } from "../../db/repositories/spendBucket.repository";
 import {
     effectiveCatalogKey,
     expenseCatalogKey,
@@ -48,7 +52,7 @@ interface SmsMerchantContext {
     pushed: boolean;
     ownMerchantKey: string;
     override: { category: SpendBucket | null; merchantKey: string | null } | null;
-    buckets: Array<{ key: SpendBucket; label: string }>;
+    buckets: SpendBucketOption[];
     merchants: Array<{ key: string; label: string }>;
 }
 
@@ -56,10 +60,12 @@ const events = new FinancialEventRepository();
 const categories = new MerchantCategoryRepository();
 const smsOverrides = new SmsSpendOverrideRepository();
 const aliases = new MerchantAliasRepository();
+const spendBuckets = new SpendBucketRepository();
 
 /**
  * GET /merchants, GET /merchants/sms, PUT /merchants (category, rename, merge),
- * PUT /merchants/sms/:smsId, and POST /merchants/apply.
+ * PUT /merchants/sms/:smsId, POST /merchants/buckets, DELETE /merchants/buckets/:key,
+ * and POST /merchants/apply.
  */
 export function createMerchantsRouter(): Router {
     const router = Router();
@@ -67,6 +73,8 @@ export function createMerchantsRouter(): Router {
     router.get("/merchants/sms/:smsId", getMerchantSms);
     router.put("/merchants/sms/:smsId", assignMerchantSms);
     router.get("/merchants/sms", listMerchantSms);
+    router.post("/merchants/buckets", createCustomBucket);
+    router.delete("/merchants/buckets/:key", deleteCustomBucket);
     router.get("/merchants", listMerchants);
     router.post("/merchants/apply", applyMerchantCategories);
     router.put("/merchants", assignMerchant);
@@ -85,7 +93,7 @@ async function listMerchants(req: Request, res: Response): Promise<void> {
     const limit = merchantLimit(req.query.limit);
     const q = optionalQueryString(req.query.q)?.toLowerCase();
     const status = parseMerchantStatus(optionalQueryString(req.query.status));
-    const catalog = await loadCatalog();
+    const [catalog, extraBuckets] = await Promise.all([loadCatalog(), spendBuckets.listAll()]);
     const filtered = catalog.filter((item) => {
         if (status === "uncategorized" && item.category) {
             return false;
@@ -106,7 +114,7 @@ async function listMerchants(req: Request, res: Response): Promise<void> {
     res.status(200).json({
         items: filtered.slice(start, start + limit).map(toMerchantJson),
         pagination: paginationMeta(page, limit, filtered.length),
-        buckets: spendBucketOptions(),
+        buckets: spendBucketOptions(extraBuckets),
         merchants: catalog
             .map((item) => ({ key: item.key, label: item.label }))
             .sort((left, right) => left.label.localeCompare(right.label)),
@@ -211,7 +219,7 @@ async function assignMerchantSms(req: Request, res: Response): Promise<void> {
 
         if (rawCategory === null || rawCategory === "") {
             category = undefined;
-        } else if (typeof rawCategory === "string" && isSpendBucket(rawCategory)) {
+        } else if (typeof rawCategory === "string" && isSpendBucket(rawCategory, await extraBucketKeys())) {
             category = rawCategory;
         } else {
             res.status(400).json({ message: "category must be a spend bucket" });
@@ -329,7 +337,7 @@ async function assignMerchant(req: Request, res: Response): Promise<void> {
         return;
     }
 
-    if (typeof rawCategory !== "string" || !isSpendBucket(rawCategory)) {
+    if (typeof rawCategory !== "string" || !isSpendBucket(rawCategory, await extraBucketKeys())) {
         res.status(400).json({ message: "category must be a spend bucket" });
         return;
     }
@@ -429,9 +437,10 @@ async function applyMerchantCategories(req: Request, res: Response): Promise<voi
             categories.listAssignments(),
             smsOverrides.listAll(),
         ]);
+        const labels = await spendBuckets.labelMap();
         const work = [...assignments.entries()].map(([key, row]) => ({
             key,
-            categoryName: spendBucketLabel(row.category),
+            categoryName: spendBucketLabel(row.category, labels),
         }));
 
         if (work.length === 0 && overrides.size === 0) {
@@ -554,7 +563,7 @@ async function loadSmsMerchantContext(smsId: number): Promise<SmsMerchantContext
                   merchantKey: override.merchantKey ?? null,
               }
             : null,
-        buckets: spendBucketOptions(),
+        buckets: spendBucketOptions(await spendBuckets.listAll()),
         merchants: catalog
             .filter((entry) => entry.key !== patternKey && entry.key !== ownSmsMerchantKey(smsId))
             .map((entry) => ({ key: entry.key, label: entry.label }))
@@ -602,19 +611,21 @@ async function recategorizeDhan(
         return { skipped: true, reason: "FIREFLY_URL or FIREFLY_TOKEN missing" };
     }
 
-    const [pushed, overrides, aliasMap] = await Promise.all([
+    const [pushed, overrides, aliasMap, labels] = await Promise.all([
         events.listPushedExpenses(),
         smsOverrides.listAll(),
         aliases.listAll(),
+        spendBuckets.labelMap(),
     ]);
     return applyMerchantCategoryToDhan(
         loadFireflyClient(),
         pushed,
         key,
-        spendBucketLabel(category),
+        spendBucketLabel(category, labels),
         undefined,
         overrides,
-        aliasMap
+        aliasMap,
+        labels
     );
 }
 
@@ -627,14 +638,18 @@ async function recategorizeAssigned(
         return { skipped: true, reason: "FIREFLY_URL or FIREFLY_TOKEN missing" };
     }
 
-    const pushed = await events.listPushedExpenses();
+    const [pushed, labels] = await Promise.all([
+        events.listPushedExpenses(),
+        spendBuckets.labelMap(),
+    ]);
     return applyAssignedCategoriesToDhan(
         loadFireflyClient(),
         pushed,
         work,
         undefined,
         overrides,
-        aliasMap
+        aliasMap,
+        labels
     );
 }
 
@@ -652,7 +667,84 @@ async function recategorizeSmsDhan(
         return { skipped: true, reason: "this SMS is not in Dhan yet" };
     }
 
-    return applySmsCategoryToDhan(loadFireflyClient(), event.fireflyTransactionId, category);
+    return applySmsCategoryToDhan(
+        loadFireflyClient(),
+        event.fireflyTransactionId,
+        category,
+        await spendBuckets.labelMap()
+    );
+}
+
+/**
+ * POST /merchants/buckets — add a user-created spend group.
+ */
+async function createCustomBucket(req: Request, res: Response): Promise<void> {
+    const parsed = parseNewSpendBucket(req.body?.label, req.body?.key);
+
+    if ("error" in parsed) {
+        res.status(400).json({ message: parsed.error });
+        return;
+    }
+
+    if (await spendBuckets.get(parsed.key)) {
+        res.status(409).json({ message: "bucket already exists" });
+        return;
+    }
+
+    await spendBuckets.insert(parsed.key, parsed.label);
+    res.status(201).json({
+        bucket: { key: parsed.key, label: parsed.label, custom: true },
+        buckets: spendBucketOptions(await spendBuckets.listAll()),
+    });
+}
+
+/**
+ * DELETE /merchants/buckets/:key — remove a user-created spend group.
+ */
+async function deleteCustomBucket(req: Request, res: Response): Promise<void> {
+    const key = bodyString(req.params.key)?.toLowerCase();
+
+    if (!key) {
+        res.status(404).json({ message: "bucket not found" });
+        return;
+    }
+
+    if (isBuiltinSpendBucket(key)) {
+        res.status(400).json({ message: "cannot delete a built-in bucket" });
+        return;
+    }
+
+    const existing = await spendBuckets.get(key);
+
+    if (!existing) {
+        res.status(404).json({ message: "bucket not found" });
+        return;
+    }
+
+    const [merchantCount, smsCount] = await Promise.all([
+        categories.countByCategory(key),
+        smsOverrides.countByCategory(key),
+    ]);
+
+    if (merchantCount + smsCount > 0) {
+        res.status(409).json({
+            message: "reassign merchants off this bucket first",
+            merchants: merchantCount,
+            sms: smsCount,
+        });
+        return;
+    }
+
+    await spendBuckets.delete(key);
+    res.status(200).json({
+        deleted: key,
+        buckets: spendBucketOptions(await spendBuckets.listAll()),
+    });
+}
+
+async function extraBucketKeys(): Promise<Set<string>> {
+    const extra = await spendBuckets.listAll();
+    return new Set(extra.map((row) => row.key));
 }
 
 function bodyBoolean(value: unknown): boolean {

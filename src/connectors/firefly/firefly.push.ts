@@ -2,6 +2,7 @@ import { FinancialEventRepository } from "../../db/repositories/financialEvent.r
 import { MerchantCategoryRepository } from "../../db/repositories/merchantCategory.repository";
 import { SmsSpendOverrideRepository } from "../../db/repositories/smsSpendOverride.repository";
 import { MerchantAliasRepository } from "../../db/repositories/merchantAlias.repository";
+import { SpendBucketRepository } from "../../db/repositories/spendBucket.repository";
 import { loadKnownAccountIndex } from "../../classifiers/financial/knownAccounts";
 import { FireflyLast4Index } from "./firefly.accountMap";
 import { FireflyClient } from "./firefly.client";
@@ -34,6 +35,7 @@ export async function pushReadyFireflyTransactions(
     const assigned = await new MerchantCategoryRepository().listBucketMap();
     const smsOverrideMap = await new SmsSpendOverrideRepository().listAll();
     const aliases = await new MerchantAliasRepository().listAll();
+    const bucketLabels = await new SpendBucketRepository().labelMap();
     const events = await repository.listAll();
     const stats: FireflyPushStats = {
         posted: 0,
@@ -56,7 +58,8 @@ export async function pushReadyFireflyTransactions(
             openings,
             assigned,
             smsOverrideMap,
-            aliases
+            aliases,
+            bucketLabels
         );
 
         if (!row.ok) {

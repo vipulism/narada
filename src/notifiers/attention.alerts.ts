@@ -9,6 +9,7 @@ import { FinancialEventRepository } from "../db/repositories/financialEvent.repo
 import { MerchantCategoryRepository } from "../db/repositories/merchantCategory.repository";
 import { SmsSpendOverrideRepository } from "../db/repositories/smsSpendOverride.repository";
 import { MerchantAliasRepository } from "../db/repositories/merchantAlias.repository";
+import { SpendBucketRepository } from "../db/repositories/spendBucket.repository";
 import { loadSettledDueKnowledge } from "../server/due.feed";
 import {
     formatBlockedDigest,
@@ -27,6 +28,7 @@ const events = new FinancialEventRepository();
 const merchantCategories = new MerchantCategoryRepository();
 const smsSpendOverrides = new SmsSpendOverrideRepository();
 const merchantAliases = new MerchantAliasRepository();
+const customSpendBuckets = new SpendBucketRepository();
 const telegram = new TelegramNotifier();
 
 export { formatBlockedDigest, formatDailyAttentionDigest, formatDueDigest };
@@ -189,12 +191,13 @@ async function loadSpendMonthStats(today: string): Promise<SpendMonthStats> {
     const ranges = istComparableMonthRanges(today);
     const thisBounds = istInclusiveBounds(ranges.thisStart, ranges.thisEnd);
     const lastBounds = istInclusiveBounds(ranges.lastStart, ranges.lastEnd);
-    const [thisRows, lastRows, assigned, overrides, aliases] = await Promise.all([
+    const [thisRows, lastRows, assigned, overrides, aliases, bucketLabels] = await Promise.all([
         events.listExpensesInRange(thisBounds.from, thisBounds.to),
         events.listExpensesInRange(lastBounds.from, lastBounds.to),
         merchantCategories.listBucketMap(),
         smsSpendOverrides.listAll(),
         merchantAliases.listAll(),
+        customSpendBuckets.labelMap(),
     ]);
 
     return buildSpendMonthStats(
@@ -204,6 +207,7 @@ async function loadSpendMonthStats(today: string): Promise<SpendMonthStats> {
         ranges.lastLabel,
         assigned,
         overrides,
-        aliases
+        aliases,
+        bucketLabels
     );
 }

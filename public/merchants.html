@@ -20,9 +20,11 @@
         <p class="eyebrow">नारद</p>
         <h1>Merchants</h1>
         <p class="lede">
-          Assign a spend category to each SMS merchant. New names show up after
-          the next classify. New Dhan withdrawals pick it up automatically;
-          already-pushed Dhan rows update when you apply.
+          Assign a spend category to each SMS merchant. Built-in buckets
+          include Education (school / tuition). Add your own below. New names
+          show up after the next classify. New Dhan withdrawals pick the
+          category up automatically; already-pushed Dhan rows update when you
+          apply.
         </p>
         <nav class="site-nav" aria-label="Narada">
           <a href="/">Attention</a>
@@ -79,6 +81,32 @@
             Apply all assigned to Dhan
           </button>
         </p>
+      </section>
+
+      <section class="panel" aria-labelledby="bucket-heading">
+        <div class="section-head">
+          <h2 id="bucket-heading">Buckets</h2>
+          <p id="bucket-meta" class="muted"></p>
+        </div>
+        <p class="hint">
+          Built-in groups plus ones you add. School fees keyword-match
+          <strong>Education</strong>. New buckets appear in the category
+          dropdowns and in Dhan / Telegram.
+        </p>
+        <div id="bucket-list" class="bucket-list"></div>
+        <form id="bucket-form" class="bucket-form">
+          <label class="grow">
+            <span class="sr-only">New bucket name</span>
+            <input
+              id="bucket-label"
+              type="text"
+              maxlength="64"
+              placeholder="New bucket, e.g. Pets"
+              autocomplete="off"
+            />
+          </label>
+          <button type="submit" class="btn">Add bucket</button>
+        </form>
       </section>
 
       <section class="panel" aria-labelledby="merchant-list-heading">
