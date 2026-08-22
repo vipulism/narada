@@ -359,7 +359,7 @@ export function isCreditCardPaymentAck(body: string): boolean {
 }
 
 /**
- * Savings/UPI debit that pays a credit-card bill (CRED, CredClub, SBI Cards, Axis).
+ * Savings/UPI debit that pays a credit-card bill (CRED, CredClub, CheQ, SBI Cards, Axis).
  * Not a household spend — the card swipe was already the expense.
  *
  * @param body - SMS body (any case)
@@ -382,11 +382,7 @@ export function isCardBillPayMessage(body: string): boolean {
         return true;
     }
 
-    if (/(?:;|&)\s*SBI\s+CARDS?\s+CREDITED/.test(upper)) {
-        return true;
-    }
-
-    return /(?:;|&)\s*AXIS\s+CREDITED/.test(upper);
+    return /(?:;|&)\s*(?:SBI\s+CARDS?|CHEQ|AXIS)\s+CREDITED/.test(upper);
 }
 
 function isCredBillPay(body: string): boolean {

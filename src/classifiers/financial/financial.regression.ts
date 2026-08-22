@@ -667,6 +667,19 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "18571-icici-cheq-card-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 43147.00 on 18-Jul-26; CheQ credited. UPI:110247400024. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 43147,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
         id: "14236-sbi-home-loan-emi-due-skip",
         address: "VA-CBSSBI",
         body: "Dear customer, EMI due on 05042025 in A/c XXXXX489751. Please pay in time. Please ignore, if already paid.-SBI",
@@ -3019,6 +3032,14 @@ function runAttentionDigestRegression(): void {
             pushed: false,
         },
         {
+            smsId: 18571,
+            merchant: "CheQ",
+            amount: 43147,
+            occurredAt: new Date("2026-07-18T00:00:00Z"),
+            body: "ICICI Bank Acct XX412 debited for Rs 43147.00 on 18-Jul-26; CheQ credited. UPI:110247400024. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+            pushed: false,
+        },
+        {
             smsId: 2,
             merchant: "Tanishq",
             amount: 1000,
@@ -3030,7 +3051,9 @@ function runAttentionDigestRegression(): void {
     if (
         cardBillSpend.length !== 1 ||
         cardBillSpend[0]?.catalogKey !== "tanishq" ||
-        cardBillSpend.some((row) => ["credclub", "axis", "sbi cards", "cred"].includes(row.catalogKey ?? ""))
+        cardBillSpend.some((row) =>
+            ["credclub", "axis", "sbi cards", "cred", "cheq"].includes(row.catalogKey ?? "")
+        )
     ) {
         failures.push(`card bill pays should drop off merchants, got ${JSON.stringify(cardBillSpend)}`);
     }
