@@ -383,6 +383,34 @@ export class FinancialEventRepository {
     }
 
     /**
+     * Expense rows that already have a stored merchant (no SMS body).
+     *
+     * @returns Newest-first named expenses
+     */
+    async listExpensesWithMerchant(): Promise<
+        Array<{ smsId: number; merchant: string; amount: number; occurredAt: Date }>
+    > {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT sms_id, merchant, amount, occurred_at
+            FROM financial_events
+            WHERE kind = 'expense'
+              AND merchant IS NOT NULL
+              AND TRIM(merchant) <> ''
+            ORDER BY occurred_at DESC, sms_id DESC
+            `
+        );
+
+        return rows.map((row) => ({
+            smsId: Number(row.sms_id),
+            merchant: String(row.merchant),
+            amount: Number(row.amount ?? 0),
+            occurredAt: new Date(row.occurred_at),
+        }));
+    }
+
+    /**
      * Expense rows with no stored merchant (for read-time SMS parse).
      *
      * @returns Newest-first expenses whose `merchant` is blank

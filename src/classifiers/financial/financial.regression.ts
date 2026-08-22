@@ -4,7 +4,7 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
-import { recoverUnknownMerchantTotals } from "../../server/merchant.catalog";
+import { listSmsForMerchantKey, recoverUnknownMerchantTotals } from "../../server/merchant.catalog";
 import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
 import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
@@ -2487,6 +2487,31 @@ function runAttentionDigestRegression(): void {
         !recoveredNames.includes("AMAZON PAY IN E")
     ) {
         failures.push(`Unknown merchant recovery ${recoveredNames.join(",")}`);
+    }
+
+    const blinkitSms = listSmsForMerchantKey(
+        [{ smsId: 9, merchant: "Swiggy", amount: 80, occurredAt: new Date("2026-08-01T00:00:00Z") }],
+        [
+            {
+                smsId: 18928,
+                amount: 361,
+                occurredAt: new Date("2026-08-21T00:00:00Z"),
+                pushed: false,
+                body: "Txn Rs.361.00&#10;At blinkit949346.rzp@hdfcban &#10;by UPI",
+            },
+            {
+                smsId: 18927,
+                amount: 845,
+                occurredAt: new Date("2026-08-20T00:00:00Z"),
+                pushed: false,
+                body: "INR 845.27 spent using ICICI Bank Card XX0004 on 20-Aug-26 on AMAZON PAY IN E. Avl Limit: INR 1.",
+            },
+        ],
+        "blinkit"
+    );
+
+    if (blinkitSms.length !== 1 || blinkitSms[0]?.smsId !== 18928) {
+        failures.push(`Blinkit SMS list should be only #18928, got ${blinkitSms.map((row) => row.smsId)}`);
     }
 
     const assignedSpend = buildSpendMonthStats(

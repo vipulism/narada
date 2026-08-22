@@ -1,5 +1,5 @@
 import { FinancialParser } from "../classifiers/financial/financial.parser";
-import type { MerchantSpendTotal } from "../classifiers/financial/financial.spend";
+import { merchantCatalogKey, type MerchantSpendTotal } from "../classifiers/financial/financial.spend";
 
 /** Expense with no `financial_events.merchant` (older classify). */
 export interface MissingMerchantExpense {
@@ -8,6 +8,71 @@ export interface MissingMerchantExpense {
     occurredAt: Date;
     pushed: boolean;
     body: string;
+}
+
+/** Expense used to list every SMS under one catalog key. */
+export interface MerchantExpenseSms {
+    smsId: number;
+    merchant?: string;
+    amount: number;
+    occurredAt: Date;
+    body?: string;
+}
+
+/**
+ * Catalog key after recovering a blank stored merchant from the SMS body.
+ *
+ * @param storedMerchant - `financial_events.merchant`
+ * @param body - SMS body when the stored merchant is empty
+ * @param parser - Shared parser instance
+ * @returns Catalog key used on the Merchants page
+ */
+export function expenseCatalogKey(
+    storedMerchant: string | undefined,
+    body: string | undefined,
+    parser: FinancialParser
+): string {
+    const raw = storedMerchant?.trim() || parser.extractMerchantFromBody(body ?? "") || "Unknown";
+    return merchantCatalogKey(raw);
+}
+
+/**
+ * SMS rows for one merchant catalog key, newest first.
+ *
+ * @param named - Expenses that already have a stored merchant
+ * @param missing - Expenses with a blank merchant
+ * @param key - {@link merchantCatalogKey}
+ */
+export function listSmsForMerchantKey(
+    named: MerchantExpenseSms[],
+    missing: MissingMerchantExpense[],
+    key: string
+): MerchantExpenseSms[] {
+    const parser = new FinancialParser();
+    const rows: MerchantExpenseSms[] = [];
+
+    for (const row of named) {
+        if (expenseCatalogKey(row.merchant, row.body, parser) === key) {
+            rows.push(row);
+        }
+    }
+
+    for (const row of missing) {
+        if (expenseCatalogKey(undefined, row.body, parser) === key) {
+            rows.push({
+                smsId: row.smsId,
+                merchant: parser.extractMerchantFromBody(row.body) ?? "Unknown",
+                amount: row.amount,
+                occurredAt: row.occurredAt,
+                body: row.body,
+            });
+        }
+    }
+
+    return rows.sort((left, right) => {
+        const delta = right.occurredAt.getTime() - left.occurredAt.getTime();
+        return delta !== 0 ? delta : right.smsId - left.smsId;
+    });
 }
 
 /**
