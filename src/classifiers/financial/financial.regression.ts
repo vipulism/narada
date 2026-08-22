@@ -4,6 +4,7 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
+import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
 import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
@@ -2343,12 +2344,14 @@ function runAttentionDigestRegression(): void {
             {
                 merchant: "paytmqr5wpzku@ptys",
                 txCount: 2,
+                pushedCount: 2,
                 totalAmount: 80,
                 lastSeenAt: new Date("2026-08-01T00:00:00Z"),
             },
             {
                 merchant: "paytmqrabc@ptys",
                 txCount: 1,
+                pushedCount: 1,
                 totalAmount: 20,
                 lastSeenAt: new Date("2026-08-20T00:00:00Z"),
             },
@@ -2368,8 +2371,31 @@ function runAttentionDigestRegression(): void {
 
     const paytm = catalog.find((row) => row.key === "paytm qr");
 
-    if (!paytm || paytm.txCount !== 3 || paytm.totalAmount !== 100 || paytm.category !== "grocery") {
+    if (
+        !paytm ||
+        paytm.txCount !== 3 ||
+        paytm.pushedCount !== 3 ||
+        paytm.totalAmount !== 100 ||
+        paytm.category !== "grocery"
+    ) {
         failures.push(`Paytm QR collapse ${JSON.stringify(paytm)}`);
+    }
+
+    const paytmPushed = stubEvent(1, "expense", 30, "1687", new Date("2026-08-16T12:00:00+05:30"));
+    paytmPushed.merchant = "paytmqr5wpzku@ptys";
+    paytmPushed.fireflyTransactionId = "11";
+    const swiggyPushed = stubEvent(2, "expense", 80, "1687", new Date("2026-08-16T12:00:00+05:30"));
+    swiggyPushed.merchant = "Swiggy";
+    swiggyPushed.fireflyTransactionId = "22";
+    const paytmUnpushed = stubEvent(3, "expense", 10, "1687", new Date("2026-08-16T12:00:00+05:30"));
+    paytmUnpushed.merchant = "paytmqrabc@ptys";
+    const dhanMatch = pushedExpensesForMerchant(
+        [paytmPushed, swiggyPushed, paytmUnpushed],
+        "paytm qr"
+    );
+
+    if (dhanMatch.length !== 1 || dhanMatch[0]?.smsId !== 1) {
+        failures.push("Dhan recategorize should match pushed Paytm QR expenses only");
     }
 
     const assignedSpend = buildSpendMonthStats(

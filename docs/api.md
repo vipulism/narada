@@ -53,11 +53,12 @@ Home has search, a **past 6 months** since filter (3 / 12 / all time), due statu
 
 ## Merchants
 
-SMS expense merchants from `financial_events`, with optional user spend categories. Used for Telegram spend buckets and Firefly `category_name` on **new** withdrawals. Already-pushed Dhan journals are not rewritten.
+SMS expense merchants from `financial_events`, with optional user spend categories. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
 
 ```text
 GET /merchants
 PUT /merchants
+POST /merchants/apply
 ```
 
 `GET` filters:
@@ -74,10 +75,18 @@ Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess 
 curl "http://192.168.1.32:4000/merchants?status=uncategorized"
 curl -X PUT "http://192.168.1.32:4000/merchants" \
   -H "Content-Type: application/json" \
-  -d '{"key":"paytm qr","label":"Paytm QR","category":"grocery"}'
+  -d '{"key":"paytm qr","label":"Paytm QR","category":"grocery","applyToDhan":true}'
+curl -X POST "http://192.168.1.32:4000/merchants/apply" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"paytm qr"}'
+curl -X POST "http://192.168.1.32:4000/merchants/apply" \
+  -H "Content-Type: application/json" \
+  -d '{"all":true}'
 ```
 
-`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label`, and `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`). `category: null` or `""` clears the assignment so the keyword guess applies again.
+`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label`, `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only.
+
+`POST /merchants/apply` needs a saved category. `{ "key": "…" }` one merchant; `{ "all": true }` every assigned merchant. Opening-skipped SMS never reached Dhan.
 
 ---
 

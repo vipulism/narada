@@ -343,7 +343,13 @@ export class FinancialEventRepository {
      * @returns One row per distinct `financial_events.merchant`
      */
     async listExpenseMerchantTotals(): Promise<
-        Array<{ merchant: string; txCount: number; totalAmount: number; lastSeenAt: Date }>
+        Array<{
+            merchant: string;
+            txCount: number;
+            pushedCount: number;
+            totalAmount: number;
+            lastSeenAt: Date;
+        }>
     > {
         const db = getDb();
         const [rows] = await db.query<RowDataPacket[]>(
@@ -351,6 +357,7 @@ export class FinancialEventRepository {
             SELECT
                 COALESCE(NULLIF(TRIM(merchant), ''), 'Unknown') AS merchant,
                 COUNT(*) AS tx_count,
+                SUM(CASE WHEN firefly_transaction_id IS NOT NULL THEN 1 ELSE 0 END) AS pushed_count,
                 SUM(amount) AS total_amount,
                 MAX(occurred_at) AS last_seen
             FROM financial_events
@@ -362,9 +369,46 @@ export class FinancialEventRepository {
         return rows.map((row) => ({
             merchant: String(row.merchant ?? "Unknown"),
             txCount: Number(row.tx_count ?? 0),
+            pushedCount: Number(row.pushed_count ?? 0),
             totalAmount: Number(row.total_amount ?? 0),
             lastSeenAt: new Date(row.last_seen),
         }));
+    }
+
+    /**
+     * Expense rows already posted to Dhan.
+     *
+     * @returns Pushed `expense` events, newest first
+     */
+    async listPushedExpenses(): Promise<FinancialEvent[]> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                sms_id,
+                kind,
+                cash_flow,
+                amount,
+                currency,
+                account_last4,
+                counterparty_last4,
+                account_name,
+                bank,
+                merchant,
+                transaction_type,
+                occurred_at,
+                classifier,
+                classifier_version,
+                firefly_transaction_id,
+                firefly_pushed_at
+            FROM financial_events
+            WHERE kind = 'expense'
+              AND firefly_transaction_id IS NOT NULL
+            ORDER BY occurred_at DESC, sms_id DESC
+            `
+        );
+
+        return rows.map(rowToEvent);
     }
 }
 

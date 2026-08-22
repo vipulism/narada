@@ -16,6 +16,8 @@
     query: document.getElementById("query"),
     status: document.getElementById("status"),
     refresh: document.getElementById("refresh"),
+    applyDhan: document.getElementById("apply-dhan"),
+    applyAll: document.getElementById("apply-all"),
     pager: document.getElementById("pager"),
     prevPage: document.getElementById("prev-page"),
     nextPage: document.getElementById("next-page"),
@@ -145,13 +147,23 @@
           year: "numeric",
         })
       : "not seen";
+    const pushed = Number(item.pushedCount ?? 0);
+    const apply =
+      item.category && pushed > 0
+        ? `<button type="button" class="btn mark-due" data-apply="${escapeHtml(
+            item.key
+          )}">Apply ${pushed} in Dhan</button>`
+        : "";
     return `
       <article class="merchant-row card" data-key="${escapeHtml(item.key)}">
         <div>
           <h3>${escapeHtml(item.label)}</h3>
           <p class="merchant-meta">
-            ${item.txCount} tx · ${money.format(item.totalAmount)} · last ${escapeHtml(when)}
+            ${item.txCount} tx${pushed ? ` · ${pushed} in Dhan` : ""} · ${money.format(
+              item.totalAmount
+            )} · last ${escapeHtml(when)}
           </p>
+          ${apply}
         </div>
         <label class="merchant-cat">
           <span class="sr-only">Category for ${escapeHtml(item.label)}</span>
@@ -256,6 +268,10 @@
         key,
         label,
         category: category === "" ? null : category,
+        applyToDhan:
+          category !== "" &&
+          els.applyDhan instanceof HTMLInputElement &&
+          els.applyDhan.checked,
       }),
     });
 
@@ -263,6 +279,43 @@
       const body = await res.json().catch(() => ({}));
       throw new Error(body.message || `HTTP ${res.status}`);
     }
+
+    return res.json().then((payload) => payload.dhan);
+  }
+
+  /**
+   * @param {unknown} dhan
+   */
+  function showDhanResult(dhan) {
+    if (!dhan || typeof dhan !== "object") {
+      return;
+    }
+    const row = /** @type {Record<string, unknown>} */ (dhan);
+    if (row.skipped) {
+      setText(els.pageMeta, `Dhan skipped — ${row.reason || "not configured"}`);
+      return;
+    }
+    const updated = Number(row.updated ?? 0);
+    const failed = Number(row.failed ?? 0);
+    const remaining = Number(row.remaining ?? 0);
+    const extra = remaining ? ` · ${remaining} left (run Apply again)` : "";
+    const fail = failed ? ` · ${failed} failed` : "";
+    setText(els.pageMeta, `Dhan updated ${updated}${fail}${extra}`);
+  }
+
+  /**
+   * @param {string} [key]
+   */
+  async function applyDhan(key) {
+    const res = await api("/merchants/apply", {
+      method: "POST",
+      body: JSON.stringify(key ? { key } : { all: true }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(body.message || `HTTP ${res.status}`);
+    }
+    showDhanResult(body.dhan);
   }
 
   els.toolbar?.addEventListener("submit", (event) => {
@@ -298,6 +351,24 @@
     load();
   });
 
+  els.applyAll?.addEventListener("click", async () => {
+    if (!(els.applyAll instanceof HTMLButtonElement)) {
+      return;
+    }
+    els.applyAll.disabled = true;
+    setText(els.pageMeta, "Updating Dhan…");
+    try {
+      await applyDhan();
+    } catch (error) {
+      setText(
+        els.pageMeta,
+        error instanceof Error ? error.message : "Could not update Dhan"
+      );
+    } finally {
+      els.applyAll.disabled = false;
+    }
+  });
+
   els.prevPage?.addEventListener("click", () => {
     if (view.page <= 1) {
       return;
@@ -313,6 +384,24 @@
     load();
   });
 
+  els.list?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement) || !target.dataset.apply) {
+      return;
+    }
+    target.disabled = true;
+    setText(els.pageMeta, "Updating Dhan…");
+    try {
+      await applyDhan(target.dataset.apply);
+    } catch (error) {
+      setText(
+        els.pageMeta,
+        error instanceof Error ? error.message : "Could not update Dhan"
+      );
+      target.disabled = false;
+    }
+  });
+
   els.list?.addEventListener("change", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLSelectElement) || !target.dataset.assign) {
@@ -321,8 +410,13 @@
 
     target.disabled = true;
     try {
-      await assign(target.dataset.assign, target.dataset.label ?? "", target.value);
+      const dhan = await assign(
+        target.dataset.assign,
+        target.dataset.label ?? "",
+        target.value
+      );
       await load();
+      showDhanResult(dhan);
     } catch (error) {
       setText(
         els.pageMeta,

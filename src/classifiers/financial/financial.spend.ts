@@ -301,6 +301,7 @@ export interface MerchantCatalogItem {
     category: SpendBucket | null;
     suggested: SpendBucket;
     txCount: number;
+    pushedCount: number;
     totalAmount: number;
     lastSeenAt: Date | null;
 }
@@ -315,6 +316,7 @@ export interface MerchantCategoryAssignment {
 export interface MerchantSpendTotal {
     merchant: string;
     txCount: number;
+    pushedCount?: number;
     totalAmount: number;
     lastSeenAt: Date;
 }
@@ -338,6 +340,7 @@ export function buildMerchantCatalog(
 
         if (existing) {
             existing.txCount += row.txCount;
+            existing.pushedCount += row.pushedCount ?? 0;
             existing.totalAmount += row.totalAmount;
 
             if (!existing.lastSeenAt || row.lastSeenAt > existing.lastSeenAt) {
@@ -354,6 +357,7 @@ export function buildMerchantCatalog(
             category: null,
             suggested: spendBucket(row.merchant),
             txCount: row.txCount,
+            pushedCount: row.pushedCount ?? 0,
             totalAmount: row.totalAmount,
             lastSeenAt: row.lastSeenAt,
         });
@@ -373,6 +377,7 @@ export function buildMerchantCatalog(
             category: assignment.category,
             suggested: spendBucket(assignment.label),
             txCount: 0,
+            pushedCount: 0,
             totalAmount: 0,
             lastSeenAt: null,
         });

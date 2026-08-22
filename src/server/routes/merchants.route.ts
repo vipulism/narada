@@ -3,11 +3,19 @@ import {
     buildMerchantCatalog,
     isSpendBucket,
     merchantCatalogKey,
+    spendBucketLabel,
     spendBucketOptions,
     spendMerchantLabel,
     type MerchantCatalogItem,
     type SpendBucket,
 } from "../../classifiers/financial/financial.spend";
+import { isFireflyConfigured } from "../../connectors/firefly/firefly.exceptions";
+import { loadFireflyClient } from "../../connectors/firefly/firefly.client";
+import {
+    applyAssignedCategoriesToDhan,
+    applyMerchantCategoryToDhan,
+    type DhanRecategorizeStats,
+} from "../../connectors/firefly/firefly.recategorize";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 import { MerchantCategoryRepository } from "../../db/repositories/merchantCategory.repository";
 import { optionalQueryString, paginationMeta, parsePagination } from "../pagination";
@@ -16,12 +24,13 @@ const events = new FinancialEventRepository();
 const categories = new MerchantCategoryRepository();
 
 /**
- * GET /merchants and PUT /merchants — SMS merchant catalog and spend assignments.
+ * GET /merchants, PUT /merchants, and POST /merchants/apply.
  */
 export function createMerchantsRouter(): Router {
     const router = Router();
 
     router.get("/merchants", listMerchants);
+    router.post("/merchants/apply", applyMerchantCategories);
     router.put("/merchants", assignMerchant);
 
     return router;
@@ -111,7 +120,51 @@ async function assignMerchant(req: Request, res: Response): Promise<void> {
     const category: SpendBucket = rawCategory;
     await categories.upsert(key, label, category);
     const item = await loadCatalogItem(key, label);
-    res.status(200).json({ item: toMerchantJson(item) });
+    const dhan = bodyBoolean(req.body?.applyToDhan)
+        ? await recategorizeDhan(key, category)
+        : undefined;
+    res.status(200).json({ item: toMerchantJson(item), dhan: dhan ?? null });
+}
+
+/**
+ * POST /merchants/apply — rewrite `category_name` on already-pushed Dhan withdrawals.
+ */
+async function applyMerchantCategories(req: Request, res: Response): Promise<void> {
+    const rawKey = bodyString(req.body?.key) ?? bodyString(req.body?.merchant);
+
+    if (req.body?.all === true) {
+        const assignments = await categories.listAssignments();
+        const work = [...assignments.entries()].map(([key, row]) => ({
+            key,
+            categoryName: spendBucketLabel(row.category),
+        }));
+
+        if (work.length === 0) {
+            res.status(400).json({ message: "no merchants have a category yet" });
+            return;
+        }
+
+        const dhan = await recategorizeAssigned(work);
+        res.status(200).json({ dhan });
+        return;
+    }
+
+    if (!rawKey) {
+        res.status(400).json({ message: "key is required" });
+        return;
+    }
+
+    const key = merchantCatalogKey(rawKey);
+    const assignments = await categories.listAssignments();
+    const assigned = assignments.get(key);
+
+    if (!assigned) {
+        res.status(400).json({ message: "assign a category before applying to Dhan" });
+        return;
+    }
+
+    const dhan = await recategorizeDhan(key, assigned.category);
+    res.status(200).json({ dhan });
 }
 
 async function loadCatalogItem(key: string, fallbackLabel: string): Promise<MerchantCatalogItem> {
@@ -131,6 +184,7 @@ async function loadCatalogItem(key: string, fallbackLabel: string): Promise<Merc
         category: assignments.get(key)?.category ?? null,
         suggested: assignments.get(key)?.category ?? "other",
         txCount: 0,
+        pushedCount: 0,
         totalAmount: 0,
         lastSeenAt: null,
     };
@@ -143,6 +197,7 @@ function toMerchantJson(item: MerchantCatalogItem): Record<string, unknown> {
         category: item.category,
         suggested: item.suggested,
         txCount: item.txCount,
+        pushedCount: item.pushedCount,
         totalAmount: item.totalAmount,
         lastSeenAt: item.lastSeenAt?.toISOString() ?? null,
     };
@@ -164,6 +219,38 @@ function merchantLimit(value: unknown): number {
     }
 
     return Math.min(Math.floor(raw), 500);
+}
+
+async function recategorizeDhan(
+    key: string,
+    category: SpendBucket
+): Promise<DhanRecategorizeStats | { skipped: true; reason: string }> {
+    if (!isFireflyConfigured()) {
+        return { skipped: true, reason: "FIREFLY_URL or FIREFLY_TOKEN missing" };
+    }
+
+    const pushed = await events.listPushedExpenses();
+    return applyMerchantCategoryToDhan(
+        loadFireflyClient(),
+        pushed,
+        key,
+        spendBucketLabel(category)
+    );
+}
+
+async function recategorizeAssigned(
+    work: Array<{ key: string; categoryName: string }>
+): Promise<DhanRecategorizeStats | { skipped: true; reason: string }> {
+    if (!isFireflyConfigured()) {
+        return { skipped: true, reason: "FIREFLY_URL or FIREFLY_TOKEN missing" };
+    }
+
+    const pushed = await events.listPushedExpenses();
+    return applyAssignedCategoriesToDhan(loadFireflyClient(), pushed, work);
+}
+
+function bodyBoolean(value: unknown): boolean {
+    return value === true || value === "true" || value === 1 || value === "1";
 }
 
 function bodyString(value: unknown): string | undefined {

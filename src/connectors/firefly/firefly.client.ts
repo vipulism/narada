@@ -181,6 +181,40 @@ export class FireflyClient {
     }
 
     /**
+     * Sets `category_name` on an existing journal (creates the category if missing).
+     *
+     * @param id - Firefly transaction group id stored on `financial_events`
+     * @param categoryName - Spend bucket label, e.g. Groceries
+     */
+    async updateTransactionCategory(id: string, categoryName: string): Promise<void> {
+        let journalIds: string[] = [];
+
+        try {
+            journalIds = await this.listTransactionJournalIds(id);
+        } catch {
+            journalIds = [];
+        }
+
+        const transactions =
+            journalIds.length > 0
+                ? journalIds.map((journalId) => ({
+                      transaction_journal_id: journalId,
+                      category_name: categoryName,
+                  }))
+                : [{ category_name: categoryName }];
+
+        try {
+            await this.http.put(`/transactions/${id}`, {
+                apply_rules: false,
+                fire_webhooks: false,
+                transactions,
+            });
+        } catch (error) {
+            throw fireflyHttpError(error, `PUT /transactions/${id}`);
+        }
+    }
+
+    /**
      * Updates fields on an existing account (e.g. opening balance).
      *
      * @param id - Firefly account id
@@ -208,6 +242,20 @@ export class FireflyClient {
         } catch (error) {
             throw fireflyHttpError(error, `PUT /accounts/${id}`);
         }
+    }
+
+    private async listTransactionJournalIds(id: string): Promise<string[]> {
+        const response = await this.http.get<{
+            data?: {
+                attributes?: {
+                    transactions?: Array<{ transaction_journal_id?: string | number }>;
+                };
+            };
+        }>(`/transactions/${id}`);
+
+        return (response.data.data?.attributes?.transactions ?? [])
+            .map((split) => String(split.transaction_journal_id ?? "").trim())
+            .filter((journalId) => journalId.length > 0);
     }
 
     private async listAccountsByType(type: "asset" | "liability"): Promise<FireflyAccount[]> {

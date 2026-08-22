@@ -390,7 +390,21 @@ h2 {
 }
 
 .merchant-toolbar {
-  grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 12rem);
+  grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 12rem) auto;
+}
+
+.merchant-toolbar .check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  padding-top: 1.15rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.toolbar-extra {
+  margin: 0.75rem 0 0;
 }
 
 .merchant-list {

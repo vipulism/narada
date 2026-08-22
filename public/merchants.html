@@ -21,8 +21,8 @@
         <h1>Merchants</h1>
         <p class="lede">
           Assign a spend category to each SMS merchant. New names show up after
-          the next classify. Dhan gets that category on <strong>new</strong>
-          withdrawals only.
+          the next classify. New Dhan withdrawals pick it up automatically;
+          already-pushed Dhan rows update when you apply.
         </p>
         <nav class="site-nav" aria-label="Narada">
           <a href="/">Attention</a>
@@ -60,10 +60,20 @@
               <option value="all">All</option>
             </select>
           </label>
+          <label class="check">
+            <input id="apply-dhan" type="checkbox" checked />
+            <span>Update existing Dhan txs</span>
+          </label>
         </form>
         <p class="hint">
-          Keyword guess is shown until you pick a category. Clearing a category
-          falls back to that guess. Already-pushed Dhan rows are not rewritten.
+          Telegram uses the map as soon as you assign. Dhan already-pushed
+          withdrawals need a PUT (checkbox, per-row Apply, or Apply all).
+          Opening-skipped SMS never reached Dhan.
+        </p>
+        <p class="toolbar-extra">
+          <button type="button" id="apply-all" class="btn">
+            Apply all assigned to Dhan
+          </button>
         </p>
       </section>
 
