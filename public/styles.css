@@ -506,7 +506,8 @@ h2 {
 }
 
 .sms-dialog-dhan {
-  margin: 0.75rem 0 0;
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .sms-dialog-body {

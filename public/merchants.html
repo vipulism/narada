@@ -69,8 +69,8 @@
           Newest 3 SMS ids are on the row; <strong>+more</strong> lists every
           SMS for that merchant so you can confirm they match. Click an id to
           read the body. In that box you can change <strong>this SMS</strong>
-          category or move it to another merchant item. <strong>Apply this SMS
-          in Dhan</strong> updates that one journal only.
+          category or move it to another merchant item. The SMS box has
+          <strong>Apply this SMS in Dhan</strong> for that one journal.
         </p>
         <p class="toolbar-extra">
           <button type="button" id="apply-all" class="btn">
@@ -119,12 +119,12 @@
           <span class="field-label">Merchant item</span>
           <select id="sms-dialog-merchant"></select>
         </label>
+        <p class="sms-dialog-dhan" id="sms-dialog-dhan">
+          <button type="button" id="sms-dialog-apply" class="btn mark-due">
+            Apply this SMS in Dhan
+          </button>
+        </p>
       </form>
-      <p class="sms-dialog-dhan" id="sms-dialog-dhan" hidden>
-        <button type="button" id="sms-dialog-apply" class="btn">
-          Apply this SMS in Dhan
-        </button>
-      </p>
       <p id="sms-dialog-assign-meta" class="muted" hidden></p>
       <p id="sms-dialog-body" class="sms-dialog-body"></p>
     </dialog>

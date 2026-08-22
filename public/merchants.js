@@ -244,7 +244,7 @@
     );
     els.smsDialogMerchant.innerHTML = smsMerchantSelect(ctx);
     if (els.smsDialogDhan) {
-      els.smsDialogDhan.hidden = !ctx.pushed;
+      els.smsDialogDhan.hidden = false;
     }
     if (els.smsDialogApply instanceof HTMLButtonElement) {
       els.smsDialogApply.disabled = false;
@@ -649,9 +649,6 @@
     setText(els.smsDialogBody, "");
     if (els.smsDialogAssign instanceof HTMLFormElement) {
       els.smsDialogAssign.hidden = true;
-    }
-    if (els.smsDialogDhan) {
-      els.smsDialogDhan.hidden = true;
     }
     if (els.smsDialogAssignMeta) {
       els.smsDialogAssignMeta.hidden = true;
