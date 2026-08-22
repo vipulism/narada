@@ -150,7 +150,7 @@ Filters:
 | `last4` | source or counterparty last4 (dues: extracted account last4) |
 | `bank` | e.g. `YES Bank` |
 | `pushed` | `true` / `false` — Dhan journal id (ignored when `kind=due` or `kind=exception`) |
-| `status` | `blocked` / `skipped` with `kind=exception`. For `kind=due`: `open` / `overdue` / `paid` / `all`. Default dues omit **paid** (a received/credited SMS on the same last4 settled that cycle). |
+| `status` | `blocked` / `skipped` with `kind=exception`. For `kind=due`: `open` / `overdue` / `paid` / `unpaid` / `all`. Default dues omit **paid** (a received/credited SMS on the same last4, or Home **mark paid**). Telegram daily digest and ingest “new due” pings use that same unpaid set (open + overdue only). |
 | `q` | Case-insensitive search of last4, bank, merchant, amounts, status, SMS body (dues), and reason (exceptions) |
 | `from` / `to` | ISO datetime. Dues use **due date** (SMS time if due date missing). Exceptions use event time. |
 | `sort` | `dueDate` / `amount` / `bank` / `occurredAt` / `status` |

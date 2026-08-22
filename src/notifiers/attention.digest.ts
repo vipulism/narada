@@ -1,4 +1,8 @@
-import { daysUntilDue, formatRemainingDays } from "../classifiers/financial/financial.due";
+import {
+    daysUntilDue,
+    formatRemainingDays,
+    isUnpaidDueAttention,
+} from "../classifiers/financial/financial.due";
 import { BlockedAlert, DueAlert } from "./attention.state";
 
 const DIGEST_CAP = 8;
@@ -61,7 +65,17 @@ export function istComparableMonthRanges(today: string): {
 }
 
 /**
+ * Open + overdue rows only. Home mark-paid and payment-ack `paid` stay out.
+ *
+ * @param rows - Due alerts (may include paid)
+ */
+export function unpaidDueAlerts(rows: DueAlert[]): DueAlert[] {
+    return rows.filter((row) => isUnpaidDueAttention(row.status));
+}
+
+/**
  * Builds HTML for new due rows. Empty when there are none.
+ * Paid rows are omitted even if the caller forgot to filter.
  *
  * @param title - Digest heading
  * @param rows - New due reminders
@@ -72,14 +86,16 @@ export function formatDueDigest(
     rows: DueAlert[],
     today?: string
 ): string | undefined {
-    if (rows.length === 0) {
+    const unpaid = unpaidDueAlerts(rows);
+
+    if (unpaid.length === 0) {
         return undefined;
     }
 
-    const lines = rows.slice(0, DIGEST_CAP).map((row) => formatDueLine(row, today));
-    const extra = rows.length > DIGEST_CAP ? `\n… +${rows.length - DIGEST_CAP} more` : "";
+    const lines = unpaid.slice(0, DIGEST_CAP).map((row) => formatDueLine(row, today));
+    const extra = unpaid.length > DIGEST_CAP ? `\n… +${unpaid.length - DIGEST_CAP} more` : "";
 
-    return `📬 <b>${escapeHtml(title)}</b> (${rows.length})\n${lines.join("\n")}${extra}`;
+    return `📬 <b>${escapeHtml(title)}</b> (${unpaid.length})\n${lines.join("\n")}${extra}`;
 }
 
 /**
@@ -103,8 +119,9 @@ export function formatBlockedDigest(title: string, rows: BlockedAlert[]): string
 
 /**
  * Morning unpaid-dues list plus Dhan this-month vs last-month income/expense.
+ * Paid rows (Home mark or payment-ack) are omitted.
  *
- * @param dues - Unpaid due reminders (paid already filtered)
+ * @param dues - Due reminders; paid is stripped before send
  * @param dhan - Firefly month stats
  * @param today - `YYYY-MM-DD` IST
  */

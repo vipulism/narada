@@ -16,7 +16,8 @@ const dues = new SmsDueRepository();
 const marks = new DueMarkRepository();
 
 /**
- * Unique due bills with paid/overdue/open from received/credited card SMS.
+ * Unique due bills with paid/overdue/open from received/credited card SMS
+ * and Home `POST /knowledge/:id/paid`. Default status omits paid (Telegram too).
  *
  * @param options - Optional last4, bank, from/to, status, and search
  */
