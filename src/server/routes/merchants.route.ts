@@ -18,6 +18,7 @@ import {
 } from "../../connectors/firefly/firefly.recategorize";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 import { MerchantCategoryRepository } from "../../db/repositories/merchantCategory.repository";
+import { recoverUnknownMerchantTotals } from "../merchant.catalog";
 import { optionalQueryString, paginationMeta, parsePagination } from "../pagination";
 
 const events = new FinancialEventRepository();
@@ -47,10 +48,12 @@ async function listMerchants(req: Request, res: Response): Promise<void> {
     const limit = merchantLimit(req.query.limit);
     const q = optionalQueryString(req.query.q)?.toLowerCase();
     const status = parseMerchantStatus(optionalQueryString(req.query.status));
-    const [totals, assignments] = await Promise.all([
+    const [grouped, missing, assignments] = await Promise.all([
         events.listExpenseMerchantTotals(),
+        events.listExpensesMissingMerchant(),
         categories.listAssignments(),
     ]);
+    const totals = recoverUnknownMerchantTotals(grouped, missing);
     const catalog = buildMerchantCatalog(totals, assignments);
     const filtered = catalog.filter((item) => {
         if (status === "uncategorized" && item.category) {
@@ -168,11 +171,15 @@ async function applyMerchantCategories(req: Request, res: Response): Promise<voi
 }
 
 async function loadCatalogItem(key: string, fallbackLabel: string): Promise<MerchantCatalogItem> {
-    const [totals, assignments] = await Promise.all([
+    const [grouped, missing, assignments] = await Promise.all([
         events.listExpenseMerchantTotals(),
+        events.listExpensesMissingMerchant(),
         categories.listAssignments(),
     ]);
-    const match = buildMerchantCatalog(totals, assignments).find((row) => row.key === key);
+    const match = buildMerchantCatalog(
+        recoverUnknownMerchantTotals(grouped, missing),
+        assignments
+    ).find((row) => row.key === key);
 
     if (match) {
         return match;

@@ -4,6 +4,7 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
+import { recoverUnknownMerchantTotals } from "../../server/merchant.catalog";
 import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
 import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
@@ -604,6 +605,47 @@ const CASES: RegressionCase[] = [
             accountLast4: "1687",
             transactionType: "UPI",
             merchant: "paytmqr5wpzku@ptys",
+        },
+    },
+    {
+        id: "18928-hdfc-blinkit-xml-newline",
+        address: "VM-HDFCBK-S",
+        body: "Txn Rs.361.00&#10;On HDFC Bank Card 3019&#10;At blinkit949346.rzp@hdfcban &#10;by UPI 623319853648&#10;On 21-08&#10;Not You?&#10;Call 18002586161/SMS BLOCK CC 3019 to 7308080808&#10;",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 361,
+            accountLast4: "3019",
+            transactionType: "UPI",
+            merchant: "Blinkit",
+        },
+    },
+    {
+        id: "18927-icici-amazon-pay",
+        address: "AX-ICICIT-S",
+        body: "INR 845.27 spent using ICICI Bank Card XX0004 on 20-Aug-26 on AMAZON PAY IN E. Avl Limit: INR 10,26,779.78. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 845.27,
+            accountLast4: "0004",
+            merchant: "AMAZON PAY IN E",
+        },
+    },
+    {
+        id: "18917-hdfc-dominos-xml-newline",
+        address: "AD-HDFCBK-S",
+        body: "Txn Rs.1078.35&#10;On HDFC Bank Card 3019&#10;At dominospizzaonline@ptybl &#10;by UPI 659797482569&#10;On 19-08&#10;Not You?&#10;Call 18002586161/SMS BLOCK CC 3019 to 7308080808&#10;",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 1078.35,
+            accountLast4: "3019",
+            transactionType: "UPI",
+            merchant: "Domino's",
         },
     },
     {
@@ -2399,6 +2441,52 @@ function runAttentionDigestRegression(): void {
 
     if (dhanMatch.length !== 1 || dhanMatch[0]?.smsId !== 1) {
         failures.push("Dhan recategorize should match pushed Paytm QR expenses only");
+    }
+
+    const recovered = recoverUnknownMerchantTotals(
+        [
+            {
+                merchant: "Unknown",
+                txCount: 3,
+                pushedCount: 0,
+                totalAmount: 2284,
+                lastSeenAt: new Date("2026-08-21T00:00:00Z"),
+                sampleSmsIds: [18928, 18927, 18917],
+            },
+        ],
+        [
+            {
+                smsId: 18928,
+                amount: 361,
+                occurredAt: new Date("2026-08-21T00:00:00Z"),
+                pushed: false,
+                body: "Txn Rs.361.00&#10;On HDFC Bank Card 3019&#10;At blinkit949346.rzp@hdfcban &#10;by UPI 623319853648&#10;On 21-08&#10;",
+            },
+            {
+                smsId: 18927,
+                amount: 845,
+                occurredAt: new Date("2026-08-20T00:00:00Z"),
+                pushed: false,
+                body: "INR 845.27 spent using ICICI Bank Card XX0004 on 20-Aug-26 on AMAZON PAY IN E. Avl Limit: INR 10,26,779.78.",
+            },
+            {
+                smsId: 18917,
+                amount: 1078,
+                occurredAt: new Date("2026-08-19T00:00:00Z"),
+                pushed: false,
+                body: "Txn Rs.1078.35&#10;On HDFC Bank Card 3019&#10;At dominospizzaonline@ptybl &#10;by UPI 659797482569&#10;On 19-08&#10;",
+            },
+        ]
+    );
+    const recoveredNames = recovered.map((row) => row.merchant).sort();
+
+    if (
+        recovered.some((row) => row.merchant === "Unknown") ||
+        !recoveredNames.includes("Blinkit") ||
+        !recoveredNames.includes("Domino's") ||
+        !recoveredNames.includes("AMAZON PAY IN E")
+    ) {
+        failures.push(`Unknown merchant recovery ${recoveredNames.join(",")}`);
     }
 
     const assignedSpend = buildSpendMonthStats(

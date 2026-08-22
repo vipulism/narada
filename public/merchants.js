@@ -56,6 +56,21 @@
    * @param {unknown} value
    * @returns {string}
    */
+  /**
+   * @param {unknown} value
+   * @returns {string}
+   */
+  function decodeSmsBody(value) {
+    return String(value ?? "")
+      .replaceAll("&#10;", "\n")
+      .replaceAll("&#13;", "")
+      .replaceAll("&amp;", "&")
+      .replaceAll("&apos;", "'")
+      .replaceAll("&quot;", '"')
+      .replaceAll("&lt;", "<")
+      .replaceAll("&gt;", ">");
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -451,7 +466,7 @@
       ].filter(Boolean);
       setText(els.smsDialogTitle, `SMS #${id}`);
       setText(els.smsDialogMeta, bits.join(" · "));
-      setText(els.smsDialogBody, sms.body || "No SMS body.");
+      setText(els.smsDialogBody, decodeSmsBody(sms.body) || "No SMS body.");
     } catch (error) {
       setText(
         els.smsDialogMeta,

@@ -53,7 +53,7 @@ Home has search, a **past 6 months** since filter (3 / 12 / all time), due statu
 
 ## Merchants
 
-SMS expense merchants from `financial_events`, with optional user spend categories. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
+SMS expense merchants from `financial_events`, with optional user spend categories. Expenses stored without a merchant are re-parsed from the SMS body on this list (HDFC `&#10;` UPI `At shop@vpa`, ICICI `spent … on MERCHANT`) so they do not collapse into one Unknown row. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
 
 ```text
 GET /merchants
