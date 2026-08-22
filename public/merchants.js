@@ -18,6 +18,11 @@
     refresh: document.getElementById("refresh"),
     applyDhan: document.getElementById("apply-dhan"),
     applyAll: document.getElementById("apply-all"),
+    smsDialog: document.getElementById("sms-dialog"),
+    smsDialogTitle: document.getElementById("sms-dialog-title"),
+    smsDialogMeta: document.getElementById("sms-dialog-meta"),
+    smsDialogBody: document.getElementById("sms-dialog-body"),
+    smsDialogClose: document.getElementById("sms-dialog-close"),
     pager: document.getElementById("pager"),
     prevPage: document.getElementById("prev-page"),
     nextPage: document.getElementById("next-page"),
@@ -156,7 +161,12 @@
         : "";
     const smsIds = Array.isArray(item.sampleSmsIds)
       ? item.sampleSmsIds
-          .map((id) => `<span class="sms-id">#${escapeHtml(id)}</span>`)
+          .map(
+            (id) =>
+              `<button type="button" class="sms-ref" data-sms="${escapeHtml(
+                id
+              )}">#${escapeHtml(id)}</button>`
+          )
           .join(" ")
       : "";
     return `
@@ -390,8 +400,75 @@
     load();
   });
 
+  els.smsDialogClose?.addEventListener("click", () => {
+    if (els.smsDialog instanceof HTMLDialogElement) {
+      els.smsDialog.close();
+    }
+  });
+
+  /**
+   * @param {number} id
+   */
+  async function showSms(id) {
+    if (!(els.smsDialog instanceof HTMLDialogElement)) {
+      return;
+    }
+    setText(els.smsDialogTitle, `SMS #${id}`);
+    setText(els.smsDialogMeta, "Loading…");
+    setText(els.smsDialogBody, "");
+    els.smsDialog.showModal();
+
+    try {
+      const res = await api(`/sms/${id}`);
+      const sms = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(sms.message || `HTTP ${res.status}`);
+      }
+      const extracted =
+        sms.extractedData && typeof sms.extractedData === "object"
+          ? sms.extractedData
+          : {};
+      const event =
+        sms.financialEvent && typeof sms.financialEvent === "object"
+          ? sms.financialEvent
+          : {};
+      const amount = event.amount ?? extracted.amount;
+      const merchant = event.merchant ?? extracted.merchant;
+      const when = sms.receivedAt
+        ? new Date(sms.receivedAt).toLocaleString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "";
+      const bits = [
+        sms.address,
+        when,
+        amount != null ? money.format(Number(amount)) : "",
+        merchant ? String(merchant) : "",
+      ].filter(Boolean);
+      setText(els.smsDialogTitle, `SMS #${id}`);
+      setText(els.smsDialogMeta, bits.join(" · "));
+      setText(els.smsDialogBody, sms.body || "No SMS body.");
+    } catch (error) {
+      setText(
+        els.smsDialogMeta,
+        error instanceof Error ? error.message : "Could not load SMS"
+      );
+    }
+  }
+
   els.list?.addEventListener("click", async (event) => {
     const target = event.target;
+    if (target instanceof HTMLButtonElement && target.dataset.sms) {
+      const id = Number(target.dataset.sms);
+      if (Number.isFinite(id) && id > 0) {
+        await showSms(id);
+      }
+      return;
+    }
     if (!(target instanceof HTMLButtonElement) || !target.dataset.apply) {
       return;
     }

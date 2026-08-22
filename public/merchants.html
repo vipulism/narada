@@ -66,9 +66,9 @@
           </label>
         </form>
         <p class="hint">
-          Telegram uses the map as soon as you assign. Dhan already-pushed
-          withdrawals need a PUT (checkbox, per-row Apply, or Apply all).
-          Opening-skipped SMS never reached Dhan.
+          Click an SMS id to read the original message (amount, sender, body)
+          before you pick a category. Telegram uses the map as soon as you
+          assign. Dhan already-pushed withdrawals need a PUT.
         </p>
         <p class="toolbar-extra">
           <button type="button" id="apply-all" class="btn">
@@ -89,6 +89,15 @@
         </div>
       </section>
     </main>
+
+    <dialog id="sms-dialog" class="sms-dialog">
+      <div class="sms-dialog-head">
+        <h2 id="sms-dialog-title">SMS</h2>
+        <button type="button" id="sms-dialog-close" class="btn">Close</button>
+      </div>
+      <p id="sms-dialog-meta" class="muted"></p>
+      <p id="sms-dialog-body" class="sms-dialog-body"></p>
+    </dialog>
 
     <noscript>
       <p class="noscript">Enable JavaScript to load and assign merchant categories.</p>
