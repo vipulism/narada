@@ -297,6 +297,45 @@ export class FinancialEventRepository {
 
         return rows.map(rowToEvent);
     }
+
+    /**
+     * Posted `expense` rows whose `occurred_at` falls in `[from, to]` (inclusive).
+     *
+     * @param from - Range start
+     * @param to - Range end
+     */
+    async listExpensesInRange(from: Date, to: Date): Promise<FinancialEvent[]> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                sms_id,
+                kind,
+                cash_flow,
+                amount,
+                currency,
+                account_last4,
+                counterparty_last4,
+                account_name,
+                bank,
+                merchant,
+                transaction_type,
+                occurred_at,
+                classifier,
+                classifier_version,
+                firefly_transaction_id,
+                firefly_pushed_at
+            FROM financial_events
+            WHERE kind = 'expense'
+              AND occurred_at >= ?
+              AND occurred_at <= ?
+            ORDER BY occurred_at ASC, sms_id ASC
+            `,
+            [from, to]
+        );
+
+        return rows.map(rowToEvent);
+    }
 }
 
 /** Pagination and filters for GET /knowledge. */

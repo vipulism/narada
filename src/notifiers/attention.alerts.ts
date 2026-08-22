@@ -12,8 +12,10 @@ import {
     formatDailyAttentionDigest,
     formatDueDigest,
     istComparableMonthRanges,
+    istInclusiveBounds,
     type DhanMonthStats,
 } from "./attention.digest";
+import { buildSpendMonthStats, type SpendMonthStats } from "../classifiers/financial/financial.spend";
 import { AttentionAlertState, BlockedAlert, DueAlert } from "./attention.state";
 import { TelegramNotifier } from "./telegram.notifier";
 
@@ -60,8 +62,8 @@ export async function runAttentionAlerts(): Promise<void> {
 }
 
 /**
- * Sends today's unpaid dues (open + overdue) plus Dhan this-month vs last-month
- * income/expense. Home mark-paid and payment-ack cycles are omitted.
+ * Sends today's unpaid dues (open + overdue), Dhan income/expense, and SMS spend buckets.
+ * Home mark-paid and payment-ack cycles are omitted.
  * Runs at 08:00 IST. Does not replace the new-due / blocked delta pings.
  */
 export async function runDailyAttentionDigest(): Promise<void> {
@@ -72,9 +74,15 @@ export async function runDailyAttentionDigest(): Promise<void> {
 
     try {
         const today = todayIstDate();
-        const [dues, dhan] = await Promise.all([loadDues(), loadDhanMonthStats(today)]);
-        await telegram.sendHtml(formatDailyAttentionDigest(dues, dhan, today));
-        console.info(`daily attention digest sent: dues=${dues.length} dhan=${dhan.error ? "down" : "ok"}`);
+        const [dues, dhan, spend] = await Promise.all([
+            loadDues(),
+            loadDhanMonthStats(today),
+            loadSpendMonthStats(today),
+        ]);
+        await telegram.sendHtml(formatDailyAttentionDigest(dues, dhan, today, spend));
+        console.info(
+            `daily attention digest sent: dues=${dues.length} dhan=${dhan.error ? "down" : "ok"} spend=${spend.buckets.length}`
+        );
     } catch (error) {
         console.error("Daily attention digest failed", error);
     }
@@ -169,4 +177,16 @@ async function loadDhanMonthStats(today: string): Promise<DhanMonthStats> {
             error: message,
         };
     }
+}
+
+async function loadSpendMonthStats(today: string): Promise<SpendMonthStats> {
+    const ranges = istComparableMonthRanges(today);
+    const thisBounds = istInclusiveBounds(ranges.thisStart, ranges.thisEnd);
+    const lastBounds = istInclusiveBounds(ranges.lastStart, ranges.lastEnd);
+    const [thisRows, lastRows] = await Promise.all([
+        events.listExpensesInRange(thisBounds.from, thisBounds.to),
+        events.listExpensesInRange(lastBounds.from, lastBounds.to),
+    ]);
+
+    return buildSpendMonthStats(thisRows, lastRows, ranges.thisLabel, ranges.lastLabel);
 }

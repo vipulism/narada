@@ -10,7 +10,8 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
+import { buildSpendMonthStats, spendBucket } from "./financial.spend";
+import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
 
@@ -1528,6 +1529,18 @@ function runFireflyMapRegression(): void {
         failures.push(
             `loan transfer ids ${loanPay.plan.sourceId}→${loanPay.plan.destinationId} != 11→22`
         );
+    } else if (loanPay.plan.categoryName) {
+        failures.push("transfers must not get a spend category");
+    }
+
+    const swiggy = stubEvent(40, "expense", 410, "1260", new Date("2026-08-16T12:00:00+05:30"));
+    swiggy.merchant = "Swiggy";
+    const swiggyPlan = planFireflyTransaction(swiggy, firefly, owned);
+
+    if (!swiggyPlan.ok || swiggyPlan.plan.categoryName !== "Dining") {
+        failures.push(
+            `Swiggy withdrawal category ${swiggyPlan.ok ? swiggyPlan.plan.categoryName : "blocked"} != Dining`
+        );
     }
 
     const missing = planFireflyTransaction(
@@ -2274,6 +2287,51 @@ function runAttentionDigestRegression(): void {
 
     if (!paidOnlyDaily.includes("nothing unpaid") || paidOnlyDaily.includes("Axis Bank")) {
         failures.push(`daily digest must omit paid dues, got ${paidOnlyDaily}`);
+    }
+
+    if (spendBucket("RAZ*COMMODUM GROCERIES") !== "grocery") {
+        failures.push("Commodum groceries should be grocery");
+    }
+
+    if (spendBucket("Swiggy") !== "dining" || spendBucket("Amazon") !== "shopping") {
+        failures.push("Swiggy/Amazon buckets");
+    }
+
+    const spend = buildSpendMonthStats(
+        [
+            { amount: 800, merchant: "Swiggy", kind: "expense" },
+            { amount: 6200, merchant: "Amazon", kind: "expense" },
+            { amount: 400, merchant: "RAZ*COMMODUM GROCERIES", kind: "expense" },
+        ],
+        [
+            { amount: 500, merchant: "Swiggy", kind: "expense" },
+            { amount: 2000, merchant: "Amazon", kind: "expense" },
+        ],
+        "Aug 1–22",
+        "Jul 1–22"
+    );
+    const spendBlock = formatSpendMonthStats(spend);
+
+    if (
+        !spendBlock ||
+        !spendBlock.includes("Groceries") ||
+        !spendBlock.includes("Dining") ||
+        !spendBlock.includes("Shopping") ||
+        !spendBlock.includes("top Amazon") ||
+        !spendBlock.includes("₹6,200")
+    ) {
+        failures.push(`spend digest ${spendBlock}`);
+    }
+
+    const withSpend = formatDailyAttentionDigest(
+        [],
+        { configured: false, ...ranges },
+        "2026-08-22",
+        spend
+    );
+
+    if (!withSpend.includes("Spend") || !withSpend.includes("Groceries")) {
+        failures.push(`daily digest missing spend ${withSpend}`);
     }
 
     if (failures.length > 0) {

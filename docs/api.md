@@ -1,6 +1,6 @@
 # HTTP API
 
-Narada listens on `PORT` (default `4000`). Live: `http://192.168.1.32:4000`.
+Narada listens on `PORT` (default `4000`). Live: `http://192.168.1.32:4000` (hostname `https://narada.apnalab.xyz` once Nginx Proxy Manager points at `:4000`).
 
 No authentication. Homelab LAN only. JSON is camelCase.
 

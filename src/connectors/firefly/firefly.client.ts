@@ -116,6 +116,10 @@ export class FireflyClient {
             split.destination_name = plan.destinationName;
         }
 
+        if (plan.categoryName) {
+            split.category_name = plan.categoryName;
+        }
+
         try {
             const response = await this.http.post<{ data?: { id?: string } }>(
                 "/transactions",

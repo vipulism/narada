@@ -1,4 +1,5 @@
 import { inferOwnedAccountTypeFromTxn } from "../../classifiers/financial/financial.accountType";
+import { spendBucket, spendBucketLabel } from "../../classifiers/financial/financial.spend";
 import { FinancialEvent } from "../../classifiers/financial/financial.model";
 import { KnownAccountIndex } from "../../classifiers/financial/knownAccounts";
 import { FireflyLast4Index } from "./firefly.accountMap";
@@ -146,7 +147,7 @@ function basePlan(
         "sourceId" | "destinationId" | "sourceName" | "destinationName"
     >>
 ): PlannedFireflyTransaction {
-    return {
+    const plan: PlannedFireflyTransaction = {
         smsId: event.smsId,
         type,
         amount: event.amount.toFixed(2),
@@ -155,6 +156,12 @@ function basePlan(
         externalId: `narada-sms-${event.smsId}`,
         ...legs,
     };
+
+    if (type === "withdrawal") {
+        plan.categoryName = spendBucketLabel(spendBucket(event.merchant));
+    }
+
+    return plan;
 }
 
 function blocked(
