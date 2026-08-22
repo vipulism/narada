@@ -1,0 +1,5 @@
+CREATE TABLE spend_buckets (
+    bucket_key VARCHAR(32) NOT NULL PRIMARY KEY,
+    label VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

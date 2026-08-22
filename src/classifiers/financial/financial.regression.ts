@@ -12,7 +12,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { buildSpendMonthStats, buildMerchantCatalog, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, resolveSpendBucket, spendBucket, spendMerchantLabel } from "./financial.spend";
+import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseNewSpendBucket, resolveSpendBucket, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
@@ -2380,6 +2380,52 @@ function runAttentionDigestRegression(): void {
         failures.push("person UPI payee stays other");
     }
 
+    if (spendBucket("DPS INTERNATIONAL SCHOOL") !== "education") {
+        failures.push("school merchant should be education");
+    }
+
+    if (spendBucket("SCHOOL FEE") !== "education") {
+        failures.push("school fee should be education");
+    }
+
+    if (spendBucket("CONVENIENCE FEE") !== "other") {
+        failures.push("bare fee is not education");
+    }
+
+    if (spendBucketLabel("education") !== "Education") {
+        failures.push("education bucket label");
+    }
+
+    if (spendBucketKeyFromLabel("Kids Activities") !== "kids_activities") {
+        failures.push("custom bucket slug");
+    }
+
+    const parsedPets = parseNewSpendBucket("Pets");
+
+    if (!("key" in parsedPets) || parsedPets.key !== "pets" || parsedPets.label !== "Pets") {
+        failures.push("parse new spend bucket");
+    }
+
+    if (!("error" in parseNewSpendBucket("Education"))) {
+        failures.push("cannot recreate builtin Education");
+    }
+
+    if (!isSpendBucket("pets") || isSpendBucket("Pets") || isSpendBucket("not a bucket")) {
+        failures.push("spend bucket slug check");
+    }
+
+    if (isSpendBucket("pets", new Set()) || !isSpendBucket("pets", new Set(["pets"]))) {
+        failures.push("known custom bucket check");
+    }
+
+    if (
+        !spendBucketOptions([{ key: "pets", label: "Pets" }]).some(
+            (row) => row.custom && row.key === "pets" && row.label === "Pets"
+        )
+    ) {
+        failures.push("dropdown should include custom buckets");
+    }
+
     if (spendMerchantLabel("paytmqr5wpzku@ptys") !== "Paytm QR") {
         failures.push("Paytm QR VPA label");
     }
@@ -2634,6 +2680,20 @@ function runAttentionDigestRegression(): void {
 
     if (!smsSpend.buckets.some((row) => row.key === "dining" && row.thisAmount === 60)) {
         failures.push("SMS override should drive spend buckets");
+    }
+
+    const customSpend = buildSpendMonthStats(
+        [{ amount: 900, merchant: "Petshop", kind: "expense" }],
+        [],
+        "Aug 1–22",
+        "Jul 1–22",
+        new Map([["petshop", "pets"]]),
+        undefined,
+        new Map([["pets", "Pets"]])
+    );
+
+    if (!customSpend.buckets.some((row) => row.key === "pets" && row.label === "Pets" && row.thisAmount === 900)) {
+        failures.push("custom bucket should appear in spend stats");
     }
 
     const spend = buildSpendMonthStats(
