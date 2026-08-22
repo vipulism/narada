@@ -1813,6 +1813,39 @@ function runDueFeedRegression(): void {
         failures.push("Axis payment-of reminder should be a due card");
     }
 
+    const axisStatements: Array<{ body: string; total: number; due: string }> = [
+        {
+            body: "Statement for your Axis Bank Credit Card XX6147 of INR 409 has been generated with due date 01-07-24. View the transaction details @ https://ccm.axbk.in/s/bpkApXRh & to view the fees & charges, visit https://ccm.axbk.in/s/GvHgfdNo ; Minimum amount due is INR 100.",
+            total: 409,
+            due: "2024-07-01",
+        },
+        {
+            body: "Statement for your Axis Bank Credit Card XX6147 of INR 280 has been generated with due date 30-07-24. View the transaction details @  axisbank.com/ccpaynow & to view the fees & charges, visit https://ccm.axbk.in/s/HmJncfHl ; Minimum amount due is INR 100.",
+            total: 280,
+            due: "2024-07-30",
+        },
+        {
+            body: "Statement for your Axis Bank Credit Card XX6147 of INR 243 has been generated with due date 30-11-24. View the transaction details @ https://ccm.axbk.in/AXISBK/oztXoQJu & to view the fees & charges, visit https://ccm.axbk.in/AXISBK/ApCh7aMn ; Minimum amount due is INR 100.",
+            total: 243,
+            due: "2024-11-30",
+        },
+    ];
+
+    for (const row of axisStatements) {
+        const amounts = parseDueAmounts(row.body);
+        if (amounts.minDue !== 100 || amounts.totalDue !== row.total) {
+            failures.push(
+                `Axis statement ${row.total} got min/total ${amounts.minDue}/${amounts.totalDue}`
+            );
+        }
+        if (parseDueDate(row.body) !== row.due) {
+            failures.push(`Axis statement due ${parseDueDate(row.body)} != ${row.due}`);
+        }
+        if (!isDueKnowledgeRow("bill", "NEUTRAL", row.body)) {
+            failures.push(`Axis statement ₹${row.total} should be a due card`);
+        }
+    }
+
     const zeroDue =
         "Total Due INR 0.00 & Min Due INR 0.00 to be paid by 30-Nov-24 on ICICI Bank Credit Card XX0004.";
     const zeroAmounts = parseDueAmounts(zeroDue);

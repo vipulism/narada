@@ -87,7 +87,7 @@ export function isCardPaymentAckRow(
 /**
  * Reads min due and total due labels.
  * Covers `Total Due INR 6447`, HSBC `Total amount is 361` / `total payment due … is INR 1131`,
- * and Axis `Payment of INR 280 … is due` with `minimum amount due of INR 100`.
+ * Axis `Payment of INR 280 … is due`, and Axis `Credit Card XX6147 of INR 409 has been generated`.
  *
  * @param body - Raw SMS body
  */
@@ -101,6 +101,7 @@ export function parseDueAmounts(body: string): DueAmounts {
 const TOTAL_DUE_PATTERNS = [
     /total\s+payment\s+due[\s\S]{0,80}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
     /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+due\b/i,
+    /\bof\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)\s+has\s+been\s+generated\b/i,
     /total(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i,
 ];
 
