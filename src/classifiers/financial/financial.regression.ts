@@ -9,8 +9,9 @@ import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, istComparableMonthRanges, monthOverMonthPhrase } from "../../notifiers/attention.digest";
+import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
+import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
+import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
 
 interface ExpectedFacts {
@@ -1985,9 +1986,58 @@ function runDueFeedRegression(): void {
         failures.push("2 Sep vs 21 Aug should be 12 days left");
     }
 
+    if (isUnpaidDueAttention("paid") || !isUnpaidDueAttention("overdue") || !isUnpaidDueAttention("open")) {
+        failures.push("paid must not count as unpaid attention");
+    }
+
+    const axisOverdue = axisDueKnowledge(1, "overdue");
+    const axisKey = knowledgeDueReminderKey(axisOverdue);
+
+    if (!axisKey) {
+        failures.push("Axis due must have a reminder key");
+    } else {
+        const marked = applyManualDueMarks([axisOverdue], new Set([axisKey]));
+        const markedDue = marked[0];
+
+        if (markedDue?.type !== "due" || markedDue.payload.status !== "paid" || !markedDue.payload.markedPaid) {
+            failures.push("Home mark-paid must force due status paid");
+        }
+
+        if (filterDueKnowledgeItems(marked, "unpaid").length !== 0) {
+            failures.push("Home mark-paid must drop from unpaid due feed");
+        }
+
+        if (filterDueKnowledgeItems(marked, undefined).length !== 0) {
+            failures.push("default due feed must hide Home mark-paid");
+        }
+    }
+
     if (failures.length > 0) {
         throw new Error(`due feed regression failed:\n${failures.join("\n")}`);
     }
+}
+
+function axisDueKnowledge(id: number, status: "open" | "overdue" | "paid"): KnowledgeItem {
+    return {
+        type: "due",
+        id,
+        occurredAt: new Date("2023-10-20T10:00:00+05:30"),
+        payload: {
+            kind: "due",
+            dueDate: "2023-10-30",
+            minDue: 100,
+            totalDue: 100,
+            amount: 100,
+            currency: "INR",
+            accountLast4: "6147",
+            accountName: null,
+            bank: "Axis Bank",
+            merchant: null,
+            classifier: "financial",
+            classifierVersion: "1",
+            status,
+        },
+    };
 }
 
 runFinancialRegression();
@@ -2092,6 +2142,57 @@ function runAttentionDigestRegression(): void {
 
     if (!daily.includes("nothing unpaid") || !daily.includes("not configured")) {
         failures.push(`empty daily digest ${daily}`);
+    }
+
+    const paidAxis = {
+        smsId: 10,
+        occurredAt: new Date("2023-10-20T10:00:00+05:30"),
+        dueDate: "2023-10-30",
+        amount: 100,
+        minDue: 100,
+        totalDue: 100,
+        bank: "Axis Bank",
+        accountLast4: "6147",
+        merchant: null,
+        status: "paid" as const,
+    };
+    const overdueYes = {
+        smsId: 11,
+        occurredAt: new Date("2023-11-01T10:00:00+05:30"),
+        dueDate: "2023-11-05",
+        amount: 163,
+        minDue: 163,
+        totalDue: 163,
+        bank: "YES Bank",
+        accountLast4: "4472",
+        merchant: null,
+        status: "overdue" as const,
+    };
+
+    if (unpaidDueAlerts([paidAxis, overdueYes]).length !== 1) {
+        failures.push("Telegram unpaidDueAlerts must drop Home mark-paid");
+    }
+
+    const mixedDigest = formatDueDigest("Dues", [paidAxis, overdueYes], "2026-08-22");
+
+    if (
+        !mixedDigest ||
+        mixedDigest.includes("Axis Bank") ||
+        mixedDigest.includes("(2)") ||
+        !mixedDigest.includes("YES Bank") ||
+        !mixedDigest.includes("(1)")
+    ) {
+        failures.push(`Telegram due digest must hide paid, got ${mixedDigest}`);
+    }
+
+    const paidOnlyDaily = formatDailyAttentionDigest(
+        [paidAxis],
+        { configured: false, ...ranges },
+        "2026-08-22"
+    );
+
+    if (!paidOnlyDaily.includes("nothing unpaid") || paidOnlyDaily.includes("Axis Bank")) {
+        failures.push(`daily digest must omit paid dues, got ${paidOnlyDaily}`);
     }
 
     if (failures.length > 0) {

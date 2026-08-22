@@ -60,7 +60,8 @@ export async function runAttentionAlerts(): Promise<void> {
 }
 
 /**
- * Sends today's unpaid dues plus Dhan this-month vs last-month income/expense.
+ * Sends today's unpaid dues (open + overdue) plus Dhan this-month vs last-month
+ * income/expense. Home mark-paid and payment-ack cycles are omitted.
  * Runs at 08:00 IST. Does not replace the new-due / blocked delta pings.
  */
 export async function runDailyAttentionDigest(): Promise<void> {
@@ -80,10 +81,10 @@ export async function runDailyAttentionDigest(): Promise<void> {
 }
 
 async function loadDues(): Promise<DueAlert[]> {
-    const items = await loadSettledDueKnowledge();
+    const items = await loadSettledDueKnowledge({ status: "unpaid" });
 
     return items.flatMap((item) => {
-        if (item.type !== "due") {
+        if (item.type !== "due" || item.payload.status === "paid") {
             return [];
         }
 
@@ -100,6 +101,7 @@ async function loadDues(): Promise<DueAlert[]> {
                 accountLast4: item.payload.accountLast4,
                 merchant: item.payload.merchant,
                 dueParty: item.payload.dueParty,
+                status: item.payload.status === "overdue" ? "overdue" : "open",
             },
         ];
     });

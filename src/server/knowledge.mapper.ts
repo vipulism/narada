@@ -5,6 +5,7 @@ import {
     hasPayableDueAmount,
     isCardPaymentAckRow,
     isDueKnowledgeRow,
+    isUnpaidDueAttention,
     keepLatestDueReminders,
     parseDueAmounts,
     parseDueDate,
@@ -322,9 +323,10 @@ export function withDueStatus(item: KnowledgeItem, status: DueAttentionStatus): 
 
 /**
  * Default due list hides paid bills. `all` keeps them.
+ * `unpaid` (and omitted) is open + overdue — Home, Telegram digest, and ingest pings.
  *
  * @param items - Settled due envelopes
- * @param status - `open` / `overdue` / `paid` / `all` / omitted (unpaid)
+ * @param status - `open` / `overdue` / `paid` / `unpaid` / `all` / omitted (unpaid)
  */
 export function filterDueKnowledgeItems(
     items: KnowledgeItem[],
@@ -342,7 +344,9 @@ export function filterDueKnowledgeItems(
         return actionable.filter((item) => item.type === "due" && item.payload.status === status);
     }
 
-    return actionable.filter((item) => item.type === "due" && item.payload.status !== "paid");
+    return actionable.filter(
+        (item) => item.type === "due" && isUnpaidDueAttention(item.payload.status)
+    );
 }
 
 function compareDueAttention(left: KnowledgeItem, right: KnowledgeItem): number {

@@ -28,6 +28,16 @@ export interface DueReminderIdentity {
 /** Attention state after matching card payment-ack SMS. */
 export type DueAttentionStatus = "open" | "overdue" | "paid";
 
+/**
+ * True when a due should stay on Home and Telegram (open or overdue).
+ * Home mark-paid and payment-ack rows are `paid` and must stay hidden.
+ *
+ * @param status - Settled attention status
+ */
+export function isUnpaidDueAttention(status?: DueAttentionStatus | string | null): boolean {
+    return status !== "paid";
+}
+
 /** Issuer SMS that a payment was received / credited to a card last4. */
 export interface CardPaymentAck {
     smsId: number;

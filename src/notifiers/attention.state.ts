@@ -1,4 +1,4 @@
-import { dueReminderKey } from "../classifiers/financial/financial.due";
+import { dueReminderKey, type DueAttentionStatus } from "../classifiers/financial/financial.due";
 export interface DueAlert {
     smsId: number;
     occurredAt: Date;
@@ -10,6 +10,8 @@ export interface DueAlert {
     accountLast4: string | null;
     merchant?: string | null;
     dueParty?: string | null;
+    /** Settled attention; Telegram omits `paid`. */
+    status?: DueAttentionStatus;
 }
 
 /**
