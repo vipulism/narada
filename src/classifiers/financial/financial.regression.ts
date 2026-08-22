@@ -1765,6 +1765,22 @@ function runDueFeedRegression(): void {
         failures.push(`SBI Payable by due date ${parseDueDate(sbiPayable)} != 2026-08-27`);
     }
 
+    const hsbcPayable =
+        "HSBC Credit Card ending 4433 : Total amount is 361 and minimum amount is 100 ; payable by 20-Aug-25. Payment modes https://gs.im/HSBCIM/e/bWmoYmQCoan (do ignore if already paid).";
+    const hsbcAmounts = parseDueAmounts(hsbcPayable);
+
+    if (hsbcAmounts.minDue !== 100 || hsbcAmounts.totalDue !== 361) {
+        failures.push(`HSBC due amounts ${hsbcAmounts.minDue}/${hsbcAmounts.totalDue} != 100/361`);
+    }
+
+    if (parseDueDate(hsbcPayable) !== "2025-08-20") {
+        failures.push(`HSBC payable by ${parseDueDate(hsbcPayable)} != 2025-08-20`);
+    }
+
+    if (!isDueKnowledgeRow("bill", "NEUTRAL", hsbcPayable)) {
+        failures.push("HSBC payable-by reminder should be a due card");
+    }
+
     const zeroDue =
         "Total Due INR 0.00 & Min Due INR 0.00 to be paid by 30-Nov-24 on ICICI Bank Credit Card XX0004.";
     const zeroAmounts = parseDueAmounts(zeroDue);

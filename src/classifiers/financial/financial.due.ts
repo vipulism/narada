@@ -86,6 +86,7 @@ export function isCardPaymentAckRow(
 
 /**
  * Reads min due and total due labels. First unlabeled `amount` in the SMS is often min due.
+ * Also matches HSBC `Total amount is 361 and minimum amount is 100` (no "due" word).
  *
  * @param body - Raw SMS body
  */
@@ -97,10 +98,10 @@ export function parseDueAmounts(body: string): DueAmounts {
 }
 
 const MIN_DUE_REGEX =
-    /min(?:imum)?(?:\s+(?:amt|amount))?\s+due(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i;
+    /min(?:imum)?(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i;
 
 const TOTAL_DUE_REGEX =
-    /total(?:\s+(?:amt|amount))?\s+due(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i;
+    /total(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i;
 
 const MONTHS: Record<string, string> = {
     JAN: "01",
