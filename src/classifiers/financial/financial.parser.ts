@@ -685,7 +685,7 @@ export class FinancialParser {
     private isInvalidMerchant(value: string): boolean {
         const trimmed = value.replace(/[.,;]+$/g, "").trim();
 
-        if (/^\d+$/.test(trimmed)) {
+        if (!trimmed || /^\d+$/.test(trimmed)) {
             return true;
         }
 
