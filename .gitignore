@@ -70,6 +70,9 @@ web_modules/
 .env.*
 !.env.example
 
+# Runtime service monitoring config (use services.example.json as the template)
+/services.json
+
 # Local Dhan last4 map (do not commit)
 config/accounts.local.json
 config/firefly-openings.local.json

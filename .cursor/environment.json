@@ -1,0 +1,18 @@
+{
+  "name": "Narada",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "narada-dev",
+      "command": "npm run dev",
+      "description": "Narada API + monitoring/import schedulers (ts-node-dev, hot reload) on http://localhost:4000"
+    }
+  ],
+  "ports": [
+    {
+      "name": "narada-http",
+      "port": 4000
+    }
+  ]
+}
