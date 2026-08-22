@@ -4,12 +4,15 @@ import {
     isBuiltinSpendBucket,
     isOwnSmsMerchantKey,
     isSpendBucket,
+    matchesMerchantQuery,
     merchantCatalogKey,
     ownSmsMerchantKey,
     ownSmsMerchantLabel,
+    parseMerchantSort,
     parseNewSpendBucket,
     resolveMerchantAlias,
     resolveSpendBucket,
+    sortMerchantCatalog,
     spendBucketLabel,
     spendBucketOptions,
     spendMerchantLabel,
@@ -92,24 +95,24 @@ async function listMerchants(req: Request, res: Response): Promise<void> {
     }
     const { page } = parsePagination(req.query);
     const limit = merchantLimit(req.query.limit);
-    const q = optionalQueryString(req.query.q)?.toLowerCase();
+    const q = optionalQueryString(req.query.q);
     const status = parseMerchantStatus(optionalQueryString(req.query.status));
+    const sort = parseMerchantSort(optionalQueryString(req.query.sort));
     const [catalog, extraBuckets] = await Promise.all([loadCatalog(), spendBuckets.listAll()]);
-    const filtered = catalog.filter((item) => {
-        if (status === "uncategorized" && item.category) {
-            return false;
-        }
+    const filtered = sortMerchantCatalog(
+        catalog.filter((item) => {
+            if (status === "uncategorized" && item.category) {
+                return false;
+            }
 
-        if (status === "categorized" && !item.category) {
-            return false;
-        }
+            if (status === "categorized" && !item.category) {
+                return false;
+            }
 
-        if (!q) {
-            return true;
-        }
-
-        return item.label.toLowerCase().includes(q) || item.key.includes(q);
-    });
+            return matchesMerchantQuery(item, q);
+        }),
+        sort
+    );
     const start = (page - 1) * limit;
 
     res.status(200).json({
@@ -122,6 +125,7 @@ async function listMerchants(req: Request, res: Response): Promise<void> {
         filters: {
             q: q ?? null,
             status,
+            sort,
         },
         counts: {
             all: catalog.length,

@@ -13,7 +13,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
+import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
@@ -2817,6 +2817,22 @@ function runAttentionDigestRegression(): void {
 
     if (catalog[0]?.key !== "vipin gupta" || catalog[0]?.category !== null) {
         failures.push(`uncategorized merchants should sort first, got ${catalog[0]?.key}`);
+    }
+
+    const newestFirst = sortMerchantCatalog(catalog, "lastSeen");
+
+    if (newestFirst[0]?.key !== "paytm qr") {
+        failures.push(`newest SMS merchant should sort first, got ${newestFirst[0]?.key}`);
+    }
+
+    if (parseMerchantSort(undefined) !== "lastSeen" || parseMerchantSort("amount") !== "amount") {
+        failures.push("merchant sort query parse");
+    }
+
+    const withSms = catalog.find((row) => row.key === "paytm qr");
+
+    if (!withSms || !matchesMerchantQuery(withSms, "14001") || matchesMerchantQuery(withSms, "zzzz")) {
+        failures.push("merchant search should match sample SMS id");
     }
 
     const paytm = catalog.find((row) => row.key === "paytm qr");
