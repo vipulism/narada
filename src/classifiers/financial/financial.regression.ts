@@ -263,7 +263,7 @@ const CASES: RegressionCase[] = [
             subcategory: "expense",
             cashFlow: "OUTFLOW",
             amount: 954.67,
-            merchant: "RAZ*COMMODUM GROCERIES",
+            merchant: "COMMODUM GROCERIES",
         },
     },
     {
@@ -660,6 +660,32 @@ const CASES: RegressionCase[] = [
             amount: 845.27,
             accountLast4: "0004",
             merchant: "AMAZON PAY IN E",
+        },
+    },
+    {
+        id: "hdfc-ind-star-linkedin",
+        address: "AD-HDFCBK-S",
+        body: "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 1687.47,
+            accountLast4: "0170",
+            merchant: "LinkedIn",
+        },
+    },
+    {
+        id: "icici-ind-star-amazon",
+        address: "AX-ICICIT-S",
+        body: "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 737,
+            accountLast4: "0004",
+            merchant: "Amazon",
         },
     },
     {
@@ -2415,6 +2441,10 @@ function runAttentionDigestRegression(): void {
         failures.push("Swiggy/Amazon buckets");
     }
 
+    if (spendBucket("LinkedIn") !== "subscriptions") {
+        failures.push("LinkedIn should be subscriptions");
+    }
+
     if (spendBucket("RAMESH KIRANA") !== "grocery" || spendBucket("sharma-kirana@okaxis") !== "grocery") {
         failures.push("UPI kirana names should be grocery");
     }
@@ -2547,6 +2577,30 @@ function runAttentionDigestRegression(): void {
         failures.push("Dhan recategorize should match pushed Paytm QR expenses only");
     }
 
+    const linkedInPushed = stubEvent(31, "expense", 1687.47, "0170", new Date("2026-04-02T12:16:19+05:30"));
+    linkedInPushed.merchant = "IND";
+    linkedInPushed.fireflyTransactionId = "linkedin-1";
+    const amazonPushed = stubEvent(32, "expense", 737, "0004", new Date("2025-08-24T00:00:00+05:30"));
+    amazonPushed.merchant = "IND";
+    amazonPushed.fireflyTransactionId = "amazon-1";
+    const linkedInDhan = pushedExpensesForMerchant(
+        [
+            {
+                ...linkedInPushed,
+                body: "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808",
+            },
+            {
+                ...amazonPushed,
+                body: "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.",
+            },
+        ],
+        "linkedin"
+    );
+
+    if (linkedInDhan.length !== 1 || linkedInDhan[0]?.smsId !== 31) {
+        failures.push("Dhan recategorize should match IND*LinkedIn, not IND*Amazon");
+    }
+
     const recovered = recoverUnknownMerchantTotals(
         [
             {
@@ -2655,6 +2709,63 @@ function runAttentionDigestRegression(): void {
         mergedTotals[0]?.totalAmount !== 281047
     ) {
         failures.push(`merged Titan/Tanishq totals ${JSON.stringify(mergedTotals)}`);
+    }
+
+    const linkedInBody =
+        "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808";
+    const amazonBody =
+        "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.";
+    const indStarTotals = groupExpenseTotals([
+        {
+            smsId: 31,
+            merchant: "IND",
+            amount: 1687.47,
+            occurredAt: new Date("2026-04-02T12:16:19+05:30"),
+            pushed: false,
+            body: linkedInBody,
+        },
+        {
+            smsId: 32,
+            merchant: "IND",
+            amount: 737,
+            occurredAt: new Date("2025-08-24T00:00:00+05:30"),
+            pushed: false,
+            body: amazonBody,
+        },
+    ]);
+    const indStarKeys = indStarTotals.map((row) => row.catalogKey).sort();
+
+    if (
+        indStarTotals.length !== 2 ||
+        !indStarKeys.includes("linkedin") ||
+        !indStarKeys.includes("amazon")
+    ) {
+        failures.push(`IND* LinkedIn/Amazon must split, got ${JSON.stringify(indStarTotals)}`);
+    }
+
+    const linkedInSms = listSmsForMerchantKey(
+        [
+            {
+                smsId: 31,
+                merchant: "IND",
+                amount: 1687.47,
+                occurredAt: new Date("2026-04-02T12:16:19+05:30"),
+                body: linkedInBody,
+            },
+            {
+                smsId: 32,
+                merchant: "IND",
+                amount: 737,
+                occurredAt: new Date("2025-08-24T00:00:00+05:30"),
+                body: amazonBody,
+            },
+        ],
+        [],
+        "linkedin"
+    );
+
+    if (linkedInSms.length !== 1 || linkedInSms[0]?.smsId !== 31) {
+        failures.push(`LinkedIn SMS list should be only #31, got ${linkedInSms.map((row) => row.smsId)}`);
     }
 
     if (

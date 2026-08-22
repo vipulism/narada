@@ -163,7 +163,16 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
     },
     {
         bucket: "subscriptions",
-        needles: ["NETFLIX", "SPOTIFY", "HOTSTAR", "YOUTUBE", "PRIME VIDEO", "SONYLIV", "APPLE.COM/BILL"],
+        needles: [
+            "NETFLIX",
+            "SPOTIFY",
+            "HOTSTAR",
+            "YOUTUBE",
+            "PRIME VIDEO",
+            "SONYLIV",
+            "APPLE.COM/BILL",
+            "LINKEDIN",
+        ],
     },
     {
         bucket: "insurance",

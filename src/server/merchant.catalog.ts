@@ -28,7 +28,7 @@ export interface MerchantExpenseSms {
 }
 
 /**
- * Catalog key after recovering a blank stored merchant from the SMS body.
+ * Catalog key after recovering a blank or card-POS stub merchant from the SMS body.
  *
  * @param storedMerchant - `financial_events.merchant`
  * @param body - SMS body when the stored merchant is empty
@@ -44,10 +44,12 @@ export function expenseCatalogKey(
 }
 
 /**
- * Display merchant after recovering a blank stored value from the SMS body.
+ * Display merchant after recovering a blank or card-POS stub from the SMS body.
+ *
+ * Stored `IND` from `IND*LinkedIn` / `IND*Amazon` is re-parsed so each shop is its own catalog row.
  *
  * @param storedMerchant - `financial_events.merchant`
- * @param body - SMS body when the stored merchant is empty
+ * @param body - SMS body when the stored merchant is empty or a POS prefix
  * @param parser - Shared parser instance
  */
 export function expenseMerchant(
@@ -55,7 +57,25 @@ export function expenseMerchant(
     body: string | undefined,
     parser: FinancialParser
 ): string {
-    return storedMerchant?.trim() || parser.extractMerchantFromBody(body ?? "") || "Unknown";
+    const stored = storedMerchant?.trim();
+    const text = body ?? "";
+
+    if (stored && isCardPosMerchantStub(stored, text)) {
+        return parser.extractMerchantFromBody(text) || stored;
+    }
+
+    return stored || parser.extractMerchantFromBody(text) || "Unknown";
+}
+
+/**
+ * True when `stored` is a 2–5 letter POS prefix and the SMS still has `PREFIX*Shop`.
+ */
+function isCardPosMerchantStub(stored: string, body: string): boolean {
+    if (!/^[A-Za-z]{2,5}$/.test(stored)) {
+        return false;
+    }
+
+    return new RegExp(`(?:^|\\s)${stored}\\*[A-Za-z]{3,}`, "i").test(body);
 }
 
 /**
