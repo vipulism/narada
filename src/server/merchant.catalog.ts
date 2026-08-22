@@ -1,10 +1,14 @@
 import { FinancialParser } from "../classifiers/financial/financial.parser";
 import {
     merchantCatalogKey,
+    resolveMerchantAlias,
     spendMerchantLabel,
+    type MerchantAlias,
     type MerchantSpendTotal,
     type SmsSpendOverride,
 } from "../classifiers/financial/financial.spend";
+import { isCardBillPayMessage, isInvestmentFundingMessage } from "../classifiers/financial/financial.kind";
+import { smsDuplicateKey } from "../classifiers/financial/financial.eventFilter";
 
 /** Expense with no `financial_events.merchant` (older classify). */
 export interface MissingMerchantExpense {
@@ -26,7 +30,7 @@ export interface MerchantExpenseSms {
 }
 
 /**
- * Catalog key after recovering a blank stored merchant from the SMS body.
+ * Catalog key after recovering a blank or card-POS stub merchant from the SMS body.
  *
  * @param storedMerchant - `financial_events.merchant`
  * @param body - SMS body when the stored merchant is empty
@@ -42,10 +46,12 @@ export function expenseCatalogKey(
 }
 
 /**
- * Display merchant after recovering a blank stored value from the SMS body.
+ * Display merchant after recovering a blank or card-POS stub from the SMS body.
+ *
+ * Stored `IND` from `IND*LinkedIn` / `IND*Amazon` is re-parsed so each shop is its own catalog row.
  *
  * @param storedMerchant - `financial_events.merchant`
- * @param body - SMS body when the stored merchant is empty
+ * @param body - SMS body when the stored merchant is empty or a POS prefix
  * @param parser - Shared parser instance
  */
 export function expenseMerchant(
@@ -53,7 +59,25 @@ export function expenseMerchant(
     body: string | undefined,
     parser: FinancialParser
 ): string {
-    return storedMerchant?.trim() || parser.extractMerchantFromBody(body ?? "") || "Unknown";
+    const stored = storedMerchant?.trim();
+    const text = body ?? "";
+
+    if (stored && isCardPosMerchantStub(stored, text)) {
+        return parser.extractMerchantFromBody(text) || stored;
+    }
+
+    return stored || parser.extractMerchantFromBody(text) || "Unknown";
+}
+
+/**
+ * True when `stored` is a 2–5 letter POS prefix and the SMS still has `PREFIX*Shop`.
+ */
+function isCardPosMerchantStub(stored: string, body: string): boolean {
+    if (!/^[A-Za-z]{2,5}$/.test(stored)) {
+        return false;
+    }
+
+    return new RegExp(`(?:^|\\s)${stored}\\*[A-Za-z]{3,}`, "i").test(body);
 }
 
 /**
@@ -63,18 +87,17 @@ export function expenseMerchant(
  * @param body - SMS body when the stored merchant is empty
  * @param parser - Shared parser instance
  * @param override - Optional merchant move
+ * @param aliases - Optional rename / merge map
  */
 export function effectiveCatalogKey(
     storedMerchant: string | undefined,
     body: string | undefined,
     parser: FinancialParser,
-    override?: Pick<SmsSpendOverride, "merchantKey"> | null
+    override?: Pick<SmsSpendOverride, "merchantKey"> | null,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): string {
-    if (override?.merchantKey) {
-        return override.merchantKey;
-    }
-
-    return expenseCatalogKey(storedMerchant, body, parser);
+    const raw = override?.merchantKey || expenseCatalogKey(storedMerchant, body, parser);
+    return resolveMerchantAlias(raw, aliases).key;
 }
 
 /**
@@ -82,19 +105,32 @@ export function effectiveCatalogKey(
  *
  * @param rows - Expense SMS with stored or recoverable merchants
  * @param overrides - `sms_spend_overrides` keyed by SMS id
+ * @param aliases - Optional rename / merge map
  */
 export function groupExpenseTotals(
     rows: MerchantExpenseSms[],
-    overrides?: ReadonlyMap<number, SmsSpendOverride>
+    overrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): MerchantSpendTotal[] {
     const parser = new FinancialParser();
     const recovered = new Map<string, MerchantSpendTotal>();
+    const seenDupes = new Set<string>();
 
     for (const row of rows) {
+        if (skipSpendCatalogRow(row.body, seenDupes)) {
+            continue;
+        }
+
         const override = overrides?.get(row.smsId);
         const patternMerchant = expenseMerchant(row.merchant, row.body, parser);
-        const merchant = override?.merchantLabel?.trim() || override?.merchantKey || patternMerchant;
-        const catalogKey = effectiveCatalogKey(row.merchant, row.body, parser, override);
+        const rawKey = override?.merchantKey || merchantCatalogKey(patternMerchant);
+        const resolved = resolveMerchantAlias(rawKey, aliases);
+        const catalogKey = resolved.key;
+        const merchant =
+            resolved.label ||
+            override?.merchantLabel?.trim() ||
+            override?.merchantKey ||
+            patternMerchant;
         const existing = recovered.get(catalogKey);
         const pushed = Boolean(row.pushed);
 
@@ -135,18 +171,33 @@ export function groupExpenseTotals(
  * @param missing - Expenses with a blank merchant
  * @param key - {@link merchantCatalogKey}
  * @param overrides - Optional per-SMS merchant moves
+ * @param aliases - Optional rename / merge map
  */
 export function listSmsForMerchantKey(
     named: MerchantExpenseSms[],
     missing: MissingMerchantExpense[],
     key: string,
-    overrides?: ReadonlyMap<number, SmsSpendOverride>
+    overrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): MerchantExpenseSms[] {
     const parser = new FinancialParser();
     const rows: MerchantExpenseSms[] = [];
+    const seenDupes = new Set<string>();
 
     for (const row of named) {
-        if (effectiveCatalogKey(row.merchant, row.body, parser, overrides?.get(row.smsId)) === key) {
+        if (skipSpendCatalogRow(row.body, seenDupes)) {
+            continue;
+        }
+
+        if (
+            effectiveCatalogKey(
+                row.merchant,
+                row.body,
+                parser,
+                overrides?.get(row.smsId),
+                aliases
+            ) === key
+        ) {
             rows.push({
                 ...row,
                 merchant:
@@ -157,7 +208,11 @@ export function listSmsForMerchantKey(
     }
 
     for (const row of missing) {
-        if (effectiveCatalogKey(undefined, row.body, parser, overrides?.get(row.smsId)) === key) {
+        if (skipSpendCatalogRow(row.body, seenDupes)) {
+            continue;
+        }
+
+        if (effectiveCatalogKey(undefined, row.body, parser, overrides?.get(row.smsId), aliases) === key) {
             rows.push({
                 smsId: row.smsId,
                 merchant:
@@ -233,6 +288,30 @@ export function recoverUnknownMerchantTotals(
     }
 
     return [...named, ...recovered.values()];
+}
+
+/**
+ * Drop investment funding, card bill pays, and a second SMS for the same UPI/body.
+ */
+function skipSpendCatalogRow(body: string | undefined, seenDupes: Set<string>): boolean {
+    const text = body ?? "";
+
+    if (isInvestmentFundingMessage(text) || isCardBillPayMessage(text)) {
+        return true;
+    }
+
+    if (!text.trim()) {
+        return false;
+    }
+
+    const key = smsDuplicateKey(text);
+
+    if (seenDupes.has(key)) {
+        return true;
+    }
+
+    seenDupes.add(key);
+    return false;
 }
 
 function uniqueSmsIds(ids: number[]): number[] {

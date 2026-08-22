@@ -1,5 +1,5 @@
 import { CashFlow, FinancialEvent } from "./financial.model";
-import { FinancialKind } from "./financial.kind";
+import { FinancialKind, isCardBillPayMessage, isInvestmentFundingMessage } from "./financial.kind";
 
 /**
  * Posted kinds that become ledger events. Due reminders and CC payment acks
@@ -58,7 +58,7 @@ export function toFinancialEvent(source: AnalysisEventSource): FinancialEvent | 
     const data = source.extractedData ?? {};
     const amount = asFiniteNumber(data.amount);
     const cashFlow = typeof data.cashFlow === "string" ? data.cashFlow : undefined;
-    const kind = source.subcategory as FinancialKind | null;
+    const kind = postedKind(source.subcategory, source.body);
 
     if (
         amount === undefined ||
@@ -84,6 +84,18 @@ export function toFinancialEvent(source: AnalysisEventSource): FinancialEvent | 
         classifier: source.classifier,
         classifierVersion: source.classifierVersion,
     };
+}
+
+function postedKind(subcategory: string | null, body: string): FinancialKind | null {
+    if (isInvestmentFundingMessage(body)) {
+        return "investment";
+    }
+
+    if (isCardBillPayMessage(body)) {
+        return "bill";
+    }
+
+    return subcategory as FinancialKind | null;
 }
 
 function asFiniteNumber(value: unknown): number | undefined {

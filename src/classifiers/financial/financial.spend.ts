@@ -3,8 +3,8 @@
  * Dhan has no categories until Narada POSTs a name (Firefly creates it).
  */
 
-/** Household spend group used on the daily digest. */
-export type SpendBucket =
+/** Built-in household spend group (always in dropdowns). */
+export type BuiltinSpendBucket =
     | "grocery"
     | "dining"
     | "shopping"
@@ -14,10 +14,14 @@ export type SpendBucket =
     | "subscriptions"
     | "insurance"
     | "health"
+    | "education"
     | "other";
 
-/** Allowed buckets for the merchants page and Firefly `category_name`. */
-export const SPEND_BUCKETS: readonly SpendBucket[] = [
+/** Builtin slug or a user-created `^[a-z][a-z0-9_]{0,31}$` key. */
+export type SpendBucket = string;
+
+/** Allowed builtin buckets for the merchants page and Firefly `category_name`. */
+export const SPEND_BUCKETS: readonly BuiltinSpendBucket[] = [
     "grocery",
     "dining",
     "shopping",
@@ -27,8 +31,22 @@ export const SPEND_BUCKETS: readonly SpendBucket[] = [
     "subscriptions",
     "insurance",
     "health",
+    "education",
     "other",
 ];
+
+/** Dropdown / API row for one spend bucket. */
+export interface SpendBucketOption {
+    key: SpendBucket;
+    label: string;
+    custom: boolean;
+}
+
+/** User-created bucket persisted in `spend_buckets`. */
+export interface CustomSpendBucket {
+    key: string;
+    label: string;
+}
 
 /** One this-month vs last-month total. */
 export interface SpendCompareLine {
@@ -47,7 +65,7 @@ export interface SpendMonthStats {
     largeMerchants: SpendCompareLine[];
 }
 
-const BUCKET_LABEL: Record<SpendBucket, string> = {
+const BUCKET_LABEL: Record<BuiltinSpendBucket, string> = {
     grocery: "Groceries",
     dining: "Dining",
     shopping: "Shopping",
@@ -57,6 +75,7 @@ const BUCKET_LABEL: Record<SpendBucket, string> = {
     subscriptions: "Subscriptions",
     insurance: "Insurance",
     health: "Health",
+    education: "Education",
     other: "Other",
 };
 
@@ -146,7 +165,16 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
     },
     {
         bucket: "subscriptions",
-        needles: ["NETFLIX", "SPOTIFY", "HOTSTAR", "YOUTUBE", "PRIME VIDEO", "SONYLIV", "APPLE.COM/BILL"],
+        needles: [
+            "NETFLIX",
+            "SPOTIFY",
+            "HOTSTAR",
+            "YOUTUBE",
+            "PRIME VIDEO",
+            "SONYLIV",
+            "APPLE.COM/BILL",
+            "LINKEDIN",
+        ],
     },
     {
         bucket: "insurance",
@@ -156,7 +184,22 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
         bucket: "health",
         needles: ["APOLLO", "1MG", "PHARMEASY", "PHARMACY", "HOSPITAL", "MEDPLUS", "NETMEDS", "MEDICAL", "CHEMIST", "MEDICOS"],
     },
+    {
+        bucket: "education",
+        needles: [
+            "SCHOOL",
+            "TUITION",
+            "COLLEGE",
+            "UNIVERSITY",
+            "PLAYSCHOOL",
+            "NURSERY",
+            "KINDERGARTEN",
+            "VIDYALAYA",
+        ],
+    },
 ];
+
+const BUCKET_KEY_RE = /^[a-z][a-z0-9_]{0,31}$/;
 
 const BUCKET_CAP = 6;
 const LARGE_MERCHANT_INR = 5000;
@@ -171,31 +214,135 @@ export interface SmsSpendOverride {
     merchantLabel?: string | null;
 }
 
+/** User rename or merge of one catalog key onto another. */
+export interface MerchantAlias {
+    toKey: string;
+    label: string;
+}
+
 /**
  * Firefly / digest label for a spend bucket.
  *
  * @param bucket - Spend group
+ * @param extraLabels - Labels for user-created buckets
  */
-export function spendBucketLabel(bucket: SpendBucket): string {
-    return BUCKET_LABEL[bucket];
+export function spendBucketLabel(
+    bucket: SpendBucket,
+    extraLabels?: ReadonlyMap<string, string>
+): string {
+    return builtinBucketLabel(bucket) ?? extraLabels?.get(bucket) ?? humanizeBucketKey(bucket);
 }
 
 /**
- * True when `value` is a persisted spend bucket key.
+ * True when `value` is a persistable spend-bucket slug.
  *
  * @param value - Request or DB string
  */
-export function isSpendBucket(value: string): value is SpendBucket {
+export function isSpendBucketKey(value: string): boolean {
+    return BUCKET_KEY_RE.test(value);
+}
+
+/**
+ * True when `value` is a built-in spend bucket.
+ *
+ * @param value - Request or DB string
+ */
+export function isBuiltinSpendBucket(value: string): value is BuiltinSpendBucket {
     return (SPEND_BUCKETS as readonly string[]).includes(value);
 }
 
 /**
- * Dropdown rows for GET /merchants.
+ * True when `value` is a spend bucket. With `extraKeys`, only builtins plus those
+ * keys (write path). Without it, any well-formed slug (read path / tests).
  *
- * @returns Bucket key and Firefly / UI label
+ * @param value - Request or DB string
+ * @param extraKeys - User-created bucket keys from `spend_buckets`
  */
-export function spendBucketOptions(): Array<{ key: SpendBucket; label: string }> {
-    return SPEND_BUCKETS.map((key) => ({ key, label: spendBucketLabel(key) }));
+export function isSpendBucket(value: string, extraKeys?: ReadonlySet<string>): value is SpendBucket {
+    if (isBuiltinSpendBucket(value)) {
+        return true;
+    }
+
+    if (extraKeys) {
+        return extraKeys.has(value);
+    }
+
+    return isSpendBucketKey(value);
+}
+
+/**
+ * Slug for a user-created bucket label (`Kids Activities` → `kids_activities`).
+ *
+ * @param label - Display name
+ */
+export function spendBucketKeyFromLabel(label: string): string | undefined {
+    const slug = label
+        .toLowerCase()
+        .trim()
+        .replace(/['’]/g, "")
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 32)
+        .replace(/_+$/g, "");
+
+    return isSpendBucketKey(slug) ? slug : undefined;
+}
+
+/**
+ * Validates a new custom bucket from the Merchants page / API.
+ *
+ * @param rawLabel - Display name
+ * @param rawKey - Optional explicit slug
+ */
+export function parseNewSpendBucket(
+    rawLabel: unknown,
+    rawKey?: unknown
+): CustomSpendBucket | { error: string } {
+    if (typeof rawLabel !== "string") {
+        return { error: "label is required" };
+    }
+
+    const label = rawLabel.replace(/\s+/g, " ").trim();
+
+    if (label.length < 1 || label.length > 64) {
+        return { error: "label must be 1–64 characters" };
+    }
+
+    const explicit = typeof rawKey === "string" ? rawKey.trim().toLowerCase() : "";
+    const key = explicit || spendBucketKeyFromLabel(label);
+
+    if (!key || !isSpendBucketKey(key)) {
+        return { error: "bucket key must start with a letter, then letters, numbers, or underscores (max 32)" };
+    }
+
+    if (isBuiltinSpendBucket(key)) {
+        return { error: "that name is a built-in bucket" };
+    }
+
+    return { key, label };
+}
+
+/**
+ * Dropdown rows for GET /merchants (builtins, then user-created).
+ *
+ * @param extra - Custom buckets from `spend_buckets`
+ * @returns Bucket key, Firefly / UI label, and whether it is user-created
+ */
+export function spendBucketOptions(extra: readonly CustomSpendBucket[] = []): SpendBucketOption[] {
+    const seen = new Set<string>(SPEND_BUCKETS);
+    const builtin = SPEND_BUCKETS.map((key) => ({
+        key,
+        label: spendBucketLabel(key),
+        custom: false,
+    }));
+    const custom = extra
+        .filter((row) => isSpendBucketKey(row.key) && !seen.has(row.key))
+        .map((row) => {
+            seen.add(row.key);
+            return { key: row.key, label: row.label, custom: true };
+        });
+
+    return [...builtin, ...custom];
 }
 
 /**
@@ -226,24 +373,67 @@ export function isOwnSmsMerchantKey(key: string): boolean {
 }
 
 /**
+ * Follows rename / merge aliases. Same `toKey` as `from` is a display rename.
+ *
+ * @param key - Pattern or overridden catalog id
+ * @param aliases - `merchant_aliases` keyed by from-key
+ */
+export function resolveMerchantAlias(
+    key: string,
+    aliases?: ReadonlyMap<string, MerchantAlias>
+): { key: string; label?: string } {
+    if (!aliases?.size) {
+        return { key };
+    }
+
+    const seen = new Set<string>();
+    let current = key;
+    let label: string | undefined;
+
+    while (aliases.has(current) && !seen.has(current)) {
+        seen.add(current);
+        const alias = aliases.get(current);
+
+        if (!alias) {
+            break;
+        }
+
+        label = alias.label || label;
+
+        if (alias.toKey === current) {
+            break;
+        }
+
+        current = alias.toKey;
+    }
+
+    return { key: current, label };
+}
+
+/**
  * SMS override first, then user merchant map, then keyword heuristics.
  *
  * @param merchant - Extracted merchant
  * @param assigned - `merchant_categories` keyed by catalog id
  * @param body - Raw SMS body when merchant is thin
  * @param smsOverride - Per-SMS category or merchant move
+ * @param aliases - Optional merchant rename / merge map
  */
 export function resolveSpendBucket(
     merchant?: string | null,
     assigned?: ReadonlyMap<string, SpendBucket>,
     body?: string | null,
-    smsOverride?: SmsSpendOverride | null
+    smsOverride?: SmsSpendOverride | null,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): SpendBucket {
     if (smsOverride?.category) {
         return smsOverride.category;
     }
 
-    const key = smsOverride?.merchantKey || merchantCatalogKey(merchant);
+    const key = resolveMerchantAlias(
+        smsOverride?.merchantKey || merchantCatalogKey(merchant),
+        aliases
+    ).key;
     return assigned?.get(key) ?? spendBucket(merchant, body);
 }
 
@@ -278,6 +468,8 @@ export function spendBucket(merchant?: string | null, body?: string | null): Spe
  * @param lastLabel - e.g. `Jul 1–22`
  * @param assigned - Optional Narada merchant → bucket map
  * @param smsOverrides - Optional per-SMS category / merchant moves
+ * @param aliases - Optional merchant rename / merge map
+ * @param bucketLabels - Labels for user-created buckets
  */
 export function buildSpendMonthStats(
     thisRows: SpendEvent[],
@@ -285,17 +477,20 @@ export function buildSpendMonthStats(
     thisLabel: string,
     lastLabel: string,
     assigned?: ReadonlyMap<string, SpendBucket>,
-    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>
+    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>,
+    bucketLabels?: ReadonlyMap<string, string>
 ): SpendMonthStats {
-    const thisBuckets = sumBuckets(thisRows, assigned, smsOverrides);
-    const lastBuckets = sumBuckets(lastRows, assigned, smsOverrides);
-    const thisMerchants = sumMerchants(thisRows);
-    const lastMerchants = sumMerchants(lastRows);
+    const thisBuckets = sumBuckets(thisRows, assigned, smsOverrides, aliases);
+    const lastBuckets = sumBuckets(lastRows, assigned, smsOverrides, aliases);
+    const thisMerchants = sumMerchants(thisRows, aliases);
+    const lastMerchants = sumMerchants(lastRows, aliases);
 
-    const buckets = (Object.keys(BUCKET_LABEL) as SpendBucket[])
+    const keys = new Set<string>([...thisBuckets.keys(), ...lastBuckets.keys()]);
+    const buckets = [...keys]
         .map((bucket) => ({
             key: bucket,
-            label: spendBucketLabel(bucket),
+            label: spendBucketLabel(bucket, bucketLabels),
             thisAmount: thisBuckets.get(bucket) ?? 0,
             lastAmount: lastBuckets.get(bucket) ?? 0,
         }))
@@ -368,16 +563,18 @@ export interface MerchantSpendTotal {
  *
  * @param rows - Expense totals grouped by raw `financial_events.merchant`
  * @param assignments - Saved categories keyed by {@link merchantCatalogKey}
+ * @param labels - Optional display names keyed by catalog id
  */
 export function buildMerchantCatalog(
     rows: MerchantSpendTotal[],
-    assignments: ReadonlyMap<string, MerchantCategoryAssignment>
+    assignments: ReadonlyMap<string, MerchantCategoryAssignment>,
+    labels?: ReadonlyMap<string, string>
 ): MerchantCatalogItem[] {
     const byKey = new Map<string, MerchantCatalogItem>();
 
     for (const row of rows) {
-        const label = spendMerchantLabel(row.merchant);
         const key = row.catalogKey ?? merchantCatalogKey(row.merchant);
+        const label = labels?.get(key) || spendMerchantLabel(row.merchant);
         const existing = byKey.get(key);
 
         if (existing) {
@@ -415,12 +612,15 @@ export function buildMerchantCatalog(
 
         if (existing) {
             existing.category = assignment.category;
+            if (labels?.get(key)) {
+                existing.label = labels.get(key) ?? existing.label;
+            }
             continue;
         }
 
         byKey.set(key, {
             key,
-            label: assignment.label,
+            label: labels?.get(key) || assignment.label,
             category: assignment.category,
             suggested: spendBucket(assignment.label),
             txCount: 0,
@@ -450,7 +650,8 @@ export function buildMerchantCatalog(
 function sumBuckets(
     rows: SpendEvent[],
     assigned?: ReadonlyMap<string, SpendBucket>,
-    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>
+    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): Map<SpendBucket, number> {
     const totals = new Map<SpendBucket, number>();
 
@@ -460,14 +661,17 @@ function sumBuckets(
         }
 
         const override = row.smsId != null ? smsOverrides?.get(row.smsId) : undefined;
-        const bucket = resolveSpendBucket(row.merchant, assigned, undefined, override);
+        const bucket = resolveSpendBucket(row.merchant, assigned, undefined, override, aliases);
         totals.set(bucket, (totals.get(bucket) ?? 0) + row.amount);
     }
 
     return totals;
 }
 
-function sumMerchants(rows: SpendEvent[]): Map<string, number> {
+function sumMerchants(
+    rows: SpendEvent[],
+    aliases?: ReadonlyMap<string, MerchantAlias>
+): Map<string, number> {
     const totals = new Map<string, number>();
 
     for (const row of rows) {
@@ -475,7 +679,8 @@ function sumMerchants(rows: SpendEvent[]): Map<string, number> {
             continue;
         }
 
-        const label = spendMerchantLabel(row.merchant);
+        const resolved = resolveMerchantAlias(merchantCatalogKey(row.merchant), aliases);
+        const label = resolved.label || spendMerchantLabel(row.merchant);
         totals.set(label, (totals.get(label) ?? 0) + row.amount);
     }
 
@@ -567,6 +772,20 @@ function mergeSampleSmsIds(left?: number[], right?: number[]): number[] {
     }
 
     return merged;
+}
+
+function builtinBucketLabel(bucket: string): string | undefined {
+    return Object.prototype.hasOwnProperty.call(BUCKET_LABEL, bucket)
+        ? BUCKET_LABEL[bucket as BuiltinSpendBucket]
+        : undefined;
+}
+
+function humanizeBucketKey(key: string): string {
+    return key
+        .split("_")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
 }
 
 function normalizeSpendText(value: string): string {

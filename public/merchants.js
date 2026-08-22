@@ -18,6 +18,10 @@
     refresh: document.getElementById("refresh"),
     applyDhan: document.getElementById("apply-dhan"),
     applyAll: document.getElementById("apply-all"),
+    bucketList: document.getElementById("bucket-list"),
+    bucketMeta: document.getElementById("bucket-meta"),
+    bucketForm: document.getElementById("bucket-form"),
+    bucketLabel: document.getElementById("bucket-label"),
     smsDialog: document.getElementById("sms-dialog"),
     smsDialogTitle: document.getElementById("sms-dialog-title"),
     smsDialogMeta: document.getElementById("sms-dialog-meta"),
@@ -53,8 +57,11 @@
     total: 0,
   };
 
-  /** @type {Array<{ key: string, label: string }>} */
+  /** @type {Array<{ key: string, label: string, custom?: boolean }>} */
   let buckets = [];
+
+  /** @type {Array<{ key: string, label: string }>} */
+  let catalogMerchants = [];
 
   /**
    * @param {string} path
@@ -172,6 +179,23 @@
       })
       .join("");
     return `${blank}${opts}`;
+  }
+
+  /**
+   * @param {string} key
+   * @param {Array<{ key: string, label: string }>} options
+   * @returns {string}
+   */
+  function mergeSelect(key, options) {
+    return [
+      `<option value="">Keep separate / merge into…</option>`,
+      ...options
+        .filter((row) => row.key !== key)
+        .map(
+          (row) =>
+            `<option value="${escapeHtml(row.key)}">${escapeHtml(row.label)}</option>`
+        ),
+    ].join("");
   }
 
   /**
@@ -295,7 +319,21 @@
     return `
       <article class="merchant-row card" data-key="${escapeHtml(item.key)}">
         <div>
-          <h3>${escapeHtml(item.label)}</h3>
+          <label class="merchant-name-field">
+            <span class="sr-only">Display name for ${escapeHtml(item.label)}</span>
+            <input
+              class="merchant-name"
+              data-rename="${escapeHtml(item.key)}"
+              value="${escapeHtml(item.label)}"
+              autocomplete="off"
+            />
+          </label>
+          <label class="merchant-merge">
+            <span class="sr-only">Merge ${escapeHtml(item.label)} into</span>
+            <select data-merge="${escapeHtml(item.key)}">
+              ${mergeSelect(item.key, catalogMerchants)}
+            </select>
+          </label>
           <p class="merchant-meta">
             ${item.txCount} tx${pushed ? ` · ${pushed} in Dhan` : ""} · ${money.format(
               item.totalAmount
@@ -326,6 +364,8 @@
     const counts = payload.counts ?? {};
     const pagination = payload.pagination ?? {};
     buckets = payload.buckets ?? buckets;
+    catalogMerchants = payload.merchants ?? catalogMerchants;
+    renderBuckets(buckets);
 
     setText(
       els.summary,
@@ -367,6 +407,35 @@
     if (els.nextPage instanceof HTMLButtonElement) {
       els.nextPage.disabled = page >= totalPages;
     }
+  }
+
+  /**
+   * @param {Array<{ key: string, label: string, custom?: boolean }>} options
+   */
+  function renderBuckets(options) {
+    const builtin = options.filter((row) => !row.custom);
+    const custom = options.filter((row) => row.custom);
+    const chips = [
+      ...builtin.map(
+        (row) => `<li class="bucket-chip">${escapeHtml(row.label)}</li>`
+      ),
+      ...custom.map(
+        (row) =>
+          `<li class="bucket-chip bucket-chip-custom">
+            <span>${escapeHtml(row.label)}</span>
+            <button type="button" class="bucket-delete" data-bucket-delete="${escapeHtml(
+              row.key
+            )}" aria-label="Remove ${escapeHtml(row.label)}">Remove</button>
+          </li>`
+      ),
+    ].join("");
+    setHtml(els.bucketList, `<ul class="bucket-chips">${chips}</ul>`);
+    setText(
+      els.bucketMeta,
+      custom.length
+        ? `${custom.length} extra bucket${custom.length === 1 ? "" : "s"}`
+        : "built-in only — add your own below"
+    );
   }
 
   async function load() {
@@ -415,6 +484,45 @@
           category !== "" &&
           els.applyDhan instanceof HTMLInputElement &&
           els.applyDhan.checked,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || `HTTP ${res.status}`);
+    }
+
+    return res.json().then((payload) => payload.dhan);
+  }
+
+  /**
+   * @param {string} key
+   * @param {string} label
+   */
+  async function rename(key, label) {
+    const res = await api("/merchants", {
+      method: "PUT",
+      body: JSON.stringify({ key, label }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || `HTTP ${res.status}`);
+    }
+  }
+
+  /**
+   * @param {string} key
+   * @param {string} mergeInto
+   */
+  async function mergeInto(key, mergeInto) {
+    const res = await api("/merchants", {
+      method: "PUT",
+      body: JSON.stringify({
+        key,
+        mergeInto,
+        applyToDhan:
+          els.applyDhan instanceof HTMLInputElement && els.applyDhan.checked,
       }),
     });
 
@@ -509,6 +617,83 @@
       );
     } finally {
       els.applyAll.disabled = false;
+    }
+  });
+
+  els.bucketForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!(els.bucketLabel instanceof HTMLInputElement)) {
+      return;
+    }
+    const label = els.bucketLabel.value.replace(/\s+/g, " ").trim();
+    if (!label) {
+      return;
+    }
+    const submit =
+      els.bucketForm instanceof HTMLFormElement
+        ? els.bucketForm.querySelector("button[type='submit']")
+        : null;
+    if (submit instanceof HTMLButtonElement) {
+      submit.disabled = true;
+    }
+    setText(els.bucketMeta, "Saving…");
+    try {
+      const res = await api("/merchants/buckets", {
+        method: "POST",
+        body: JSON.stringify({ label }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+      els.bucketLabel.value = "";
+      if (body.buckets) {
+        buckets = body.buckets;
+        renderBuckets(buckets);
+      }
+      await load();
+    } catch (error) {
+      setText(
+        els.bucketMeta,
+        error instanceof Error ? error.message : "Could not add bucket"
+      );
+    } finally {
+      if (submit instanceof HTMLButtonElement) {
+        submit.disabled = false;
+      }
+    }
+  });
+
+  els.bucketList?.addEventListener("click", async (event) => {
+    const target =
+      event.target instanceof HTMLElement
+        ? event.target.closest("button[data-bucket-delete]")
+        : null;
+    if (!(target instanceof HTMLButtonElement) || !target.dataset.bucketDelete) {
+      return;
+    }
+    target.disabled = true;
+    setText(els.bucketMeta, "Removing…");
+    try {
+      const res = await api(
+        `/merchants/buckets/${encodeURIComponent(target.dataset.bucketDelete)}`,
+        { method: "DELETE" }
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+      if (body.buckets) {
+        buckets = body.buckets;
+        renderBuckets(buckets);
+      }
+      await load();
+    } catch (error) {
+      setText(
+        els.bucketMeta,
+        error instanceof Error ? error.message : "Could not remove bucket"
+      );
+      target.disabled = false;
     }
   });
 
@@ -855,6 +1040,24 @@
 
   els.list?.addEventListener("change", async (event) => {
     const target = event.target;
+    if (target instanceof HTMLSelectElement && target.dataset.merge) {
+      if (!target.value) {
+        return;
+      }
+      target.disabled = true;
+      try {
+        const dhan = await mergeInto(target.dataset.merge, target.value);
+        await load();
+        showDhanResult(dhan);
+      } catch (error) {
+        setText(
+          els.pageMeta,
+          error instanceof Error ? error.message : "Could not merge merchants"
+        );
+        target.disabled = false;
+      }
+      return;
+    }
     if (!(target instanceof HTMLSelectElement) || !target.dataset.assign) {
       return;
     }
@@ -874,6 +1077,44 @@
         error instanceof Error ? error.message : "Could not save category"
       );
       target.disabled = false;
+    }
+  });
+
+  els.list?.addEventListener("focusout", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || !target.dataset.rename) {
+      return;
+    }
+
+    const next = target.value.replace(/\s+/g, " ").trim();
+    if (!next || next === target.defaultValue) {
+      target.value = target.defaultValue;
+      return;
+    }
+
+    target.disabled = true;
+    try {
+      await rename(target.dataset.rename, next);
+      await load();
+    } catch (error) {
+      setText(
+        els.pageMeta,
+        error instanceof Error ? error.message : "Could not rename merchant"
+      );
+      target.value = target.defaultValue;
+      target.disabled = false;
+    }
+  });
+
+  els.list?.addEventListener("keydown", (event) => {
+    const target = event.target;
+    if (
+      event.key === "Enter" &&
+      target instanceof HTMLInputElement &&
+      target.dataset.rename
+    ) {
+      event.preventDefault();
+      target.blur();
     }
   });
 

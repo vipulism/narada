@@ -359,16 +359,34 @@ export function isCreditCardPaymentAck(body: string): boolean {
 }
 
 /**
- * Savings/UPI debit that pays a credit-card bill via CRED, not a merchant spend.
+ * Savings/UPI debit that pays a credit-card bill (CRED, CredClub, CheQ, SBI Cards, Axis).
+ * Not a household spend — the card swipe was already the expense.
+ *
+ * @param body - SMS body (any case)
  */
+export function isCardBillPayMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    if (
+        upper.includes("PAYMENT ON CRED") ||
+        upper.includes("UPI-CRED-") ||
+        /CRED@[A-Z]/.test(upper)
+    ) {
+        return true;
+    }
+
+    if (
+        /(?:;|&)\s*CRED(?:CLUB|\s+CLUB)?\s+CREDITED/.test(upper) ||
+        /\bTO\s+CRED(?:CLUB|\s+CLUB)?\b/.test(upper)
+    ) {
+        return true;
+    }
+
+    return /(?:;|&)\s*(?:SBI\s+CARDS?|CHEQ|AXIS)\s+CREDITED/.test(upper);
+}
+
 function isCredBillPay(body: string): boolean {
-    return (
-        body.includes("PAYMENT ON CRED") ||
-        body.includes("UPI-CRED-") ||
-        body.includes("CRED CLUB") ||
-        /;\s*CRED CREDITED/.test(body) ||
-        /CRED@[A-Z]/.test(body)
-    );
+    return isCardBillPayMessage(body);
 }
 
 /**
@@ -618,7 +636,9 @@ export function detectFinancialKind(
         isMutualFundMessage(body, sender) ||
         isNewFdMessage(body) ||
         isSgbMessage(body) ||
-        isEquityBuyMessage(body)
+        isEquityBuyMessage(body) ||
+        isZerodhaFundingMessage(body) ||
+        isIndianClearingSipMessage(body)
     ) {
         return "investment";
     }
@@ -804,4 +824,43 @@ export function isEquityBuyMessage(body: string): boolean {
         /\bBUY\b/.test(upper);
 
     return product && buy;
+}
+
+/**
+ * Bank UPI/card debit that funds Zerodha (or ICCL Zerodha clearing), not spend.
+ *
+ * @param body - SMS body (any case)
+ */
+export function isZerodhaFundingMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    if (!upper.includes("ZERODHA")) {
+        return false;
+    }
+
+    return upper.includes("DEBITED") || upper.includes("SPENT");
+}
+
+/**
+ * UPI debit to Indian Clearing (BSE Star MF / SIP), not ICCL Zerodha equity.
+ *
+ * @param body - SMS body (any case)
+ */
+export function isIndianClearingSipMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    if (upper.includes("ZERODHA") || !/\bINDIAN\s+CLEARING\b/.test(upper)) {
+        return false;
+    }
+
+    return upper.includes("DEBITED") || upper.includes("SPENT");
+}
+
+/**
+ * Broker or MF-clearing UPI funding that must not appear as household spend.
+ *
+ * @param body - SMS body (any case)
+ */
+export function isInvestmentFundingMessage(body: string): boolean {
+    return isZerodhaFundingMessage(body) || isIndianClearingSipMessage(body);
 }

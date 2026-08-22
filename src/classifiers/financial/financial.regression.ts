@@ -1,6 +1,7 @@
 import { FinancialClassifier } from "./financial.classifier";
 import { SmsCategory, SmsMessage } from "../../importers/sms/sms.model";
 import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilter";
+import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
@@ -12,7 +13,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { buildSpendMonthStats, buildMerchantCatalog, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, resolveSpendBucket, spendBucket, spendMerchantLabel } from "./financial.spend";
+import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
@@ -263,7 +264,7 @@ const CASES: RegressionCase[] = [
             subcategory: "expense",
             cashFlow: "OUTFLOW",
             amount: 954.67,
-            merchant: "RAZ*COMMODUM GROCERIES",
+            merchant: "COMMODUM GROCERIES",
         },
     },
     {
@@ -560,6 +561,125 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "icici-zerodha-upi-investment",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 9900.00 on 07-Oct-24; Zerodha credited. UPI:428102836837. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "investment",
+            cashFlow: "OUTFLOW",
+            amount: 9900,
+            accountLast4: "1412",
+            merchant: "Zerodha",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "icici-iccl-zerodha-upi-investment",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 2000.00 on 26-Sep-24; ICCL ZERODHA CO credited. UPI:427059091929. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "investment",
+            cashFlow: "OUTFLOW",
+            amount: 2000,
+            accountLast4: "1412",
+            merchant: "Zerodha",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "icici-indian-clearing-sip-investment",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 1500.00 on 17-Aug-26; Indian Clearing credited. UPI:659546639677. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "investment",
+            cashFlow: "OUTFLOW",
+            amount: 1500,
+            accountLast4: "1412",
+            merchant: "Indian Clearing",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "13384-icici-credclub-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 2731.00 on 24-Dec-24; CredClub credited. UPI:435938914895. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 2731,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "12980-hdfc-amt-sent-to-cred-bill",
+        address: "VM-HDFCBK",
+        body: "Amt Sent Rs.1259.96\nFrom HDFC Bank A/C *1260\nTo CRED\nOn 08-11\nRef 431395842437",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 1259.96,
+            accountLast4: "1260",
+        },
+    },
+    {
+        id: "5538-icici-ampersand-cred-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XXX412 debited for INR 842.00 on 03-Nov-21 & CRED credited.UPI:130713230750.Call 18002662 for dispute or SMS BLOCK 412 to 9215676766.\nNot You? Call 18002586161/SMS BLOCK UPI to 7308080808",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 842,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "14370-icici-axis-card-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 100.00 on 24-Apr-25; Axis credited. UPI:511446389313. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 100,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "7467-icici-sbi-cards-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 1590.23 on 10-Nov-22; SBI CARDS credited. UPI:231490020071. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 1590.23,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "18571-icici-cheq-card-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 43147.00 on 18-Jul-26; CheQ credited. UPI:110247400024. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 43147,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
         id: "14236-sbi-home-loan-emi-due-skip",
         address: "VA-CBSSBI",
         body: "Dear customer, EMI due on 05042025 in A/c XXXXX489751. Please pay in time. Please ignore, if already paid.-SBI",
@@ -645,6 +765,32 @@ const CASES: RegressionCase[] = [
             amount: 845.27,
             accountLast4: "0004",
             merchant: "AMAZON PAY IN E",
+        },
+    },
+    {
+        id: "hdfc-ind-star-linkedin",
+        address: "AD-HDFCBK-S",
+        body: "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 1687.47,
+            accountLast4: "0170",
+            merchant: "LinkedIn",
+        },
+    },
+    {
+        id: "icici-ind-star-amazon",
+        address: "AX-ICICIT-S",
+        body: "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 737,
+            accountLast4: "0004",
+            merchant: "Amazon",
         },
     },
     {
@@ -1384,6 +1530,23 @@ function runEventFilterRegression(): void {
         failures.push(`IMPS pair kept ${twoLakh.length} events, expected 1`);
     }
 
+    const irctcBody =
+        "Rs 6,062.94 Debited to Ac XX0592 on 16-MAR 20:56-UPI/907560566744/From:vipulism@ybl/To:IRCTCINAPP@ybl/Payment from PhonePe Tot Avbl Bal-Rs 1,076,343.65 on 16-Mar 20:56";
+    const irctcDupes = filterPostedEvents([
+        {
+            event: stubEvent(454, "expense", 6062.94, "0592", new Date("2020-03-16T20:56:00+05:30")),
+            body: irctcBody,
+        },
+        {
+            event: stubEvent(463, "expense", 6062.94, "0592", new Date("2020-03-16T20:56:00+05:30")),
+            body: irctcBody,
+        },
+    ]);
+
+    if (irctcDupes.length !== 1 || irctcDupes[0]?.smsId !== 454) {
+        failures.push(`duplicate IRCTC SMS should keep #454, got ${irctcDupes.map((row) => row.smsId)}`);
+    }
+
     if (failures.length > 0) {
         throw new Error(`event filter regression failed:\n${failures.join("\n")}`);
     }
@@ -1541,6 +1704,36 @@ function runDhanResolveRegression(): void {
 
     if (sip.event.counterpartyLast4 !== "3333") {
         failures.push(`Axis SIP dest ${sip.event.counterpartyLast4} != 3333`);
+    }
+
+    const zerodhaBody =
+        "ICICI Bank Acct XX412 debited for Rs 9900.00 on 07-Oct-24; Zerodha credited. UPI:428102836837. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const zerodha = stampDhanAccount(
+        {
+            ...stubEvent(99001, "investment", 9900, "1412", new Date("2026-08-16T12:00:00+05:30")),
+            bank: "ICICI Bank",
+        },
+        accounts,
+        zerodhaBody
+    );
+
+    if (zerodha.event.counterpartyLast4 !== "4444") {
+        failures.push(`Zerodha funding dest ${zerodha.event.counterpartyLast4} != 4444`);
+    }
+
+    const indianClearingBody =
+        "ICICI Bank Acct XX412 debited for Rs 1500.00 on 17-Aug-26; Indian Clearing credited. UPI:659546639677. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const indianClearing = stampDhanAccount(
+        {
+            ...stubEvent(99002, "investment", 1500, "1412", new Date("2026-08-17T12:00:00+05:30")),
+            bank: "ICICI Bank",
+        },
+        accounts,
+        indianClearingBody
+    );
+
+    if (indianClearing.event.counterpartyLast4 !== "3333") {
+        failures.push(`Indian Clearing SIP dest ${indianClearing.event.counterpartyLast4} != 3333`);
     }
 
     if (failures.length > 0) {
@@ -2385,12 +2578,62 @@ function runAttentionDigestRegression(): void {
         failures.push("Swiggy/Amazon buckets");
     }
 
+    if (spendBucket("LinkedIn") !== "subscriptions") {
+        failures.push("LinkedIn should be subscriptions");
+    }
+
     if (spendBucket("RAMESH KIRANA") !== "grocery" || spendBucket("sharma-kirana@okaxis") !== "grocery") {
         failures.push("UPI kirana names should be grocery");
     }
 
     if (spendBucket("VIPIN GUPTA") !== "other") {
         failures.push("person UPI payee stays other");
+    }
+
+    if (spendBucket("DPS INTERNATIONAL SCHOOL") !== "education") {
+        failures.push("school merchant should be education");
+    }
+
+    if (spendBucket("SCHOOL FEE") !== "education") {
+        failures.push("school fee should be education");
+    }
+
+    if (spendBucket("CONVENIENCE FEE") !== "other") {
+        failures.push("bare fee is not education");
+    }
+
+    if (spendBucketLabel("education") !== "Education") {
+        failures.push("education bucket label");
+    }
+
+    if (spendBucketKeyFromLabel("Kids Activities") !== "kids_activities") {
+        failures.push("custom bucket slug");
+    }
+
+    const parsedPets = parseNewSpendBucket("Pets");
+
+    if (!("key" in parsedPets) || parsedPets.key !== "pets" || parsedPets.label !== "Pets") {
+        failures.push("parse new spend bucket");
+    }
+
+    if (!("error" in parseNewSpendBucket("Education"))) {
+        failures.push("cannot recreate builtin Education");
+    }
+
+    if (!isSpendBucket("pets") || isSpendBucket("Pets") || isSpendBucket("not a bucket")) {
+        failures.push("spend bucket slug check");
+    }
+
+    if (isSpendBucket("pets", new Set()) || !isSpendBucket("pets", new Set(["pets"]))) {
+        failures.push("known custom bucket check");
+    }
+
+    if (
+        !spendBucketOptions([{ key: "pets", label: "Pets" }]).some(
+            (row) => row.custom && row.key === "pets" && row.label === "Pets"
+        )
+    ) {
+        failures.push("dropdown should include custom buckets");
     }
 
     if (spendMerchantLabel("paytmqr5wpzku@ptys") !== "Paytm QR") {
@@ -2479,6 +2722,30 @@ function runAttentionDigestRegression(): void {
         failures.push("Dhan recategorize should match pushed Paytm QR expenses only");
     }
 
+    const linkedInPushed = stubEvent(31, "expense", 1687.47, "0170", new Date("2026-04-02T12:16:19+05:30"));
+    linkedInPushed.merchant = "IND";
+    linkedInPushed.fireflyTransactionId = "linkedin-1";
+    const amazonPushed = stubEvent(32, "expense", 737, "0004", new Date("2025-08-24T00:00:00+05:30"));
+    amazonPushed.merchant = "IND";
+    amazonPushed.fireflyTransactionId = "amazon-1";
+    const linkedInDhan = pushedExpensesForMerchant(
+        [
+            {
+                ...linkedInPushed,
+                body: "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808",
+            },
+            {
+                ...amazonPushed,
+                body: "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.",
+            },
+        ],
+        "linkedin"
+    );
+
+    if (linkedInDhan.length !== 1 || linkedInDhan[0]?.smsId !== 31) {
+        failures.push("Dhan recategorize should match IND*LinkedIn, not IND*Amazon");
+    }
+
     const recovered = recoverUnknownMerchantTotals(
         [
             {
@@ -2548,6 +2815,339 @@ function runAttentionDigestRegression(): void {
 
     if (blinkitSms.length !== 1 || blinkitSms[0]?.smsId !== 18928) {
         failures.push(`Blinkit SMS list should be only #18928, got ${blinkitSms.map((row) => row.smsId)}`);
+    }
+
+    const titanAlias = resolveMerchantAlias(
+        "_titan company li..",
+        new Map([["_titan company li..", { toKey: "tanishq", label: "Tanishq" }]])
+    );
+
+    if (titanAlias.key !== "tanishq" || titanAlias.label !== "Tanishq") {
+        failures.push(`merchant alias ${JSON.stringify(titanAlias)}`);
+    }
+
+    const mergedTotals = groupExpenseTotals(
+        [
+            {
+                smsId: 1,
+                merchant: "_TITAN COMPANY LI..",
+                amount: 280047,
+                occurredAt: new Date("2026-07-31T00:00:00Z"),
+                pushed: false,
+            },
+            {
+                smsId: 2,
+                merchant: "Tanishq",
+                amount: 1000,
+                occurredAt: new Date("2026-08-01T00:00:00Z"),
+                pushed: false,
+            },
+        ],
+        undefined,
+        new Map([[merchantCatalogKey("_TITAN COMPANY LI.."), { toKey: "tanishq", label: "Tanishq" }]])
+    );
+
+    if (
+        mergedTotals.length !== 1 ||
+        mergedTotals[0]?.catalogKey !== "tanishq" ||
+        mergedTotals[0]?.txCount !== 2 ||
+        mergedTotals[0]?.totalAmount !== 281047
+    ) {
+        failures.push(`merged Titan/Tanishq totals ${JSON.stringify(mergedTotals)}`);
+    }
+
+    const linkedInBody =
+        "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808";
+    const amazonBody =
+        "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.";
+    const indStarTotals = groupExpenseTotals([
+        {
+            smsId: 31,
+            merchant: "IND",
+            amount: 1687.47,
+            occurredAt: new Date("2026-04-02T12:16:19+05:30"),
+            pushed: false,
+            body: linkedInBody,
+        },
+        {
+            smsId: 32,
+            merchant: "IND",
+            amount: 737,
+            occurredAt: new Date("2025-08-24T00:00:00+05:30"),
+            pushed: false,
+            body: amazonBody,
+        },
+    ]);
+    const indStarKeys = indStarTotals.map((row) => row.catalogKey).sort();
+
+    if (
+        indStarTotals.length !== 2 ||
+        !indStarKeys.includes("linkedin") ||
+        !indStarKeys.includes("amazon")
+    ) {
+        failures.push(`IND* LinkedIn/Amazon must split, got ${JSON.stringify(indStarTotals)}`);
+    }
+
+    const linkedInSms = listSmsForMerchantKey(
+        [
+            {
+                smsId: 31,
+                merchant: "IND",
+                amount: 1687.47,
+                occurredAt: new Date("2026-04-02T12:16:19+05:30"),
+                body: linkedInBody,
+            },
+            {
+                smsId: 32,
+                merchant: "IND",
+                amount: 737,
+                occurredAt: new Date("2025-08-24T00:00:00+05:30"),
+                body: amazonBody,
+            },
+        ],
+        [],
+        "linkedin"
+    );
+
+    if (linkedInSms.length !== 1 || linkedInSms[0]?.smsId !== 31) {
+        failures.push(`LinkedIn SMS list should be only #31, got ${linkedInSms.map((row) => row.smsId)}`);
+    }
+
+    const irctcBody =
+        "Rs 6,062.94 Debited to Ac XX0592 on 16-MAR 20:56-UPI/907560566744/From:vipulism@ybl/To:IRCTCINAPP@ybl/Payment from PhonePe Tot Avbl Bal-Rs 1,076,343.65 on 16-Mar 20:56";
+    const irctcTotals = groupExpenseTotals([
+        {
+            smsId: 454,
+            merchant: "IRCTCINAPP@ybl",
+            amount: 6062.94,
+            occurredAt: new Date("2020-03-16T20:56:00+05:30"),
+            body: irctcBody,
+            pushed: false,
+        },
+        {
+            smsId: 463,
+            merchant: "IRCTCINAPP@ybl",
+            amount: 6062.94,
+            occurredAt: new Date("2020-03-16T20:56:00+05:30"),
+            body: irctcBody,
+            pushed: false,
+        },
+    ]);
+
+    if (
+        irctcTotals.length !== 1 ||
+        irctcTotals[0]?.txCount !== 1 ||
+        irctcTotals[0]?.totalAmount !== 6062.94
+    ) {
+        failures.push(`duplicate IRCTC SMS should count once, got ${JSON.stringify(irctcTotals)}`);
+    }
+
+    const irctcSms = listSmsForMerchantKey(
+        [
+            {
+                smsId: 454,
+                merchant: "IRCTCINAPP@ybl",
+                amount: 6062.94,
+                occurredAt: new Date("2020-03-16T20:56:00+05:30"),
+                body: irctcBody,
+            },
+            {
+                smsId: 463,
+                merchant: "IRCTCINAPP@ybl",
+                amount: 6062.94,
+                occurredAt: new Date("2020-03-16T20:56:00+05:30"),
+                body: irctcBody,
+            },
+        ],
+        [],
+        merchantCatalogKey("IRCTCINAPP@ybl")
+    );
+
+    if (irctcSms.length !== 1 || irctcSms[0]?.smsId !== 454) {
+        failures.push(`IRCTC SMS list should be only #454, got ${irctcSms.map((row) => row.smsId)}`);
+    }
+
+    const zerodhaBody =
+        "ICICI Bank Acct XX412 debited for Rs 9900.00 on 07-Oct-24; Zerodha credited. UPI:428102836837. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const staleZerodha: AnalysisEventSource = {
+        smsId: 99001,
+        occurredAt: new Date("2024-10-07T00:00:00Z"),
+        body: zerodhaBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 9900,
+            cashFlow: "OUTFLOW",
+            merchant: "Zerodha",
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    };
+    const rebuiltZerodha = toFinancialEvent(staleZerodha);
+
+    if (rebuiltZerodha?.kind !== "investment") {
+        failures.push(`stale Zerodha expense should rebuild as investment, got ${rebuiltZerodha?.kind}`);
+    }
+
+    const zerodhaSpend = groupExpenseTotals([
+        {
+            smsId: 99001,
+            merchant: "Zerodha",
+            amount: 9900,
+            occurredAt: new Date("2024-10-07T00:00:00Z"),
+            body: zerodhaBody,
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        zerodhaSpend.length !== 1 ||
+        zerodhaSpend[0]?.catalogKey !== "tanishq" ||
+        zerodhaSpend.some((row) => row.catalogKey === "zerodha")
+    ) {
+        failures.push(`Zerodha funding should drop off merchants, got ${JSON.stringify(zerodhaSpend)}`);
+    }
+
+    const indianClearingBody =
+        "ICICI Bank Acct XX412 debited for Rs 1500.00 on 17-Aug-26; Indian Clearing credited. UPI:659546639677. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const staleClearing: AnalysisEventSource = {
+        smsId: 99002,
+        occurredAt: new Date("2026-08-17T00:00:00Z"),
+        body: indianClearingBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 1500,
+            cashFlow: "OUTFLOW",
+            merchant: "Indian Clearing",
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    };
+    const rebuiltClearing = toFinancialEvent(staleClearing);
+
+    if (rebuiltClearing?.kind !== "investment") {
+        failures.push(`stale Indian Clearing expense should rebuild as investment, got ${rebuiltClearing?.kind}`);
+    }
+
+    const clearingSpend = groupExpenseTotals([
+        {
+            smsId: 99002,
+            merchant: "Indian Clearing",
+            amount: 1500,
+            occurredAt: new Date("2026-08-17T00:00:00Z"),
+            body: indianClearingBody,
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        clearingSpend.length !== 1 ||
+        clearingSpend[0]?.catalogKey !== "tanishq" ||
+        clearingSpend.some((row) => row.catalogKey === "indian clearing")
+    ) {
+        failures.push(`Indian Clearing SIP should drop off merchants, got ${JSON.stringify(clearingSpend)}`);
+    }
+
+    const credClubBody =
+        "ICICI Bank Acct XX412 debited for Rs 2731.00 on 24-Dec-24; CredClub credited. UPI:435938914895. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const staleCredClub: AnalysisEventSource = {
+        smsId: 13384,
+        occurredAt: new Date("2024-12-24T00:00:00Z"),
+        body: credClubBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 2731,
+            cashFlow: "OUTFLOW",
+            merchant: "CredClub",
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    };
+
+    if (toFinancialEvent(staleCredClub)?.kind !== "bill") {
+        failures.push(`stale CredClub expense should rebuild as bill, got ${toFinancialEvent(staleCredClub)?.kind}`);
+    }
+
+    const cardBillSpend = groupExpenseTotals([
+        {
+            smsId: 13384,
+            merchant: "CredClub",
+            amount: 2731,
+            occurredAt: new Date("2024-12-24T00:00:00Z"),
+            body: credClubBody,
+            pushed: false,
+        },
+        {
+            smsId: 14370,
+            merchant: "Axis",
+            amount: 100,
+            occurredAt: new Date("2025-04-24T00:00:00Z"),
+            body: "ICICI Bank Acct XX412 debited for Rs 100.00 on 24-Apr-25; Axis credited. UPI:511446389313. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+            pushed: false,
+        },
+        {
+            smsId: 7467,
+            merchant: "SBI CARDS",
+            amount: 1590.23,
+            occurredAt: new Date("2022-11-10T00:00:00Z"),
+            body: "ICICI Bank Acct XX412 debited for Rs 1590.23 on 10-Nov-22; SBI CARDS credited. UPI:231490020071. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+            pushed: false,
+        },
+        {
+            smsId: 12980,
+            merchant: "CRED",
+            amount: 1259.96,
+            occurredAt: new Date("2024-11-08T00:00:00Z"),
+            body: "Amt Sent Rs.1259.96\nFrom HDFC Bank A/C *1260\nTo CRED\nOn 08-11\nRef 431395842437",
+            pushed: false,
+        },
+        {
+            smsId: 18571,
+            merchant: "CheQ",
+            amount: 43147,
+            occurredAt: new Date("2026-07-18T00:00:00Z"),
+            body: "ICICI Bank Acct XX412 debited for Rs 43147.00 on 18-Jul-26; CheQ credited. UPI:110247400024. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        cardBillSpend.length !== 1 ||
+        cardBillSpend[0]?.catalogKey !== "tanishq" ||
+        cardBillSpend.some((row) =>
+            ["credclub", "axis", "sbi cards", "cred", "cheq"].includes(row.catalogKey ?? "")
+        )
+    ) {
+        failures.push(`card bill pays should drop off merchants, got ${JSON.stringify(cardBillSpend)}`);
     }
 
     if (
@@ -2655,6 +3255,21 @@ function runAttentionDigestRegression(): void {
 
     if (!smsSpend.buckets.some((row) => row.key === "dining" && row.thisAmount === 60)) {
         failures.push("SMS override should drive spend buckets");
+    }
+
+    const customSpend = buildSpendMonthStats(
+        [{ amount: 900, merchant: "Petshop", kind: "expense" }],
+        [],
+        "Aug 1–22",
+        "Jul 1–22",
+        new Map([["petshop", "pets"]]),
+        undefined,
+        undefined,
+        new Map([["pets", "Pets"]])
+    );
+
+    if (!customSpend.buckets.some((row) => row.key === "pets" && row.label === "Pets" && row.thisAmount === 900)) {
+        failures.push("custom bucket should appear in spend stats");
     }
 
     const spend = buildSpendMonthStats(

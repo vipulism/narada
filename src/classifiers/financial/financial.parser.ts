@@ -543,6 +543,14 @@ export class FinancialParser {
             return "Blinkit";
         }
 
+        if (/\bzerodha\b/i.test(body)) {
+            return "Zerodha";
+        }
+
+        if (/\bindian clearing\b/i.test(body)) {
+            return "Indian Clearing";
+        }
+
         if (/\bdomino'?s\b/i.test(body) || /\bdominos\b/i.test(body) || /dominos?pizza/i.test(body)) {
             return "Domino's";
         }
@@ -740,10 +748,36 @@ export class FinancialParser {
             return trimmed;
         }
 
-        return trimmed
-            .replace(/\*+[A-Z0-9]+$/i, "")
+        return this.stripCardPosPrefix(trimmed)
+            .replace(/\*+\d+$/i, "")
             .replace(/\d+$/g, "")
             .trim();
+    }
+
+    /**
+     * Card POS `IND*LinkedIn` / `RAZ*SHOP` — keep the shop, drop the acquirer prefix.
+     * Leaves terminal ids like `NFS*P3ECND77` intact.
+     *
+     * @param value - Raw merchant token
+     */
+    private stripCardPosPrefix(value: string): string {
+        const match = value.match(/^([A-Za-z]{2,5})\*(.+)$/);
+
+        if (!match) {
+            return value;
+        }
+
+        const rest = match[2].trim().replace(/\.+$/, "");
+
+        if (!/^[A-Za-z]/.test(rest) || !/[A-Za-z]{3,}/.test(rest)) {
+            return value;
+        }
+
+        if (!/\s/.test(rest) && /\d/.test(rest)) {
+            return value;
+        }
+
+        return rest;
     }
 
     private isInvalidMerchant(value: string): boolean {

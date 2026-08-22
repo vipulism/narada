@@ -2,6 +2,7 @@ import { inferOwnedAccountTypeFromTxn } from "../../classifiers/financial/financ
 import {
     resolveSpendBucket,
     spendBucketLabel,
+    type MerchantAlias,
     type SmsSpendOverride,
     type SpendBucket,
 } from "../../classifiers/financial/financial.spend";
@@ -20,6 +21,8 @@ import { FireflyDryRunRow, PlannedFireflyTransaction } from "./firefly.types";
  * @param openings - Ledger opening dates; events before these are skipped
  * @param assigned - Optional Narada merchant → spend bucket map
  * @param smsOverrides - Optional per-SMS category / merchant moves
+ * @param aliases - Optional merchant rename / merge map
+ * @param bucketLabels - Labels for user-created buckets
  */
 export function planFireflyTransaction(
     event: FinancialEvent,
@@ -27,7 +30,9 @@ export function planFireflyTransaction(
     owned: KnownAccountIndex,
     openings: FireflyOpenings = new FireflyOpenings(new Map()),
     assigned?: ReadonlyMap<string, SpendBucket>,
-    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>
+    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>,
+    bucketLabels?: ReadonlyMap<string, string>
 ): FireflyDryRunRow {
     const sourceLast4 = event.accountLast4 ?? uniqueBankLast4(event, owned);
     const skipReason = openings.skipReason(event, sourceLast4);
@@ -71,7 +76,9 @@ export function planFireflyTransaction(
                     destinationName: event.merchant ?? event.kind,
                 },
                 assigned,
-                smsOverrides?.get(event.smsId)
+                smsOverrides?.get(event.smsId),
+                aliases,
+                bucketLabels
             ),
         };
     }
@@ -162,7 +169,9 @@ function basePlan(
         "sourceId" | "destinationId" | "sourceName" | "destinationName"
     >>,
     assigned?: ReadonlyMap<string, SpendBucket>,
-    smsOverride?: SmsSpendOverride | null
+    smsOverride?: SmsSpendOverride | null,
+    aliases?: ReadonlyMap<string, MerchantAlias>,
+    bucketLabels?: ReadonlyMap<string, string>
 ): PlannedFireflyTransaction {
     const plan: PlannedFireflyTransaction = {
         smsId: event.smsId,
@@ -176,7 +185,8 @@ function basePlan(
 
     if (type === "withdrawal") {
         plan.categoryName = spendBucketLabel(
-            resolveSpendBucket(event.merchant, assigned, undefined, smsOverride)
+            resolveSpendBucket(event.merchant, assigned, undefined, smsOverride, aliases),
+            bucketLabels
         );
     }
 
