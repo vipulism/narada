@@ -488,6 +488,27 @@ h2 {
   text-align: left;
 }
 
+.sms-dialog-assign {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr);
+  gap: 0.75rem;
+  margin: 0.85rem 0 0;
+}
+
+.sms-dialog-assign select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+}
+
+.sms-dialog-dhan {
+  margin: 0.75rem 0 0;
+}
+
 .sms-dialog-body {
   margin: 0.75rem 0 0;
   white-space: pre-wrap;
@@ -532,7 +553,8 @@ h2 {
 
   .toolbar,
   .merchant-toolbar,
-  .merchant-row {
+  .merchant-row,
+  .sms-dialog-assign {
     grid-template-columns: 1fr;
   }
 }

@@ -4,7 +4,7 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
-import { listSmsForMerchantKey, recoverUnknownMerchantTotals } from "../../server/merchant.catalog";
+import { listSmsForMerchantKey, recoverUnknownMerchantTotals, groupExpenseTotals } from "../../server/merchant.catalog";
 import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
 import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
@@ -12,7 +12,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { buildSpendMonthStats, buildMerchantCatalog, merchantCatalogKey, resolveSpendBucket, spendBucket, spendMerchantLabel } from "./financial.spend";
+import { buildSpendMonthStats, buildMerchantCatalog, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, resolveSpendBucket, spendBucket, spendMerchantLabel } from "./financial.spend";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
@@ -1603,6 +1603,21 @@ function runFireflyMapRegression(): void {
         );
     }
 
+    const swiggySmsOverride = planFireflyTransaction(
+        swiggy,
+        firefly,
+        owned,
+        new FireflyOpenings(new Map()),
+        new Map([["swiggy", "dining"]]),
+        new Map([[40, { category: "grocery" }]])
+    );
+
+    if (!swiggySmsOverride.ok || swiggySmsOverride.plan.categoryName !== "Groceries") {
+        failures.push(
+            `SMS category override ${swiggySmsOverride.ok ? swiggySmsOverride.plan.categoryName : "blocked"} != Groceries`
+        );
+    }
+
     const missing = planFireflyTransaction(
         stubEvent(1, "expense", 100, "1412", new Date("2020-11-09T12:00:00+05:30")),
         firefly,
@@ -2514,6 +2529,88 @@ function runAttentionDigestRegression(): void {
         failures.push(`Blinkit SMS list should be only #18928, got ${blinkitSms.map((row) => row.smsId)}`);
     }
 
+    if (
+        resolveSpendBucket("BHARATPE2S0U0D0S8C47356@u", new Map([["bharatpe", "other"]]), undefined, {
+            category: "dining",
+        }) !== "dining"
+    ) {
+        failures.push("SMS category override should win over merchant map");
+    }
+
+    const ownKey = ownSmsMerchantKey(18871);
+    const ownLabel = ownSmsMerchantLabel("BHARATPE2S0U0D0S8C47356@u", 18871);
+    const groupedOverride = groupExpenseTotals(
+        [
+            {
+                smsId: 18871,
+                merchant: "BHARATPE2S0U0D0S8C47356@u",
+                amount: 60,
+                occurredAt: new Date("2026-08-16T00:00:00Z"),
+                pushed: false,
+            },
+            {
+                smsId: 18870,
+                merchant: "BHARATPE2S0U0D0S8C47356@u",
+                amount: 40,
+                occurredAt: new Date("2026-08-15T00:00:00Z"),
+                pushed: false,
+            },
+            {
+                smsId: 18869,
+                merchant: "BHARATPE2S0U0D0S8C47356@u",
+                amount: 20,
+                occurredAt: new Date("2026-08-14T00:00:00Z"),
+                pushed: false,
+            },
+        ],
+        new Map([[18871, { merchantKey: ownKey, merchantLabel: ownLabel }]])
+    );
+    const ownRow = groupedOverride.find((row) => row.catalogKey === ownKey);
+    const rest = groupedOverride.find(
+        (row) => row.catalogKey === merchantCatalogKey("BHARATPE2S0U0D0S8C47356@u")
+    );
+
+    if (!ownRow || ownRow.txCount !== 1 || ownRow.totalAmount !== 60 || !rest || rest.txCount !== 2) {
+        failures.push(`SMS merchant split ${JSON.stringify(groupedOverride)}`);
+    }
+
+    if (!ownLabel.includes("47356")) {
+        failures.push(`own SMS merchant label ${ownLabel}`);
+    }
+
+    const movedSms = listSmsForMerchantKey(
+        [
+            {
+                smsId: 18871,
+                merchant: "BHARATPE2S0U0D0S8C47356@u",
+                amount: 60,
+                occurredAt: new Date("2026-08-16T00:00:00Z"),
+            },
+            { smsId: 1, merchant: "Blinkit", amount: 10, occurredAt: new Date("2026-08-16T00:00:00Z") },
+        ],
+        [],
+        "blinkit",
+        new Map([[18871, { merchantKey: "blinkit" }]])
+    );
+
+    if (movedSms.length !== 2 || !movedSms.some((row) => row.smsId === 18871)) {
+        failures.push(`moved SMS should list under Blinkit, got ${movedSms.map((row) => row.smsId)}`);
+    }
+
+    const movedPushed = stubEvent(18871, "expense", 60, "3019", new Date("2026-08-16T12:00:00+05:30"));
+    movedPushed.merchant = "BHARATPE2S0U0D0S8C47356@u";
+    movedPushed.fireflyTransactionId = "99";
+    const dhanMoved = pushedExpensesForMerchant(
+        [movedPushed],
+        "blinkit",
+        undefined,
+        new Map([[18871, { merchantKey: "blinkit" }]])
+    );
+
+    if (dhanMoved.length !== 1 || dhanMoved[0]?.smsId !== 18871) {
+        failures.push("Dhan recategorize should follow SMS merchant move");
+    }
+
     const assignedSpend = buildSpendMonthStats(
         [{ amount: 80, merchant: "paytmqr5wpzku@ptys", kind: "expense" }],
         [],
@@ -2524,6 +2621,19 @@ function runAttentionDigestRegression(): void {
 
     if (!assignedSpend.buckets.some((row) => row.key === "grocery" && row.thisAmount === 80)) {
         failures.push("assigned catalog should drive spend buckets");
+    }
+
+    const smsSpend = buildSpendMonthStats(
+        [{ smsId: 7, amount: 60, merchant: "BHARATPE2S0U0D0S8C47356@u", kind: "expense" }],
+        [],
+        "Aug 1–22",
+        "Jul 1–22",
+        new Map([["bharatpe", "other"]]),
+        new Map([[7, { category: "dining" }]])
+    );
+
+    if (!smsSpend.buckets.some((row) => row.key === "dining" && row.thisAmount === 60)) {
+        failures.push("SMS override should drive spend buckets");
     }
 
     const spend = buildSpendMonthStats(

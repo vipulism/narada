@@ -1,6 +1,11 @@
 import { FinancialParser } from "../../classifiers/financial/financial.parser";
 import { FinancialEvent } from "../../classifiers/financial/financial.model";
-import { merchantCatalogKey } from "../../classifiers/financial/financial.spend";
+import {
+    merchantCatalogKey,
+    spendBucketLabel,
+    type SmsSpendOverride,
+    type SpendBucket,
+} from "../../classifiers/financial/financial.spend";
 import { FireflyClient } from "./firefly.client";
 
 /** Max Firefly PUTs in one Merchants apply request. */
@@ -21,21 +26,41 @@ export interface DhanRecategorizeStats {
  * @param events - Posted financial events (usually already pushed)
  * @param key - {@link merchantCatalogKey}
  * @param parser - SMS merchant extract for blank stored merchants
+ * @param overrides - Optional per-SMS merchant moves
  */
 export function pushedExpensesForMerchant(
     events: Array<FinancialEvent & { body?: string }>,
     key: string,
-    parser = new FinancialParser()
+    parser = new FinancialParser(),
+    overrides?: ReadonlyMap<number, SmsSpendOverride>
 ): FinancialEvent[] {
     return events.filter((event) => {
         if (event.kind !== "expense" || !event.fireflyTransactionId) {
             return false;
         }
 
-        const merchant =
-            event.merchant || parser.extractMerchantFromBody(event.body ?? "");
-        return merchantCatalogKey(merchant) === key;
+        return eventCatalogKey(event, parser, overrides?.get(event.smsId)) === key;
     });
+}
+
+/**
+ * Catalog key for a pushed expense after a per-SMS merchant move.
+ *
+ * @param event - Posted financial event
+ * @param parser - SMS merchant extract for blank stored merchants
+ * @param override - Optional merchant move
+ */
+export function eventCatalogKey(
+    event: FinancialEvent & { body?: string },
+    parser = new FinancialParser(),
+    override?: Pick<SmsSpendOverride, "merchantKey"> | null
+): string {
+    if (override?.merchantKey) {
+        return override.merchantKey;
+    }
+
+    const merchant = event.merchant || parser.extractMerchantFromBody(event.body ?? "");
+    return merchantCatalogKey(merchant);
 }
 
 /**
@@ -46,16 +71,18 @@ export function pushedExpensesForMerchant(
  * @param key - Catalog id
  * @param categoryName - Firefly category label
  * @param cap - Max updates this call
+ * @param overrides - Optional per-SMS merchant moves
  */
 export async function applyMerchantCategoryToDhan(
     client: FireflyClient,
     events: Array<FinancialEvent & { body?: string }>,
     key: string,
     categoryName: string,
-    cap = DHAN_RECATEGORIZE_CAP
+    cap = DHAN_RECATEGORIZE_CAP,
+    overrides?: ReadonlyMap<number, SmsSpendOverride>
 ): Promise<DhanRecategorizeStats> {
     const parser = new FinancialParser();
-    const matched = pushedExpensesForMerchant(events, key, parser);
+    const matched = pushedExpensesForMerchant(events, key, parser, overrides);
     const batch = matched.slice(0, cap);
     const stats: DhanRecategorizeStats = {
         matched: matched.length,
@@ -72,8 +99,11 @@ export async function applyMerchantCategoryToDhan(
             continue;
         }
 
+        const overrideCategory = overrides?.get(event.smsId)?.category;
+        const name = overrideCategory ? spendBucketLabel(overrideCategory) : categoryName;
+
         try {
-            await client.updateTransactionCategory(id, categoryName);
+            await client.updateTransactionCategory(id, name);
             stats.updated += 1;
         } catch (error) {
             stats.failed += 1;
@@ -96,20 +126,30 @@ export async function applyMerchantCategoryToDhan(
  * @param events - Pushed expense rows
  * @param work - Catalog key + Firefly category label
  * @param cap - Max updates this call
+ * @param overrides - Optional per-SMS category / merchant moves
  */
 export async function applyAssignedCategoriesToDhan(
     client: FireflyClient,
     events: Array<FinancialEvent & { body?: string }>,
     work: Array<{ key: string; categoryName: string }>,
-    cap = DHAN_RECATEGORIZE_CAP
+    cap = DHAN_RECATEGORIZE_CAP,
+    overrides?: ReadonlyMap<number, SmsSpendOverride>
 ): Promise<DhanRecategorizeStats> {
     const parser = new FinancialParser();
-    const jobs = work.flatMap((row) =>
-        pushedExpensesForMerchant(events, row.key, parser).map((event) => ({
-            event,
-            categoryName: row.categoryName,
-        }))
-    );
+    const byKey = new Map(work.map((row) => [row.key, row.categoryName]));
+    const jobs = events.flatMap((event) => {
+        if (event.kind !== "expense" || !event.fireflyTransactionId) {
+            return [];
+        }
+
+        const override = overrides?.get(event.smsId);
+        const key = eventCatalogKey(event, parser, override);
+        const categoryName = override?.category
+            ? spendBucketLabel(override.category)
+            : byKey.get(key);
+
+        return categoryName ? [{ event, categoryName }] : [];
+    });
     const batch = jobs.slice(0, cap);
     const stats: DhanRecategorizeStats = {
         matched: jobs.length,
@@ -138,6 +178,37 @@ export async function applyAssignedCategoriesToDhan(
                 );
             }
         }
+    }
+
+    return stats;
+}
+
+/**
+ * PUTs `category_name` on one already-pushed Dhan journal.
+ *
+ * @param client - Authenticated Firefly client
+ * @param fireflyTransactionId - Stored journal id
+ * @param category - Spend bucket
+ */
+export async function applySmsCategoryToDhan(
+    client: FireflyClient,
+    fireflyTransactionId: string,
+    category: SpendBucket
+): Promise<DhanRecategorizeStats> {
+    const stats: DhanRecategorizeStats = {
+        matched: 1,
+        updated: 0,
+        failed: 0,
+        remaining: 0,
+        errors: [],
+    };
+
+    try {
+        await client.updateTransactionCategory(fireflyTransactionId, spendBucketLabel(category));
+        stats.updated = 1;
+    } catch (error) {
+        stats.failed = 1;
+        stats.errors.push(error instanceof Error ? error.message : "update failed");
     }
 
     return stats;

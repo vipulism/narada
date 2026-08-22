@@ -1,8 +1,12 @@
 import { Request, Response, Router } from "express";
 import {
     buildMerchantCatalog,
+    isOwnSmsMerchantKey,
     isSpendBucket,
     merchantCatalogKey,
+    ownSmsMerchantKey,
+    ownSmsMerchantLabel,
+    resolveSpendBucket,
     spendBucketLabel,
     spendBucketOptions,
     spendMerchantLabel,
@@ -14,22 +18,50 @@ import { loadFireflyClient } from "../../connectors/firefly/firefly.client";
 import {
     applyAssignedCategoriesToDhan,
     applyMerchantCategoryToDhan,
+    applySmsCategoryToDhan,
     type DhanRecategorizeStats,
 } from "../../connectors/firefly/firefly.recategorize";
+import { FinancialParser } from "../../classifiers/financial/financial.parser";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 import { MerchantCategoryRepository } from "../../db/repositories/merchantCategory.repository";
-import { listSmsForMerchantKey, recoverUnknownMerchantTotals } from "../merchant.catalog";
-import { optionalQueryString, paginationMeta, parsePagination } from "../pagination";
+import { SmsSpendOverrideRepository } from "../../db/repositories/smsSpendOverride.repository";
+import {
+    effectiveCatalogKey,
+    expenseCatalogKey,
+    expenseMerchant,
+    groupExpenseTotals,
+    listSmsForMerchantKey,
+} from "../merchant.catalog";
+import { optionalPositiveInt, optionalQueryString, paginationMeta, parsePagination } from "../pagination";
+
+interface SmsMerchantContext {
+    smsId: number;
+    patternKey: string;
+    patternLabel: string;
+    merchantKey: string;
+    merchantLabel: string;
+    category: SpendBucket | null;
+    suggested: SpendBucket;
+    pushed: boolean;
+    ownMerchantKey: string;
+    override: { category: SpendBucket | null; merchantKey: string | null } | null;
+    buckets: Array<{ key: SpendBucket; label: string }>;
+    merchants: Array<{ key: string; label: string }>;
+}
 
 const events = new FinancialEventRepository();
 const categories = new MerchantCategoryRepository();
+const smsOverrides = new SmsSpendOverrideRepository();
 
 /**
- * GET /merchants, GET /merchants/sms, PUT /merchants, and POST /merchants/apply.
+ * GET /merchants, GET /merchants/sms, PUT /merchants, PUT /merchants/sms/:smsId,
+ * and POST /merchants/apply.
  */
 export function createMerchantsRouter(): Router {
     const router = Router();
 
+    router.get("/merchants/sms/:smsId", getMerchantSms);
+    router.put("/merchants/sms/:smsId", assignMerchantSms);
     router.get("/merchants/sms", listMerchantSms);
     router.get("/merchants", listMerchants);
     router.post("/merchants/apply", applyMerchantCategories);
@@ -49,13 +81,7 @@ async function listMerchants(req: Request, res: Response): Promise<void> {
     const limit = merchantLimit(req.query.limit);
     const q = optionalQueryString(req.query.q)?.toLowerCase();
     const status = parseMerchantStatus(optionalQueryString(req.query.status));
-    const [grouped, missing, assignments] = await Promise.all([
-        events.listExpenseMerchantTotals(),
-        events.listExpensesMissingMerchant(),
-        categories.listAssignments(),
-    ]);
-    const totals = recoverUnknownMerchantTotals(grouped, missing);
-    const catalog = buildMerchantCatalog(totals, assignments);
+    const catalog = await loadCatalog();
     const filtered = catalog.filter((item) => {
         if (status === "uncategorized" && item.category) {
             return false;
@@ -100,14 +126,14 @@ async function listMerchantSms(req: Request, res: Response): Promise<void> {
         return;
     }
 
-    const key = merchantCatalogKey(rawKey);
+    const key = isOwnSmsMerchantKey(rawKey) ? rawKey : merchantCatalogKey(rawKey);
     const { page } = parsePagination(req.query);
     const limit = merchantLimit(req.query.limit);
-    const [named, missing] = await Promise.all([
-        events.listExpensesWithMerchant(),
-        events.listExpensesMissingMerchant(),
+    const [rows, overrides] = await Promise.all([
+        events.listExpenseCatalogRows(),
+        smsOverrides.listAll(),
     ]);
-    const matched = listSmsForMerchantKey(named, missing, key);
+    const matched = listSmsForMerchantKey(rows, [], key, overrides);
     const start = (page - 1) * limit;
 
     res.status(200).json({
@@ -122,6 +148,121 @@ async function listMerchantSms(req: Request, res: Response): Promise<void> {
     });
 }
 
+/**
+ * GET /merchants/sms/:smsId — category and merchant-item dropdowns for one SMS.
+ */
+async function getMerchantSms(req: Request, res: Response): Promise<void> {
+    const smsId = optionalPositiveInt(req.params.smsId);
+
+    if (!smsId) {
+        res.status(404).json({ message: "SMS not found" });
+        return;
+    }
+
+    const context = await loadSmsMerchantContext(smsId);
+
+    if (!context) {
+        res.status(404).json({ message: "expense SMS not found" });
+        return;
+    }
+
+    res.status(200).json(context);
+}
+
+/**
+ * PUT /merchants/sms/:smsId — set this SMS category and/or move it to another item.
+ */
+async function assignMerchantSms(req: Request, res: Response): Promise<void> {
+    const smsId = optionalPositiveInt(req.params.smsId);
+
+    if (!smsId) {
+        res.status(404).json({ message: "SMS not found" });
+        return;
+    }
+
+    const [rows, existing] = await Promise.all([
+        events.listExpenseCatalogRows(),
+        smsOverrides.get(smsId),
+    ]);
+    const row = rows.find((item) => item.smsId === smsId);
+
+    if (!row) {
+        res.status(404).json({ message: "expense SMS not found" });
+        return;
+    }
+
+    let category = existing?.category;
+    let merchantKey = existing?.merchantKey;
+    let merchantLabel = existing?.merchantLabel;
+
+    if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "category")) {
+        const rawCategory = req.body.category;
+
+        if (rawCategory === null || rawCategory === "") {
+            category = undefined;
+        } else if (typeof rawCategory === "string" && isSpendBucket(rawCategory)) {
+            category = rawCategory;
+        } else {
+            res.status(400).json({ message: "category must be a spend bucket" });
+            return;
+        }
+    }
+
+    if (
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "merchantKey") ||
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, "merchant")
+    ) {
+        const rawMerchant =
+            bodyString(req.body?.merchantKey) ?? bodyString(req.body?.merchant) ?? "";
+
+        if (!rawMerchant) {
+            merchantKey = undefined;
+            merchantLabel = undefined;
+        } else if (rawMerchant === "__own__" || rawMerchant === ownSmsMerchantKey(smsId)) {
+            const parser = new FinancialParser();
+            const patternMerchant = expenseMerchant(row.merchant, row.body, parser);
+            merchantKey = ownSmsMerchantKey(smsId);
+            merchantLabel = ownSmsMerchantLabel(patternMerchant, smsId);
+        } else {
+            const nextKey = merchantCatalogKey(rawMerchant);
+
+            if (isOwnSmsMerchantKey(nextKey) && nextKey !== ownSmsMerchantKey(smsId)) {
+                res.status(400).json({ message: "merchantKey does not match this SMS" });
+                return;
+            }
+
+            if (nextKey.length > 255) {
+                res.status(400).json({ message: "merchantKey is too long" });
+                return;
+            }
+
+            const catalog = await loadCatalog();
+            merchantKey = nextKey;
+            merchantLabel =
+                catalog.find((item) => item.key === nextKey)?.label ||
+                spendMerchantLabel(bodyString(req.body?.merchantLabel) ?? rawMerchant);
+        }
+    }
+
+    if (!category && !merchantKey) {
+        await smsOverrides.delete(smsId);
+    } else {
+        await smsOverrides.upsert(smsId, { category, merchantKey, merchantLabel });
+    }
+
+    const context = await loadSmsMerchantContext(smsId);
+
+    if (!context) {
+        res.status(404).json({ message: "expense SMS not found" });
+        return;
+    }
+
+    const dhan = bodyBoolean(req.body?.applyToDhan)
+        ? await recategorizeSmsDhan(smsId, context.category ?? context.suggested)
+        : undefined;
+    res.status(200).json({ sms: context, dhan: dhan ?? null });
+}
+
 async function assignMerchant(req: Request, res: Response): Promise<void> {
     const rawKey = bodyString(req.body?.key) ?? bodyString(req.body?.merchant);
 
@@ -130,7 +271,7 @@ async function assignMerchant(req: Request, res: Response): Promise<void> {
         return;
     }
 
-    const key = merchantCatalogKey(rawKey);
+    const key = isOwnSmsMerchantKey(rawKey) ? rawKey : merchantCatalogKey(rawKey);
 
     if (key.length > 255) {
         res.status(400).json({ message: "key is too long" });
@@ -164,24 +305,42 @@ async function assignMerchant(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * POST /merchants/apply — rewrite `category_name` on already-pushed Dhan withdrawals.
+ * POST /merchants/apply — rewrite `category_name` on already-pushed Dhan withdrawals
+ * (one SMS, one merchant, or every assigned merchant).
  */
 async function applyMerchantCategories(req: Request, res: Response): Promise<void> {
     const rawKey = bodyString(req.body?.key) ?? bodyString(req.body?.merchant);
+    const smsId = optionalPositiveInt(req.body?.smsId);
+
+    if (smsId) {
+        const context = await loadSmsMerchantContext(smsId);
+
+        if (!context) {
+            res.status(404).json({ message: "expense SMS not found" });
+            return;
+        }
+
+        const dhan = await recategorizeSmsDhan(smsId, context.category ?? context.suggested);
+        res.status(200).json({ sms: context, dhan });
+        return;
+    }
 
     if (req.body?.all === true) {
-        const assignments = await categories.listAssignments();
+        const [assignments, overrides] = await Promise.all([
+            categories.listAssignments(),
+            smsOverrides.listAll(),
+        ]);
         const work = [...assignments.entries()].map(([key, row]) => ({
             key,
             categoryName: spendBucketLabel(row.category),
         }));
 
-        if (work.length === 0) {
+        if (work.length === 0 && overrides.size === 0) {
             res.status(400).json({ message: "no merchants have a category yet" });
             return;
         }
 
-        const dhan = await recategorizeAssigned(work);
+        const dhan = await recategorizeAssigned(work, overrides);
         res.status(200).json({ dhan });
         return;
     }
@@ -191,7 +350,7 @@ async function applyMerchantCategories(req: Request, res: Response): Promise<voi
         return;
     }
 
-    const key = merchantCatalogKey(rawKey);
+    const key = isOwnSmsMerchantKey(rawKey) ? rawKey : merchantCatalogKey(rawKey);
     const assignments = await categories.listAssignments();
     const assigned = assignments.get(key);
 
@@ -204,16 +363,19 @@ async function applyMerchantCategories(req: Request, res: Response): Promise<voi
     res.status(200).json({ dhan });
 }
 
-async function loadCatalogItem(key: string, fallbackLabel: string): Promise<MerchantCatalogItem> {
-    const [grouped, missing, assignments] = await Promise.all([
-        events.listExpenseMerchantTotals(),
-        events.listExpensesMissingMerchant(),
+async function loadCatalog(): Promise<MerchantCatalogItem[]> {
+    const [rows, assignments, overrides] = await Promise.all([
+        events.listExpenseCatalogRows(),
         categories.listAssignments(),
+        smsOverrides.listAll(),
     ]);
-    const match = buildMerchantCatalog(
-        recoverUnknownMerchantTotals(grouped, missing),
-        assignments
-    ).find((row) => row.key === key);
+
+    return buildMerchantCatalog(groupExpenseTotals(rows, overrides), assignments);
+}
+
+async function loadCatalogItem(key: string, fallbackLabel: string): Promise<MerchantCatalogItem> {
+    const assignments = await categories.listAssignments();
+    const match = (await loadCatalog()).find((row) => row.key === key);
 
     if (match) {
         return match;
@@ -229,6 +391,51 @@ async function loadCatalogItem(key: string, fallbackLabel: string): Promise<Merc
         totalAmount: 0,
         lastSeenAt: null,
         sampleSmsIds: [],
+    };
+}
+
+async function loadSmsMerchantContext(smsId: number): Promise<SmsMerchantContext | null> {
+    const [rows, assignments, overrides] = await Promise.all([
+        events.listExpenseCatalogRows(),
+        categories.listAssignments(),
+        smsOverrides.listAll(),
+    ]);
+    const row = rows.find((item) => item.smsId === smsId);
+
+    if (!row) {
+        return null;
+    }
+
+    const parser = new FinancialParser();
+    const override = overrides.get(smsId);
+    const patternMerchant = expenseMerchant(row.merchant, row.body, parser);
+    const patternKey = expenseCatalogKey(row.merchant, row.body, parser);
+    const merchantKey = effectiveCatalogKey(row.merchant, row.body, parser, override);
+    const catalog = buildMerchantCatalog(groupExpenseTotals(rows, overrides), assignments);
+    const item = catalog.find((entry) => entry.key === merchantKey);
+    const category = override?.category ?? assignments.get(merchantKey)?.category ?? null;
+
+    return {
+        smsId,
+        patternKey,
+        patternLabel: spendMerchantLabel(patternMerchant),
+        merchantKey,
+        merchantLabel: item?.label ?? override?.merchantLabel ?? spendMerchantLabel(patternMerchant),
+        category,
+        suggested: resolveSpendBucket(patternMerchant, undefined, row.body),
+        pushed: row.pushed,
+        ownMerchantKey: ownSmsMerchantKey(smsId),
+        override: override
+            ? {
+                  category: override.category ?? null,
+                  merchantKey: override.merchantKey ?? null,
+              }
+            : null,
+        buckets: spendBucketOptions(),
+        merchants: catalog
+            .filter((entry) => entry.key !== patternKey && entry.key !== ownSmsMerchantKey(smsId))
+            .map((entry) => ({ key: entry.key, label: entry.label }))
+            .sort((left, right) => left.label.localeCompare(right.label)),
     };
 }
 
@@ -272,24 +479,47 @@ async function recategorizeDhan(
         return { skipped: true, reason: "FIREFLY_URL or FIREFLY_TOKEN missing" };
     }
 
-    const pushed = await events.listPushedExpenses();
+    const [pushed, overrides] = await Promise.all([
+        events.listPushedExpenses(),
+        smsOverrides.listAll(),
+    ]);
     return applyMerchantCategoryToDhan(
         loadFireflyClient(),
         pushed,
         key,
-        spendBucketLabel(category)
+        spendBucketLabel(category),
+        undefined,
+        overrides
     );
 }
 
 async function recategorizeAssigned(
-    work: Array<{ key: string; categoryName: string }>
+    work: Array<{ key: string; categoryName: string }>,
+    overrides: Map<number, { category?: SpendBucket; merchantKey?: string }>
 ): Promise<DhanRecategorizeStats | { skipped: true; reason: string }> {
     if (!isFireflyConfigured()) {
         return { skipped: true, reason: "FIREFLY_URL or FIREFLY_TOKEN missing" };
     }
 
     const pushed = await events.listPushedExpenses();
-    return applyAssignedCategoriesToDhan(loadFireflyClient(), pushed, work);
+    return applyAssignedCategoriesToDhan(loadFireflyClient(), pushed, work, undefined, overrides);
+}
+
+async function recategorizeSmsDhan(
+    smsId: number,
+    category: SpendBucket
+): Promise<DhanRecategorizeStats | { skipped: true; reason: string }> {
+    if (!isFireflyConfigured()) {
+        return { skipped: true, reason: "FIREFLY_URL or FIREFLY_TOKEN missing" };
+    }
+
+    const event = await events.getBySmsId(smsId);
+
+    if (!event?.fireflyTransactionId) {
+        return { skipped: true, reason: "this SMS is not in Dhan yet" };
+    }
+
+    return applySmsCategoryToDhan(loadFireflyClient(), event.fireflyTransactionId, category);
 }
 
 function bodyBoolean(value: unknown): boolean {
@@ -304,4 +534,3 @@ function bodyString(value: unknown): string | undefined {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
 }
-
