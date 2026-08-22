@@ -8,6 +8,7 @@ import {
     type SmsSpendOverride,
     type SpendBucket,
 } from "../../classifiers/financial/financial.spend";
+import { expenseMerchant } from "../../server/merchant.catalog";
 import { FireflyClient } from "./firefly.client";
 
 /** Max Firefly PUTs in one Merchants apply request. */
@@ -27,7 +28,7 @@ export interface DhanRecategorizeStats {
  *
  * @param events - Posted financial events (usually already pushed)
  * @param key - {@link merchantCatalogKey}
- * @param parser - SMS merchant extract for blank stored merchants
+ * @param parser - SMS merchant extract for blank or card-POS stub merchants
  * @param overrides - Optional per-SMS merchant moves
  * @param aliases - Optional rename / merge map
  */
@@ -51,7 +52,7 @@ export function pushedExpensesForMerchant(
  * Catalog key for a pushed expense after a per-SMS merchant move.
  *
  * @param event - Posted financial event
- * @param parser - SMS merchant extract for blank stored merchants
+ * @param parser - SMS merchant extract for blank or card-POS stub merchants
  * @param override - Optional merchant move
  * @param aliases - Optional rename / merge map
  */
@@ -63,7 +64,7 @@ export function eventCatalogKey(
 ): string {
     const raw = override?.merchantKey
         ? override.merchantKey
-        : merchantCatalogKey(event.merchant || parser.extractMerchantFromBody(event.body ?? ""));
+        : merchantCatalogKey(expenseMerchant(event.merchant, event.body, parser));
     return resolveMerchantAlias(raw, aliases).key;
 }
 

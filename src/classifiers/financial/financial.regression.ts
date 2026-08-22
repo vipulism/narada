@@ -1,6 +1,7 @@
 import { FinancialClassifier } from "./financial.classifier";
 import { SmsCategory, SmsMessage } from "../../importers/sms/sms.model";
 import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilter";
+import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
@@ -263,7 +264,7 @@ const CASES: RegressionCase[] = [
             subcategory: "expense",
             cashFlow: "OUTFLOW",
             amount: 954.67,
-            merchant: "RAZ*COMMODUM GROCERIES",
+            merchant: "COMMODUM GROCERIES",
         },
     },
     {
@@ -660,6 +661,32 @@ const CASES: RegressionCase[] = [
             amount: 845.27,
             accountLast4: "0004",
             merchant: "AMAZON PAY IN E",
+        },
+    },
+    {
+        id: "hdfc-ind-star-linkedin",
+        address: "AD-HDFCBK-S",
+        body: "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 1687.47,
+            accountLast4: "0170",
+            merchant: "LinkedIn",
+        },
+    },
+    {
+        id: "icici-ind-star-amazon",
+        address: "AX-ICICIT-S",
+        body: "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 737,
+            accountLast4: "0004",
+            merchant: "Amazon",
         },
     },
     {
@@ -2415,6 +2442,10 @@ function runAttentionDigestRegression(): void {
         failures.push("Swiggy/Amazon buckets");
     }
 
+    if (spendBucket("LinkedIn") !== "subscriptions") {
+        failures.push("LinkedIn should be subscriptions");
+    }
+
     if (spendBucket("RAMESH KIRANA") !== "grocery" || spendBucket("sharma-kirana@okaxis") !== "grocery") {
         failures.push("UPI kirana names should be grocery");
     }
@@ -2547,6 +2578,30 @@ function runAttentionDigestRegression(): void {
         failures.push("Dhan recategorize should match pushed Paytm QR expenses only");
     }
 
+    const linkedInPushed = stubEvent(31, "expense", 1687.47, "0170", new Date("2026-04-02T12:16:19+05:30"));
+    linkedInPushed.merchant = "IND";
+    linkedInPushed.fireflyTransactionId = "linkedin-1";
+    const amazonPushed = stubEvent(32, "expense", 737, "0004", new Date("2025-08-24T00:00:00+05:30"));
+    amazonPushed.merchant = "IND";
+    amazonPushed.fireflyTransactionId = "amazon-1";
+    const linkedInDhan = pushedExpensesForMerchant(
+        [
+            {
+                ...linkedInPushed,
+                body: "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808",
+            },
+            {
+                ...amazonPushed,
+                body: "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.",
+            },
+        ],
+        "linkedin"
+    );
+
+    if (linkedInDhan.length !== 1 || linkedInDhan[0]?.smsId !== 31) {
+        failures.push("Dhan recategorize should match IND*LinkedIn, not IND*Amazon");
+    }
+
     const recovered = recoverUnknownMerchantTotals(
         [
             {
@@ -2655,6 +2710,113 @@ function runAttentionDigestRegression(): void {
         mergedTotals[0]?.totalAmount !== 281047
     ) {
         failures.push(`merged Titan/Tanishq totals ${JSON.stringify(mergedTotals)}`);
+    }
+
+    const linkedInBody =
+        "Spent Rs.1687.47 On HDFC Bank Card 0170 At IND*LinkedIn On 2026-04-02:12:16:19.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808";
+    const amazonBody =
+        "INR 737.00 spent using ICICI Bank Card XX0004 on 24-Aug-25 on IND*Amazon. Avl Limit: INR 10,47,162.00. If not you, call 1800 2662/SMS BLOCK 0004 to 9215676766.";
+    const indStarTotals = groupExpenseTotals([
+        {
+            smsId: 31,
+            merchant: "IND",
+            amount: 1687.47,
+            occurredAt: new Date("2026-04-02T12:16:19+05:30"),
+            pushed: false,
+            body: linkedInBody,
+        },
+        {
+            smsId: 32,
+            merchant: "IND",
+            amount: 737,
+            occurredAt: new Date("2025-08-24T00:00:00+05:30"),
+            pushed: false,
+            body: amazonBody,
+        },
+    ]);
+    const indStarKeys = indStarTotals.map((row) => row.catalogKey).sort();
+
+    if (
+        indStarTotals.length !== 2 ||
+        !indStarKeys.includes("linkedin") ||
+        !indStarKeys.includes("amazon")
+    ) {
+        failures.push(`IND* LinkedIn/Amazon must split, got ${JSON.stringify(indStarTotals)}`);
+    }
+
+    const linkedInSms = listSmsForMerchantKey(
+        [
+            {
+                smsId: 31,
+                merchant: "IND",
+                amount: 1687.47,
+                occurredAt: new Date("2026-04-02T12:16:19+05:30"),
+                body: linkedInBody,
+            },
+            {
+                smsId: 32,
+                merchant: "IND",
+                amount: 737,
+                occurredAt: new Date("2025-08-24T00:00:00+05:30"),
+                body: amazonBody,
+            },
+        ],
+        [],
+        "linkedin"
+    );
+
+    if (linkedInSms.length !== 1 || linkedInSms[0]?.smsId !== 31) {
+        failures.push(`LinkedIn SMS list should be only #31, got ${linkedInSms.map((row) => row.smsId)}`);
+    }
+
+    const zerodhaBody =
+        "ICICI Bank Acct XX412 debited for Rs 9900.00 on 07-Oct-24; Zerodha credited. UPI:428102836837. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const staleZerodha: AnalysisEventSource = {
+        smsId: 99001,
+        occurredAt: new Date("2024-10-07T00:00:00Z"),
+        body: zerodhaBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 9900,
+            cashFlow: "OUTFLOW",
+            merchant: "Zerodha",
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    };
+    const rebuiltZerodha = toFinancialEvent(staleZerodha);
+
+    if (rebuiltZerodha?.kind !== "investment") {
+        failures.push(`stale Zerodha expense should rebuild as investment, got ${rebuiltZerodha?.kind}`);
+    }
+
+    const zerodhaSpend = groupExpenseTotals([
+        {
+            smsId: 99001,
+            merchant: "Zerodha",
+            amount: 9900,
+            occurredAt: new Date("2024-10-07T00:00:00Z"),
+            body: zerodhaBody,
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        zerodhaSpend.length !== 1 ||
+        zerodhaSpend[0]?.catalogKey !== "tanishq" ||
+        zerodhaSpend.some((row) => row.catalogKey === "zerodha")
+    ) {
+        failures.push(`Zerodha funding should drop off merchants, got ${JSON.stringify(zerodhaSpend)}`);
     }
 
     if (
