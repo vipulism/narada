@@ -1781,6 +1781,38 @@ function runDueFeedRegression(): void {
         failures.push("HSBC payable-by reminder should be a due card");
     }
 
+    const hsbcPaymentDue =
+        "Dear Customer, total payment due on credit card ending with 4433 is INR 1131 and minimum payment due is INR 100. To enjoy uninterrupted card usage, please ensure payment is realized by due date 20-Apr-24. You may pay via NEFT mentioning the complete 16 digit card number and IFSC code HSBC0400002. For more information on various modes of payment refer www.hsbc.co.in/billpay. Kindly ignore, if already paid.";
+    const hsbcPaymentAmounts = parseDueAmounts(hsbcPaymentDue);
+
+    if (hsbcPaymentAmounts.minDue !== 100 || hsbcPaymentAmounts.totalDue !== 1131) {
+        failures.push(
+            `HSBC total payment due ${hsbcPaymentAmounts.minDue}/${hsbcPaymentAmounts.totalDue} != 100/1131`
+        );
+    }
+
+    if (parseDueDate(hsbcPaymentDue) !== "2024-04-20") {
+        failures.push(`HSBC due date ${parseDueDate(hsbcPaymentDue)} != 2024-04-20`);
+    }
+
+    const axisPaymentOf =
+        "Payment of INR 280 for Axis Bank Credit Card no. XX6147 is due on 30-07-24 with minimum amount due of INR 100. Ignore if paid.";
+    const axisPaymentAmounts = parseDueAmounts(axisPaymentOf);
+
+    if (axisPaymentAmounts.minDue !== 100 || axisPaymentAmounts.totalDue !== 280) {
+        failures.push(
+            `Axis payment-of due ${axisPaymentAmounts.minDue}/${axisPaymentAmounts.totalDue} != 100/280`
+        );
+    }
+
+    if (parseDueDate(axisPaymentOf) !== "2024-07-30") {
+        failures.push(`Axis is due on ${parseDueDate(axisPaymentOf)} != 2024-07-30`);
+    }
+
+    if (!isDueKnowledgeRow("bill", "NEUTRAL", axisPaymentOf)) {
+        failures.push("Axis payment-of reminder should be a due card");
+    }
+
     const zeroDue =
         "Total Due INR 0.00 & Min Due INR 0.00 to be paid by 30-Nov-24 on ICICI Bank Credit Card XX0004.";
     const zeroAmounts = parseDueAmounts(zeroDue);
