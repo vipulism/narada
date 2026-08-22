@@ -7,6 +7,7 @@ import {
     type MerchantSpendTotal,
     type SmsSpendOverride,
 } from "../classifiers/financial/financial.spend";
+import { isZerodhaFundingMessage } from "../classifiers/financial/financial.kind";
 
 /** Expense with no `financial_events.merchant` (older classify). */
 export interface MissingMerchantExpense {
@@ -94,6 +95,10 @@ export function groupExpenseTotals(
     const recovered = new Map<string, MerchantSpendTotal>();
 
     for (const row of rows) {
+        if (isZerodhaFundingMessage(row.body ?? "")) {
+            continue;
+        }
+
         const override = overrides?.get(row.smsId);
         const patternMerchant = expenseMerchant(row.merchant, row.body, parser);
         const rawKey = override?.merchantKey || merchantCatalogKey(patternMerchant);
@@ -157,6 +162,10 @@ export function listSmsForMerchantKey(
     const rows: MerchantExpenseSms[] = [];
 
     for (const row of named) {
+        if (isZerodhaFundingMessage(row.body ?? "")) {
+            continue;
+        }
+
         if (
             effectiveCatalogKey(
                 row.merchant,
@@ -176,6 +185,10 @@ export function listSmsForMerchantKey(
     }
 
     for (const row of missing) {
+        if (isZerodhaFundingMessage(row.body)) {
+            continue;
+        }
+
         if (effectiveCatalogKey(undefined, row.body, parser, overrides?.get(row.smsId), aliases) === key) {
             rows.push({
                 smsId: row.smsId,

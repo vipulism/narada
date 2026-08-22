@@ -9,14 +9,9 @@ import { pushReadyFireflyTransactions } from "../../connectors/firefly/firefly.p
 export async function runSmsLedgerFollowUp(): Promise<void> {
     const results = await new ClassifierRunner().run();
     const classified = results.reduce((sum, result) => sum + result.classified, 0);
-
-    if (classified === 0) {
-        return;
-    }
-
     const events = await new FinancialEventNormalizer().rebuildFromAnalysis();
     console.info(
-        `financial_events rebuilt: stored=${events.stored} considered=${events.considered}`
+        `financial_events rebuilt: stored=${events.stored} considered=${events.considered} classified=${classified}`
     );
 
     if (!process.env.FIREFLY_TOKEN?.trim() || !process.env.FIREFLY_URL?.trim()) {

@@ -1,6 +1,7 @@
 import { FinancialClassifier } from "./financial.classifier";
 import { SmsCategory, SmsMessage } from "../../importers/sms/sms.model";
 import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilter";
+import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
@@ -2655,6 +2656,56 @@ function runAttentionDigestRegression(): void {
         mergedTotals[0]?.totalAmount !== 281047
     ) {
         failures.push(`merged Titan/Tanishq totals ${JSON.stringify(mergedTotals)}`);
+    }
+
+    const zerodhaBody =
+        "ICICI Bank Acct XX412 debited for Rs 9900.00 on 07-Oct-24; Zerodha credited. UPI:428102836837. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const staleZerodha: AnalysisEventSource = {
+        smsId: 99001,
+        occurredAt: new Date("2024-10-07T00:00:00Z"),
+        body: zerodhaBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 9900,
+            cashFlow: "OUTFLOW",
+            merchant: "Zerodha",
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    };
+    const rebuiltZerodha = toFinancialEvent(staleZerodha);
+
+    if (rebuiltZerodha?.kind !== "investment") {
+        failures.push(`stale Zerodha expense should rebuild as investment, got ${rebuiltZerodha?.kind}`);
+    }
+
+    const zerodhaSpend = groupExpenseTotals([
+        {
+            smsId: 99001,
+            merchant: "Zerodha",
+            amount: 9900,
+            occurredAt: new Date("2024-10-07T00:00:00Z"),
+            body: zerodhaBody,
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        zerodhaSpend.length !== 1 ||
+        zerodhaSpend[0]?.catalogKey !== "tanishq" ||
+        zerodhaSpend.some((row) => row.catalogKey === "zerodha")
+    ) {
+        failures.push(`Zerodha funding should drop off merchants, got ${JSON.stringify(zerodhaSpend)}`);
     }
 
     if (
