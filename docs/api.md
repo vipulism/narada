@@ -86,14 +86,17 @@ curl -X POST "http://192.168.1.32:4000/merchants/apply" \
   -d '{"key":"paytm qr"}'
 curl -X POST "http://192.168.1.32:4000/merchants/apply" \
   -H "Content-Type: application/json" \
+  -d '{"smsId":18871}'
+curl -X POST "http://192.168.1.32:4000/merchants/apply" \
+  -H "Content-Type: application/json" \
   -d '{"all":true}'
 ```
 
 `PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label`, `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only.
 
-`PUT /merchants/sms/:smsId` body: optional `category` (same buckets, or `null`/`""` to inherit the merchant), optional `merchantKey` (`""` = pattern group, `__own__` = this SMS as its own row, or another catalog key), and optional `applyToDhan` for that one journal. Stored in `sms_spend_overrides`.
+`PUT /merchants/sms/:smsId` body: optional `category` (same buckets, or `null`/`""` to inherit the merchant), optional `merchantKey` (`""` = pattern group, `__own__` = this SMS as its own row, or another catalog key), and optional `applyToDhan` for that one journal. Stored in `sms_spend_overrides`. The SMS preview also has **Apply this SMS in Dhan**.
 
-`POST /merchants/apply` needs a saved category. `{ "key": "…" }` one merchant; `{ "all": true }` every assigned merchant. Opening-skipped SMS never reached Dhan.
+`POST /merchants/apply` needs a saved category (or a per-SMS override / keyword guess for `{ "smsId" }`). `{ "smsId": 18871 }` one journal; `{ "key": "…" }` one merchant; `{ "all": true }` every assigned merchant. Opening-skipped SMS never reached Dhan.
 
 ---
 

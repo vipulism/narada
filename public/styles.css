@@ -505,6 +505,10 @@ h2 {
   font: inherit;
 }
 
+.sms-dialog-dhan {
+  margin: 0.75rem 0 0;
+}
+
 .sms-dialog-body {
   margin: 0.75rem 0 0;
   white-space: pre-wrap;

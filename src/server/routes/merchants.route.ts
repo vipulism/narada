@@ -42,6 +42,7 @@ interface SmsMerchantContext {
     merchantLabel: string;
     category: SpendBucket | null;
     suggested: SpendBucket;
+    pushed: boolean;
     ownMerchantKey: string;
     override: { category: SpendBucket | null; merchantKey: string | null } | null;
     buckets: Array<{ key: SpendBucket; label: string }>;
@@ -304,10 +305,25 @@ async function assignMerchant(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * POST /merchants/apply — rewrite `category_name` on already-pushed Dhan withdrawals.
+ * POST /merchants/apply — rewrite `category_name` on already-pushed Dhan withdrawals
+ * (one SMS, one merchant, or every assigned merchant).
  */
 async function applyMerchantCategories(req: Request, res: Response): Promise<void> {
     const rawKey = bodyString(req.body?.key) ?? bodyString(req.body?.merchant);
+    const smsId = optionalPositiveInt(req.body?.smsId);
+
+    if (smsId) {
+        const context = await loadSmsMerchantContext(smsId);
+
+        if (!context) {
+            res.status(404).json({ message: "expense SMS not found" });
+            return;
+        }
+
+        const dhan = await recategorizeSmsDhan(smsId, context.category ?? context.suggested);
+        res.status(200).json({ sms: context, dhan });
+        return;
+    }
 
     if (req.body?.all === true) {
         const [assignments, overrides] = await Promise.all([
@@ -407,6 +423,7 @@ async function loadSmsMerchantContext(smsId: number): Promise<SmsMerchantContext
         merchantLabel: item?.label ?? override?.merchantLabel ?? spendMerchantLabel(patternMerchant),
         category,
         suggested: resolveSpendBucket(patternMerchant, undefined, row.body),
+        pushed: row.pushed,
         ownMerchantKey: ownSmsMerchantKey(smsId),
         override: override
             ? {

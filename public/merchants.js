@@ -24,6 +24,8 @@
     smsDialogAssign: document.getElementById("sms-dialog-assign"),
     smsDialogCategory: document.getElementById("sms-dialog-category"),
     smsDialogMerchant: document.getElementById("sms-dialog-merchant"),
+    smsDialogDhan: document.getElementById("sms-dialog-dhan"),
+    smsDialogApply: document.getElementById("sms-dialog-apply"),
     smsDialogAssignMeta: document.getElementById("sms-dialog-assign-meta"),
     smsDialogBody: document.getElementById("sms-dialog-body"),
     smsDialogClose: document.getElementById("sms-dialog-close"),
@@ -241,6 +243,12 @@
       ctx.suggested
     );
     els.smsDialogMerchant.innerHTML = smsMerchantSelect(ctx);
+    if (els.smsDialogDhan) {
+      els.smsDialogDhan.hidden = !ctx.pushed;
+    }
+    if (els.smsDialogApply instanceof HTMLButtonElement) {
+      els.smsDialogApply.disabled = false;
+    }
     if (els.smsDialogAssignMeta) {
       els.smsDialogAssignMeta.hidden = true;
       els.smsDialogAssignMeta.textContent = "";
@@ -642,6 +650,9 @@
     if (els.smsDialogAssign instanceof HTMLFormElement) {
       els.smsDialogAssign.hidden = true;
     }
+    if (els.smsDialogDhan) {
+      els.smsDialogDhan.hidden = true;
+    }
     if (els.smsDialogAssignMeta) {
       els.smsDialogAssignMeta.hidden = true;
       els.smsDialogAssignMeta.textContent = "";
@@ -738,6 +749,57 @@
     event.preventDefault();
   });
 
+  els.smsDialogApply?.addEventListener("click", async () => {
+    if (
+      !(els.smsDialogAssign instanceof HTMLFormElement) ||
+      !(els.smsDialogApply instanceof HTMLButtonElement)
+    ) {
+      return;
+    }
+
+    const smsId = Number(els.smsDialogAssign.dataset.smsId);
+    if (!Number.isFinite(smsId) || smsId <= 0) {
+      return;
+    }
+
+    els.smsDialogApply.disabled = true;
+    setText(els.smsDialogAssignMeta, "Updating Dhan…");
+    if (els.smsDialogAssignMeta) {
+      els.smsDialogAssignMeta.hidden = false;
+    }
+
+    try {
+      const res = await api("/merchants/apply", {
+        method: "POST",
+        body: JSON.stringify({ smsId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+      showDhanResult(body.dhan);
+      if (body.dhan?.skipped) {
+        setText(
+          els.smsDialogAssignMeta,
+          `Dhan skipped — ${body.dhan.reason || "not configured"}`
+        );
+        return;
+      }
+      const updated = Number(body.dhan?.updated ?? 0);
+      setText(
+        els.smsDialogAssignMeta,
+        updated ? "Applied this SMS in Dhan." : "Dhan did not update this SMS."
+      );
+    } catch (error) {
+      setText(
+        els.smsDialogAssignMeta,
+        error instanceof Error ? error.message : "Could not apply in Dhan"
+      );
+    } finally {
+      els.smsDialogApply.disabled = false;
+    }
+  });
+
   els.smsDialogAssign?.addEventListener("change", async (event) => {
     const target = event.target;
     if (
@@ -769,8 +831,6 @@
             els.smsDialogCategory.value === "" ? null : els.smsDialogCategory.value,
           merchantKey:
             els.smsDialogMerchant.value === "" ? null : els.smsDialogMerchant.value,
-          applyToDhan:
-            els.applyDhan instanceof HTMLInputElement && els.applyDhan.checked,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -781,7 +841,6 @@
         renderSmsAssign(body.sms);
       }
       await load();
-      showDhanResult(body.dhan);
       if (els.smsDialogAssignMeta) {
         els.smsDialogAssignMeta.hidden = false;
       }
