@@ -547,6 +547,10 @@ export class FinancialParser {
             return "Zerodha";
         }
 
+        if (/\bindian clearing\b/i.test(body)) {
+            return "Indian Clearing";
+        }
+
         if (/\bdomino'?s\b/i.test(body) || /\bdominos\b/i.test(body) || /dominos?pizza/i.test(body)) {
             return "Domino's";
         }

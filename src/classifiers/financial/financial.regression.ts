@@ -589,6 +589,20 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "icici-indian-clearing-sip-investment",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 1500.00 on 17-Aug-26; Indian Clearing credited. UPI:659546639677. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "investment",
+            cashFlow: "OUTFLOW",
+            amount: 1500,
+            accountLast4: "1412",
+            merchant: "Indian Clearing",
+            transactionType: "UPI",
+        },
+    },
+    {
         id: "14236-sbi-home-loan-emi-due-skip",
         address: "VA-CBSSBI",
         body: "Dear customer, EMI due on 05042025 in A/c XXXXX489751. Please pay in time. Please ignore, if already paid.-SBI",
@@ -1598,6 +1612,21 @@ function runDhanResolveRegression(): void {
 
     if (zerodha.event.counterpartyLast4 !== "4444") {
         failures.push(`Zerodha funding dest ${zerodha.event.counterpartyLast4} != 4444`);
+    }
+
+    const indianClearingBody =
+        "ICICI Bank Acct XX412 debited for Rs 1500.00 on 17-Aug-26; Indian Clearing credited. UPI:659546639677. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const indianClearing = stampDhanAccount(
+        {
+            ...stubEvent(99002, "investment", 1500, "1412", new Date("2026-08-17T12:00:00+05:30")),
+            bank: "ICICI Bank",
+        },
+        accounts,
+        indianClearingBody
+    );
+
+    if (indianClearing.event.counterpartyLast4 !== "3333") {
+        failures.push(`Indian Clearing SIP dest ${indianClearing.event.counterpartyLast4} != 3333`);
     }
 
     if (failures.length > 0) {
@@ -2817,6 +2846,56 @@ function runAttentionDigestRegression(): void {
         zerodhaSpend.some((row) => row.catalogKey === "zerodha")
     ) {
         failures.push(`Zerodha funding should drop off merchants, got ${JSON.stringify(zerodhaSpend)}`);
+    }
+
+    const indianClearingBody =
+        "ICICI Bank Acct XX412 debited for Rs 1500.00 on 17-Aug-26; Indian Clearing credited. UPI:659546639677. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const staleClearing: AnalysisEventSource = {
+        smsId: 99002,
+        occurredAt: new Date("2026-08-17T00:00:00Z"),
+        body: indianClearingBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 1500,
+            cashFlow: "OUTFLOW",
+            merchant: "Indian Clearing",
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    };
+    const rebuiltClearing = toFinancialEvent(staleClearing);
+
+    if (rebuiltClearing?.kind !== "investment") {
+        failures.push(`stale Indian Clearing expense should rebuild as investment, got ${rebuiltClearing?.kind}`);
+    }
+
+    const clearingSpend = groupExpenseTotals([
+        {
+            smsId: 99002,
+            merchant: "Indian Clearing",
+            amount: 1500,
+            occurredAt: new Date("2026-08-17T00:00:00Z"),
+            body: indianClearingBody,
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        clearingSpend.length !== 1 ||
+        clearingSpend[0]?.catalogKey !== "tanishq" ||
+        clearingSpend.some((row) => row.catalogKey === "indian clearing")
+    ) {
+        failures.push(`Indian Clearing SIP should drop off merchants, got ${JSON.stringify(clearingSpend)}`);
     }
 
     if (
