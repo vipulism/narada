@@ -603,6 +603,20 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "11579-icici-indianclearingc-sip-investment",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 2000.00 on 29-May-24; IndianClearingC credited. UPI:415061616994. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "investment",
+            cashFlow: "OUTFLOW",
+            amount: 2000,
+            accountLast4: "1412",
+            merchant: "Indian Clearing",
+            transactionType: "UPI",
+        },
+    },
+    {
         id: "13384-icici-credclub-bill",
         address: "JM-ICICIB",
         body: "ICICI Bank Acct XX412 debited for Rs 2731.00 on 24-Dec-24; CredClub credited. UPI:435938914895. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
@@ -3065,6 +3079,57 @@ function runAttentionDigestRegression(): void {
         clearingSpend.some((row) => row.catalogKey === "indian clearing")
     ) {
         failures.push(`Indian Clearing SIP should drop off merchants, got ${JSON.stringify(clearingSpend)}`);
+    }
+
+    const indianClearingCBody =
+        "ICICI Bank Acct XX412 debited for Rs 2000.00 on 29-May-24; IndianClearingC credited. UPI:415061616994. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const staleClearingC: AnalysisEventSource = {
+        smsId: 11579,
+        occurredAt: new Date("2024-05-29T00:00:00Z"),
+        body: indianClearingCBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 2000,
+            cashFlow: "OUTFLOW",
+            merchant: "IndianClearingC",
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    };
+
+    if (toFinancialEvent(staleClearingC)?.kind !== "investment") {
+        failures.push(
+            `stale IndianClearingC expense should rebuild as investment, got ${toFinancialEvent(staleClearingC)?.kind}`
+        );
+    }
+
+    const clearingCSpend = groupExpenseTotals([
+        {
+            smsId: 11579,
+            merchant: "IndianClearingC",
+            amount: 2000,
+            occurredAt: new Date("2024-05-29T00:00:00Z"),
+            body: indianClearingCBody,
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        clearingCSpend.length !== 1 ||
+        clearingCSpend[0]?.catalogKey !== "tanishq" ||
+        clearingCSpend.some((row) => (row.catalogKey ?? "").includes("indian"))
+    ) {
+        failures.push(`IndianClearingC SIP should drop off merchants, got ${JSON.stringify(clearingCSpend)}`);
     }
 
     const credClubBody =

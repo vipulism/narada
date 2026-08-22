@@ -842,14 +842,14 @@ export function isZerodhaFundingMessage(body: string): boolean {
 }
 
 /**
- * UPI debit to Indian Clearing (BSE Star MF / SIP), not ICCL Zerodha equity.
+ * UPI debit to Indian Clearing / IndianClearingC (BSE Star MF / SIP), not ICCL Zerodha equity.
  *
  * @param body - SMS body (any case)
  */
 export function isIndianClearingSipMessage(body: string): boolean {
     const upper = body.toUpperCase();
 
-    if (upper.includes("ZERODHA") || !/\bINDIAN\s+CLEARING\b/.test(upper)) {
+    if (upper.includes("ZERODHA") || !/\bINDIAN\s*CLEARINGC?\b/.test(upper)) {
         return false;
     }
 
