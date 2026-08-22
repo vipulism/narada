@@ -152,11 +152,55 @@ function dedupeMovements(rows: EventFilterSource[]): EventFilterSource[] {
         );
     });
 
-    return [...others, ...keptTransfers].sort((left, right) => {
+    return collapseCopySms([...others, ...keptTransfers]).sort((left, right) => {
         const byTime = left.event.occurredAt.getTime() - right.event.occurredAt.getTime();
 
         return byTime !== 0 ? byTime : left.event.smsId - right.event.smsId;
     });
+}
+
+/**
+ * Same UPI/IMPS/RRN (or identical body) from two SMS ids is one money movement.
+ *
+ * @param rows - Transfer-deduped events
+ */
+function collapseCopySms(rows: EventFilterSource[]): EventFilterSource[] {
+    const sorted = [...rows].sort((left, right) => left.event.smsId - right.event.smsId);
+    const seen = new Set<string>();
+    const kept: EventFilterSource[] = [];
+
+    for (const row of sorted) {
+        if (row.event.kind !== "expense" && row.event.kind !== "income") {
+            kept.push(row);
+            continue;
+        }
+
+        const key = smsDuplicateKey(row.body);
+
+        if (seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+        kept.push(row);
+    }
+
+    return kept;
+}
+
+/**
+ * Stable id for one bank movement. Duplicate SMS copies share this key.
+ *
+ * @param body - SMS body (any case)
+ */
+export function smsDuplicateKey(body: string): string {
+    const ref = extractMovementRef(body);
+
+    if (ref) {
+        return `ref:${ref}`;
+    }
+
+    return `body:${body.trim().replace(/\s+/g, " ").toUpperCase()}`;
 }
 
 function transferDedupeKeys(row: EventFilterSource): string[] {
