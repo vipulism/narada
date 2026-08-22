@@ -551,6 +551,22 @@ export class FinancialParser {
             return "Indian Clearing";
         }
 
+        if (/ikeaindia|\bikea\b/i.test(body)) {
+            return "IKEA";
+        }
+
+        if (/\bgroww\b/i.test(body) && /ach/i.test(body)) {
+            return "Groww";
+        }
+
+        if (/\bnetflix\b/i.test(body)) {
+            return "Netflix";
+        }
+
+        if (/\blinkedin\b/i.test(body)) {
+            return "LinkedIn";
+        }
+
         if (/\bdomino'?s\b/i.test(body) || /\bdominos\b/i.test(body) || /dominos?pizza/i.test(body)) {
             return "Domino's";
         }
@@ -629,7 +645,7 @@ export class FinancialParser {
             return spentOn;
         }
 
-        return this.extractBiller(body) ?? this.extractCreditedPayee(body);
+        return this.extractEmandateMerchant(body) ?? this.extractBiller(body) ?? this.extractCreditedPayee(body);
 
     }
 
@@ -667,6 +683,31 @@ export class FinancialParser {
         }
 
         return undefined;
+    }
+
+    /**
+     * SI Hub: `AutoPay (E-mandate) Success! For NETFLIX Txn Amt:INR199.00`.
+     */
+    private extractEmandateMerchant(body: string): string | undefined {
+        if (!/autopay|e-mandate|si hub/i.test(body)) {
+            return undefined;
+        }
+
+        const match = body.match(
+            /\bfor\s+([A-Za-z][A-Za-z0-9 .&']{1,40}?)(?=\s+txn\s+amt|\s+si\s+hub|\s*$)/i
+        );
+
+        if (!match?.[1]) {
+            return undefined;
+        }
+
+        const merchant = this.normalizeMerchant(match[1].trim());
+
+        if (this.isInvalidMerchant(merchant)) {
+            return undefined;
+        }
+
+        return merchant;
     }
 
     /**

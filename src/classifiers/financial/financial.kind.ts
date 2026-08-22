@@ -638,7 +638,8 @@ export function detectFinancialKind(
         isSgbMessage(body) ||
         isEquityBuyMessage(body) ||
         isZerodhaFundingMessage(body) ||
-        isIndianClearingSipMessage(body)
+        isIndianClearingSipMessage(body) ||
+        isGrowwFundingMessage(body)
     ) {
         return "investment";
     }
@@ -862,5 +863,24 @@ export function isIndianClearingSipMessage(body: string): boolean {
  * @param body - SMS body (any case)
  */
 export function isInvestmentFundingMessage(body: string): boolean {
-    return isZerodhaFundingMessage(body) || isIndianClearingSipMessage(body);
+    return (
+        isZerodhaFundingMessage(body) ||
+        isIndianClearingSipMessage(body) ||
+        isGrowwFundingMessage(body)
+    );
+}
+
+/**
+ * NACH/ACH debit to Groww (MF SIP), not a household spend.
+ *
+ * @param body - SMS body (any case)
+ */
+export function isGrowwFundingMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    if (!upper.includes("GROWW")) {
+        return false;
+    }
+
+    return upper.includes("ACH*GROWW") || upper.includes("INFOACH") || /\bNACH\b/.test(upper);
 }

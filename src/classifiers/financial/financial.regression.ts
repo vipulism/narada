@@ -482,6 +482,32 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "hdfc-autopay-netflix-subscription",
+        address: "AD-HDFCBK-S",
+        body: "AutoPay (E-mandate) Success!\nFor NETFLIX \nTxn Amt:INR199.00\nDt:01/04/2026\nVia:HDFC Bank CC 0170\nSI Hub ID: YKaIihhfmU\nTnC",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 199,
+            accountLast4: "0170",
+            merchant: "Netflix",
+        },
+    },
+    {
+        id: "hdfc-autopay-linkedin-subscription",
+        address: "AD-HDFCBK-S",
+        body: "AutoPay (E-mandate) Success!\nFor LinkedIn \nTxn Amt:INR1687.47\nDt:04/07/2026\nVia:HDFC Bank CC 0170\nSI Hub ID: YNEqXeYdU6\nTnC",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 1687.47,
+            accountLast4: "0170",
+            merchant: "LinkedIn",
+        },
+    },
+    {
         id: "15996-neucoin-skip",
         address: "AX-MYTNEU-S",
         body: "Hi, your account has been debited with 62.43 NeuCoin(s) towards your return request for order 139987082 at Tata CLiQ - Team TataNeu",
@@ -614,6 +640,19 @@ const CASES: RegressionCase[] = [
             accountLast4: "1412",
             merchant: "Indian Clearing",
             transactionType: "UPI",
+        },
+    },
+    {
+        id: "icici-groww-ach-investment",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acc XX412 debited Rs. 5,000.00 on 26-Jul-26 InfoACH*Groww*ICI.Avl Bal Rs. 10,33,972.25.To dispute call 18002662 or SMS BLOCK 412 to 9215676766",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "investment",
+            cashFlow: "OUTFLOW",
+            amount: 5000,
+            accountLast4: "1412",
+            merchant: "Groww",
         },
     },
     {
@@ -753,6 +792,20 @@ const CASES: RegressionCase[] = [
             accountLast4: "3019",
             transactionType: "UPI",
             merchant: "Blinkit",
+        },
+    },
+    {
+        id: "hdfc-ikea-upi-vpa-shopping",
+        address: "JM-HDFCBK-S",
+        body: "Txn Rs.348.00\nOn HDFC Bank Card 3019\nAt ikeaindiapvtltd.67191155@ \nby UPI 659346091067\nOn 15-08\nNot You?\nCall 18002586161/SMS BLOCK CC 3019 to 7308080808",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 348,
+            accountLast4: "3019",
+            transactionType: "UPI",
+            merchant: "IKEA",
         },
     },
     {
@@ -1750,6 +1803,21 @@ function runDhanResolveRegression(): void {
         failures.push(`Indian Clearing SIP dest ${indianClearing.event.counterpartyLast4} != 3333`);
     }
 
+    const growwBody =
+        "ICICI Bank Acc XX412 debited Rs. 5,000.00 on 26-Jul-26 InfoACH*Groww*ICI.Avl Bal Rs. 10,33,972.25.To dispute call 18002662 or SMS BLOCK 412 to 9215676766";
+    const groww = stampDhanAccount(
+        {
+            ...stubEvent(99003, "investment", 5000, "1412", new Date("2026-07-26T12:00:00+05:30")),
+            bank: "ICICI Bank",
+        },
+        accounts,
+        growwBody
+    );
+
+    if (groww.event.counterpartyLast4 !== "3333") {
+        failures.push(`Groww ACH dest ${groww.event.counterpartyLast4} != 3333`);
+    }
+
     if (failures.length > 0) {
         throw new Error(`dhan resolve regression failed:\n${failures.join("\n")}`);
     }
@@ -2596,6 +2664,10 @@ function runAttentionDigestRegression(): void {
         failures.push("LinkedIn should be subscriptions");
     }
 
+    if (spendBucket("IKEA") !== "shopping" || spendBucket("Netflix") !== "subscriptions") {
+        failures.push("IKEA should be shopping and Netflix subscriptions");
+    }
+
     if (spendBucket("RAMESH KIRANA") !== "grocery" || spendBucket("sharma-kirana@okaxis") !== "grocery") {
         failures.push("UPI kirana names should be grocery");
     }
@@ -3130,6 +3202,54 @@ function runAttentionDigestRegression(): void {
         clearingCSpend.some((row) => (row.catalogKey ?? "").includes("indian"))
     ) {
         failures.push(`IndianClearingC SIP should drop off merchants, got ${JSON.stringify(clearingCSpend)}`);
+    }
+
+    const growwAchBody =
+        "ICICI Bank Acc XX412 debited Rs. 5,000.00 on 26-Jul-26 InfoACH*Groww*ICI.Avl Bal Rs. 10,33,972.25.To dispute call 18002662 or SMS BLOCK 412 to 9215676766";
+    const staleGroww: AnalysisEventSource = {
+        smsId: 99003,
+        occurredAt: new Date("2026-07-26T00:00:00Z"),
+        body: growwAchBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 5000,
+            cashFlow: "OUTFLOW",
+            merchant: "Groww",
+            accountLast4: "1412",
+        },
+    };
+
+    if (toFinancialEvent(staleGroww)?.kind !== "investment") {
+        failures.push(`stale Groww ACH expense should rebuild as investment, got ${toFinancialEvent(staleGroww)?.kind}`);
+    }
+
+    const growwSpend = groupExpenseTotals([
+        {
+            smsId: 99003,
+            merchant: "Groww",
+            amount: 5000,
+            occurredAt: new Date("2026-07-26T00:00:00Z"),
+            body: growwAchBody,
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        growwSpend.length !== 1 ||
+        growwSpend[0]?.catalogKey !== "tanishq" ||
+        growwSpend.some((row) => row.catalogKey === "groww")
+    ) {
+        failures.push(`Groww ACH should drop off merchants, got ${JSON.stringify(growwSpend)}`);
     }
 
     const credClubBody =
