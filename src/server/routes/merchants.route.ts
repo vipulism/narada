@@ -19,6 +19,7 @@ import {
     type SpendBucketOption,
 } from "../../classifiers/financial/financial.spend";
 import { isFireflyConfigured } from "../../connectors/firefly/firefly.exceptions";
+import { dhanApplyUnpushedReason, loadFireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { loadFireflyClient } from "../../connectors/firefly/firefly.client";
 import {
     applyAssignedCategoriesToDhan,
@@ -664,7 +665,12 @@ async function recategorizeSmsDhan(
     const event = await events.getBySmsId(smsId);
 
     if (!event?.fireflyTransactionId) {
-        return { skipped: true, reason: "this SMS is not in Dhan yet" };
+        return {
+            skipped: true,
+            reason: event
+                ? dhanApplyUnpushedReason(event, loadFireflyOpenings())
+                : "this SMS is not in Dhan yet",
+        };
     }
 
     return applySmsCategoryToDhan(

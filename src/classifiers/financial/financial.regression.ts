@@ -8,7 +8,7 @@ import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun"
 import { listSmsForMerchantKey, recoverUnknownMerchantTotals, groupExpenseTotals } from "../../server/merchant.catalog";
 import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
-import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
+import { FireflyOpenings, dhanApplyUnpushedReason } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
@@ -435,6 +435,21 @@ const CASES: RegressionCase[] = [
             subcategory: "expense",
             cashFlow: "OUTFLOW",
             amount: 1116.99,
+            merchant: "IGL",
+        },
+    },
+    {
+        id: "12268-icici-indraprastha-gas-igl",
+        address: "AD-ICICIT",
+        body: "ICICI Bank Acct XX412 debited for Rs 1310.78 on 26-Aug-24; Indraprastha Ga credited. UPI:423954294410. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 1310.78,
+            accountLast4: "1412",
+            merchant: "IGL",
+            transactionType: "UPI",
         },
     },
     {
@@ -1931,6 +1946,24 @@ function runFireflyMapRegression(): void {
         failures.push("FASTag before opening should skip");
     }
 
+    const preLedgerApply = dhanApplyUnpushedReason(
+        stubEvent(12268, "expense", 1310.78, "1412", new Date("2024-08-26T06:44:00Z")),
+        new FireflyOpenings(new Map([["1412", "2026-08-16"]]), "2026-08-16")
+    );
+
+    if (preLedgerApply !== "this SMS is before the Dhan ledger opening (16 Aug 2026)") {
+        failures.push(`pre-ledger Apply skip ${preLedgerApply}`);
+    }
+
+    const unpushedApply = dhanApplyUnpushedReason(
+        stubEvent(1, "expense", 100, "1412", new Date("2026-08-20T12:00:00+05:30")),
+        new FireflyOpenings(new Map([["1412", "2026-08-16"]]), "2026-08-16")
+    );
+
+    if (unpushedApply !== "this SMS is not in Dhan yet") {
+        failures.push(`post-opening unpushed Apply skip ${unpushedApply}`);
+    }
+
     const openingDay = planFireflyTransaction(
         stubEvent(99999, "expense", 40, "5940", new Date("2026-08-16T12:00:00+05:30")),
         fastag,
@@ -2734,8 +2767,16 @@ function runAttentionDigestRegression(): void {
         failures.push(`Titan Company catalog label ${spendMerchantLabel("_TITAN COMPANY LI..")}`);
     }
 
+    if (spendMerchantLabel("Indraprastha Ga") !== "IGL") {
+        failures.push(`Indraprastha Ga catalog label ${spendMerchantLabel("Indraprastha Ga")}`);
+    }
+
     if (spendBucket("_TITAN COMPANY LI..") !== "shopping" || spendBucket("Tanishq") !== "shopping") {
         failures.push("Tanishq / Titan Company should be shopping");
+    }
+
+    if (spendBucket("Indraprastha Ga") !== "utilities" || spendBucket("IGL") !== "utilities") {
+        failures.push("IGL / Indraprastha Gas should be utilities");
     }
 
     if (merchantCatalogKey("paytmqr5wpzku@ptys") !== "paytm qr") {
@@ -2940,6 +2981,34 @@ function runAttentionDigestRegression(): void {
         mergedTotals[0]?.totalAmount !== 281047
     ) {
         failures.push(`merged Titan/Tanishq totals ${JSON.stringify(mergedTotals)}`);
+    }
+
+    const iglTotals = groupExpenseTotals([
+        {
+            smsId: 12268,
+            merchant: "Indraprastha Ga",
+            amount: 1310.78,
+            occurredAt: new Date("2024-08-26T06:44:00Z"),
+            body: "ICICI Bank Acct XX412 debited for Rs 1310.78 on 26-Aug-24; Indraprastha Ga credited. UPI:423954294410. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+            pushed: false,
+        },
+        {
+            smsId: 16513,
+            merchant: "IGL",
+            amount: 1116.99,
+            occurredAt: new Date("2025-12-19T00:00:00Z"),
+            body: "Online Payment Confirmation \nDear Customer, Payment of Rs. 1116.99 received against BP No. 7000368084 On 19.12.2025. Posting of payment is subject to realization. IGL \n",
+            pushed: false,
+        },
+    ]);
+
+    if (
+        iglTotals.length !== 1 ||
+        iglTotals[0]?.catalogKey !== "igl" ||
+        iglTotals[0]?.txCount !== 2 ||
+        Math.round((iglTotals[0]?.totalAmount ?? 0) * 100) !== 242777
+    ) {
+        failures.push(`merged IGL / Indraprastha Ga totals ${JSON.stringify(iglTotals)}`);
     }
 
     const linkedInBody =
