@@ -2703,7 +2703,8 @@ function runAttentionDigestRegression(): void {
 
     if (
         spendBucket("Mall Parking") !== "transport" ||
-        spendBucket("Shipra Mall", "txn of INR 50 using IDFC FIRST Bank FASTag 5940") !== "transport"
+        spendBucket("Shipra Mall", "txn of INR 50 using IDFC FIRST Bank FASTag 5940") !== "transport" ||
+        spendBucket("Select Citywalk Mall") !== "shopping"
     ) {
         failures.push("mall parking / FASTag at mall should be transport, not shopping");
     }
