@@ -203,6 +203,12 @@ export interface SmsSpendOverride {
     merchantLabel?: string | null;
 }
 
+/** User rename or merge of one catalog key onto another. */
+export interface MerchantAlias {
+    toKey: string;
+    label: string;
+}
+
 /**
  * Firefly / digest label for a spend bucket.
  *
@@ -356,24 +362,67 @@ export function isOwnSmsMerchantKey(key: string): boolean {
 }
 
 /**
+ * Follows rename / merge aliases. Same `toKey` as `from` is a display rename.
+ *
+ * @param key - Pattern or overridden catalog id
+ * @param aliases - `merchant_aliases` keyed by from-key
+ */
+export function resolveMerchantAlias(
+    key: string,
+    aliases?: ReadonlyMap<string, MerchantAlias>
+): { key: string; label?: string } {
+    if (!aliases?.size) {
+        return { key };
+    }
+
+    const seen = new Set<string>();
+    let current = key;
+    let label: string | undefined;
+
+    while (aliases.has(current) && !seen.has(current)) {
+        seen.add(current);
+        const alias = aliases.get(current);
+
+        if (!alias) {
+            break;
+        }
+
+        label = alias.label || label;
+
+        if (alias.toKey === current) {
+            break;
+        }
+
+        current = alias.toKey;
+    }
+
+    return { key: current, label };
+}
+
+/**
  * SMS override first, then user merchant map, then keyword heuristics.
  *
  * @param merchant - Extracted merchant
  * @param assigned - `merchant_categories` keyed by catalog id
  * @param body - Raw SMS body when merchant is thin
  * @param smsOverride - Per-SMS category or merchant move
+ * @param aliases - Optional merchant rename / merge map
  */
 export function resolveSpendBucket(
     merchant?: string | null,
     assigned?: ReadonlyMap<string, SpendBucket>,
     body?: string | null,
-    smsOverride?: SmsSpendOverride | null
+    smsOverride?: SmsSpendOverride | null,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): SpendBucket {
     if (smsOverride?.category) {
         return smsOverride.category;
     }
 
-    const key = smsOverride?.merchantKey || merchantCatalogKey(merchant);
+    const key = resolveMerchantAlias(
+        smsOverride?.merchantKey || merchantCatalogKey(merchant),
+        aliases
+    ).key;
     return assigned?.get(key) ?? spendBucket(merchant, body);
 }
 
@@ -408,6 +457,7 @@ export function spendBucket(merchant?: string | null, body?: string | null): Spe
  * @param lastLabel - e.g. `Jul 1–22`
  * @param assigned - Optional Narada merchant → bucket map
  * @param smsOverrides - Optional per-SMS category / merchant moves
+ * @param aliases - Optional merchant rename / merge map
  * @param bucketLabels - Labels for user-created buckets
  */
 export function buildSpendMonthStats(
@@ -417,12 +467,13 @@ export function buildSpendMonthStats(
     lastLabel: string,
     assigned?: ReadonlyMap<string, SpendBucket>,
     smsOverrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>,
     bucketLabels?: ReadonlyMap<string, string>
 ): SpendMonthStats {
-    const thisBuckets = sumBuckets(thisRows, assigned, smsOverrides);
-    const lastBuckets = sumBuckets(lastRows, assigned, smsOverrides);
-    const thisMerchants = sumMerchants(thisRows);
-    const lastMerchants = sumMerchants(lastRows);
+    const thisBuckets = sumBuckets(thisRows, assigned, smsOverrides, aliases);
+    const lastBuckets = sumBuckets(lastRows, assigned, smsOverrides, aliases);
+    const thisMerchants = sumMerchants(thisRows, aliases);
+    const lastMerchants = sumMerchants(lastRows, aliases);
 
     const keys = new Set<string>([...thisBuckets.keys(), ...lastBuckets.keys()]);
     const buckets = [...keys]
@@ -501,16 +552,18 @@ export interface MerchantSpendTotal {
  *
  * @param rows - Expense totals grouped by raw `financial_events.merchant`
  * @param assignments - Saved categories keyed by {@link merchantCatalogKey}
+ * @param labels - Optional display names keyed by catalog id
  */
 export function buildMerchantCatalog(
     rows: MerchantSpendTotal[],
-    assignments: ReadonlyMap<string, MerchantCategoryAssignment>
+    assignments: ReadonlyMap<string, MerchantCategoryAssignment>,
+    labels?: ReadonlyMap<string, string>
 ): MerchantCatalogItem[] {
     const byKey = new Map<string, MerchantCatalogItem>();
 
     for (const row of rows) {
-        const label = spendMerchantLabel(row.merchant);
         const key = row.catalogKey ?? merchantCatalogKey(row.merchant);
+        const label = labels?.get(key) || spendMerchantLabel(row.merchant);
         const existing = byKey.get(key);
 
         if (existing) {
@@ -548,12 +601,15 @@ export function buildMerchantCatalog(
 
         if (existing) {
             existing.category = assignment.category;
+            if (labels?.get(key)) {
+                existing.label = labels.get(key) ?? existing.label;
+            }
             continue;
         }
 
         byKey.set(key, {
             key,
-            label: assignment.label,
+            label: labels?.get(key) || assignment.label,
             category: assignment.category,
             suggested: spendBucket(assignment.label),
             txCount: 0,
@@ -583,7 +639,8 @@ export function buildMerchantCatalog(
 function sumBuckets(
     rows: SpendEvent[],
     assigned?: ReadonlyMap<string, SpendBucket>,
-    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>
+    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): Map<SpendBucket, number> {
     const totals = new Map<SpendBucket, number>();
 
@@ -593,14 +650,17 @@ function sumBuckets(
         }
 
         const override = row.smsId != null ? smsOverrides?.get(row.smsId) : undefined;
-        const bucket = resolveSpendBucket(row.merchant, assigned, undefined, override);
+        const bucket = resolveSpendBucket(row.merchant, assigned, undefined, override, aliases);
         totals.set(bucket, (totals.get(bucket) ?? 0) + row.amount);
     }
 
     return totals;
 }
 
-function sumMerchants(rows: SpendEvent[]): Map<string, number> {
+function sumMerchants(
+    rows: SpendEvent[],
+    aliases?: ReadonlyMap<string, MerchantAlias>
+): Map<string, number> {
     const totals = new Map<string, number>();
 
     for (const row of rows) {
@@ -608,7 +668,8 @@ function sumMerchants(rows: SpendEvent[]): Map<string, number> {
             continue;
         }
 
-        const label = spendMerchantLabel(row.merchant);
+        const resolved = resolveMerchantAlias(merchantCatalogKey(row.merchant), aliases);
+        const label = resolved.label || spendMerchantLabel(row.merchant);
         totals.set(label, (totals.get(label) ?? 0) + row.amount);
     }
 

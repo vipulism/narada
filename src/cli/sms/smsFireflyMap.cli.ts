@@ -4,6 +4,7 @@ import { migrate } from "../../db/migrate";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 import { MerchantCategoryRepository } from "../../db/repositories/merchantCategory.repository";
 import { SmsSpendOverrideRepository } from "../../db/repositories/smsSpendOverride.repository";
+import { MerchantAliasRepository } from "../../db/repositories/merchantAlias.repository";
 import { SpendBucketRepository } from "../../db/repositories/spendBucket.repository";
 import { loadKnownAccountIndex } from "../../classifiers/financial/knownAccounts";
 import { loadFireflyClient } from "../../connectors/firefly/firefly.client";
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
     const openings = loadFireflyOpenings(owned.all().map((account) => account.last4));
     const assigned = await new MerchantCategoryRepository().listBucketMap();
     const smsOverrideMap = await new SmsSpendOverrideRepository().listAll();
+    const aliases = await new MerchantAliasRepository().listAll();
     const bucketLabels = await new SpendBucketRepository().labelMap();
     const events = await new FinancialEventRepository().listAll();
     const rows = events.map((event) =>
@@ -79,6 +81,7 @@ async function main(): Promise<void> {
             openings,
             assigned,
             smsOverrideMap,
+            aliases,
             bucketLabels
         )
     );

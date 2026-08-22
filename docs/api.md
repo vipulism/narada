@@ -97,7 +97,7 @@ curl -X POST "http://192.168.1.32:4000/merchants/apply" \
   -d '{"all":true}'
 ```
 
-`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label`, `category` (builtin `grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `education`, `other`, or a custom slug from `POST /merchants/buckets`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only.
+`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label` (rename display; omit `category` to only rename), optional `mergeInto` (fold this key into another catalog id; later SMS with the old spelling follow the merge), optional `category` (builtin `grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `education`, `other`, or a custom slug from `POST /merchants/buckets`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only. Rename / merge persist in `merchant_aliases`.
 
 `POST /merchants/buckets` body: `label` (1–64 chars) and optional `key` (slug). Built-in names are rejected. `DELETE /merchants/buckets/:key` removes a custom bucket only when no merchant or SMS still uses it.
 
