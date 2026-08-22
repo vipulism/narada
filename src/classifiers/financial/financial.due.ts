@@ -86,8 +86,8 @@ export function isCardPaymentAckRow(
 
 /**
  * Reads min due and total due labels.
- * Covers `Total Due INR 6447`, HSBC `Total amount is 361 and minimum amount is 100`,
- * and `total payment due … is INR 1131` (last4 may sit between due and the amount).
+ * Covers `Total Due INR 6447`, HSBC `Total amount is 361` / `total payment due … is INR 1131`,
+ * and Axis `Payment of INR 280 … is due` with `minimum amount due of INR 100`.
  *
  * @param body - Raw SMS body
  */
@@ -100,12 +100,13 @@ export function parseDueAmounts(body: string): DueAmounts {
 
 const TOTAL_DUE_PATTERNS = [
     /total\s+payment\s+due[\s\S]{0,80}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
+    /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+due\b/i,
     /total(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i,
 ];
 
 const MIN_DUE_PATTERNS = [
     /min(?:imum)?\s+payment\s+due[\s\S]{0,40}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
-    /min(?:imum)?(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i,
+    /min(?:imum)?(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+(?:is|of))?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i,
 ];
 
 const MONTHS: Record<string, string> = {
