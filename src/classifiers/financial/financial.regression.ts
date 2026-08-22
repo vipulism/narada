@@ -12,7 +12,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { buildSpendMonthStats, buildMerchantCatalog, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, resolveSpendBucket, spendBucket, spendMerchantLabel } from "./financial.spend";
+import { buildSpendMonthStats, buildMerchantCatalog, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, resolveMerchantAlias, resolveSpendBucket, spendBucket, spendMerchantLabel } from "./financial.spend";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
@@ -2527,6 +2527,45 @@ function runAttentionDigestRegression(): void {
 
     if (blinkitSms.length !== 1 || blinkitSms[0]?.smsId !== 18928) {
         failures.push(`Blinkit SMS list should be only #18928, got ${blinkitSms.map((row) => row.smsId)}`);
+    }
+
+    const titanAlias = resolveMerchantAlias(
+        "_titan company li..",
+        new Map([["_titan company li..", { toKey: "tanishq", label: "Tanishq" }]])
+    );
+
+    if (titanAlias.key !== "tanishq" || titanAlias.label !== "Tanishq") {
+        failures.push(`merchant alias ${JSON.stringify(titanAlias)}`);
+    }
+
+    const mergedTotals = groupExpenseTotals(
+        [
+            {
+                smsId: 1,
+                merchant: "_TITAN COMPANY LI..",
+                amount: 280047,
+                occurredAt: new Date("2026-07-31T00:00:00Z"),
+                pushed: false,
+            },
+            {
+                smsId: 2,
+                merchant: "Tanishq",
+                amount: 1000,
+                occurredAt: new Date("2026-08-01T00:00:00Z"),
+                pushed: false,
+            },
+        ],
+        undefined,
+        new Map([[merchantCatalogKey("_TITAN COMPANY LI.."), { toKey: "tanishq", label: "Tanishq" }]])
+    );
+
+    if (
+        mergedTotals.length !== 1 ||
+        mergedTotals[0]?.catalogKey !== "tanishq" ||
+        mergedTotals[0]?.txCount !== 2 ||
+        mergedTotals[0]?.totalAmount !== 281047
+    ) {
+        failures.push(`merged Titan/Tanishq totals ${JSON.stringify(mergedTotals)}`);
     }
 
     if (

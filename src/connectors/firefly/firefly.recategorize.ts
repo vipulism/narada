@@ -2,7 +2,9 @@ import { FinancialParser } from "../../classifiers/financial/financial.parser";
 import { FinancialEvent } from "../../classifiers/financial/financial.model";
 import {
     merchantCatalogKey,
+    resolveMerchantAlias,
     spendBucketLabel,
+    type MerchantAlias,
     type SmsSpendOverride,
     type SpendBucket,
 } from "../../classifiers/financial/financial.spend";
@@ -27,19 +29,21 @@ export interface DhanRecategorizeStats {
  * @param key - {@link merchantCatalogKey}
  * @param parser - SMS merchant extract for blank stored merchants
  * @param overrides - Optional per-SMS merchant moves
+ * @param aliases - Optional rename / merge map
  */
 export function pushedExpensesForMerchant(
     events: Array<FinancialEvent & { body?: string }>,
     key: string,
     parser = new FinancialParser(),
-    overrides?: ReadonlyMap<number, SmsSpendOverride>
+    overrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): FinancialEvent[] {
     return events.filter((event) => {
         if (event.kind !== "expense" || !event.fireflyTransactionId) {
             return false;
         }
 
-        return eventCatalogKey(event, parser, overrides?.get(event.smsId)) === key;
+        return eventCatalogKey(event, parser, overrides?.get(event.smsId), aliases) === key;
     });
 }
 
@@ -49,18 +53,18 @@ export function pushedExpensesForMerchant(
  * @param event - Posted financial event
  * @param parser - SMS merchant extract for blank stored merchants
  * @param override - Optional merchant move
+ * @param aliases - Optional rename / merge map
  */
 export function eventCatalogKey(
     event: FinancialEvent & { body?: string },
     parser = new FinancialParser(),
-    override?: Pick<SmsSpendOverride, "merchantKey"> | null
+    override?: Pick<SmsSpendOverride, "merchantKey"> | null,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): string {
-    if (override?.merchantKey) {
-        return override.merchantKey;
-    }
-
-    const merchant = event.merchant || parser.extractMerchantFromBody(event.body ?? "");
-    return merchantCatalogKey(merchant);
+    const raw = override?.merchantKey
+        ? override.merchantKey
+        : merchantCatalogKey(event.merchant || parser.extractMerchantFromBody(event.body ?? ""));
+    return resolveMerchantAlias(raw, aliases).key;
 }
 
 /**
@@ -72,6 +76,7 @@ export function eventCatalogKey(
  * @param categoryName - Firefly category label
  * @param cap - Max updates this call
  * @param overrides - Optional per-SMS merchant moves
+ * @param aliases - Optional rename / merge map
  */
 export async function applyMerchantCategoryToDhan(
     client: FireflyClient,
@@ -79,10 +84,11 @@ export async function applyMerchantCategoryToDhan(
     key: string,
     categoryName: string,
     cap = DHAN_RECATEGORIZE_CAP,
-    overrides?: ReadonlyMap<number, SmsSpendOverride>
+    overrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): Promise<DhanRecategorizeStats> {
     const parser = new FinancialParser();
-    const matched = pushedExpensesForMerchant(events, key, parser, overrides);
+    const matched = pushedExpensesForMerchant(events, key, parser, overrides, aliases);
     const batch = matched.slice(0, cap);
     const stats: DhanRecategorizeStats = {
         matched: matched.length,
@@ -127,13 +133,15 @@ export async function applyMerchantCategoryToDhan(
  * @param work - Catalog key + Firefly category label
  * @param cap - Max updates this call
  * @param overrides - Optional per-SMS category / merchant moves
+ * @param aliases - Optional rename / merge map
  */
 export async function applyAssignedCategoriesToDhan(
     client: FireflyClient,
     events: Array<FinancialEvent & { body?: string }>,
     work: Array<{ key: string; categoryName: string }>,
     cap = DHAN_RECATEGORIZE_CAP,
-    overrides?: ReadonlyMap<number, SmsSpendOverride>
+    overrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): Promise<DhanRecategorizeStats> {
     const parser = new FinancialParser();
     const byKey = new Map(work.map((row) => [row.key, row.categoryName]));
@@ -143,7 +151,7 @@ export async function applyAssignedCategoriesToDhan(
         }
 
         const override = overrides?.get(event.smsId);
-        const key = eventCatalogKey(event, parser, override);
+        const key = eventCatalogKey(event, parser, override, aliases);
         const categoryName = override?.category
             ? spendBucketLabel(override.category)
             : byKey.get(key);

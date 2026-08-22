@@ -1,7 +1,9 @@
 import { FinancialParser } from "../classifiers/financial/financial.parser";
 import {
     merchantCatalogKey,
+    resolveMerchantAlias,
     spendMerchantLabel,
+    type MerchantAlias,
     type MerchantSpendTotal,
     type SmsSpendOverride,
 } from "../classifiers/financial/financial.spend";
@@ -63,18 +65,17 @@ export function expenseMerchant(
  * @param body - SMS body when the stored merchant is empty
  * @param parser - Shared parser instance
  * @param override - Optional merchant move
+ * @param aliases - Optional rename / merge map
  */
 export function effectiveCatalogKey(
     storedMerchant: string | undefined,
     body: string | undefined,
     parser: FinancialParser,
-    override?: Pick<SmsSpendOverride, "merchantKey"> | null
+    override?: Pick<SmsSpendOverride, "merchantKey"> | null,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): string {
-    if (override?.merchantKey) {
-        return override.merchantKey;
-    }
-
-    return expenseCatalogKey(storedMerchant, body, parser);
+    const raw = override?.merchantKey || expenseCatalogKey(storedMerchant, body, parser);
+    return resolveMerchantAlias(raw, aliases).key;
 }
 
 /**
@@ -82,10 +83,12 @@ export function effectiveCatalogKey(
  *
  * @param rows - Expense SMS with stored or recoverable merchants
  * @param overrides - `sms_spend_overrides` keyed by SMS id
+ * @param aliases - Optional rename / merge map
  */
 export function groupExpenseTotals(
     rows: MerchantExpenseSms[],
-    overrides?: ReadonlyMap<number, SmsSpendOverride>
+    overrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): MerchantSpendTotal[] {
     const parser = new FinancialParser();
     const recovered = new Map<string, MerchantSpendTotal>();
@@ -93,8 +96,14 @@ export function groupExpenseTotals(
     for (const row of rows) {
         const override = overrides?.get(row.smsId);
         const patternMerchant = expenseMerchant(row.merchant, row.body, parser);
-        const merchant = override?.merchantLabel?.trim() || override?.merchantKey || patternMerchant;
-        const catalogKey = effectiveCatalogKey(row.merchant, row.body, parser, override);
+        const rawKey = override?.merchantKey || merchantCatalogKey(patternMerchant);
+        const resolved = resolveMerchantAlias(rawKey, aliases);
+        const catalogKey = resolved.key;
+        const merchant =
+            resolved.label ||
+            override?.merchantLabel?.trim() ||
+            override?.merchantKey ||
+            patternMerchant;
         const existing = recovered.get(catalogKey);
         const pushed = Boolean(row.pushed);
 
@@ -135,18 +144,28 @@ export function groupExpenseTotals(
  * @param missing - Expenses with a blank merchant
  * @param key - {@link merchantCatalogKey}
  * @param overrides - Optional per-SMS merchant moves
+ * @param aliases - Optional rename / merge map
  */
 export function listSmsForMerchantKey(
     named: MerchantExpenseSms[],
     missing: MissingMerchantExpense[],
     key: string,
-    overrides?: ReadonlyMap<number, SmsSpendOverride>
+    overrides?: ReadonlyMap<number, SmsSpendOverride>,
+    aliases?: ReadonlyMap<string, MerchantAlias>
 ): MerchantExpenseSms[] {
     const parser = new FinancialParser();
     const rows: MerchantExpenseSms[] = [];
 
     for (const row of named) {
-        if (effectiveCatalogKey(row.merchant, row.body, parser, overrides?.get(row.smsId)) === key) {
+        if (
+            effectiveCatalogKey(
+                row.merchant,
+                row.body,
+                parser,
+                overrides?.get(row.smsId),
+                aliases
+            ) === key
+        ) {
             rows.push({
                 ...row,
                 merchant:
@@ -157,7 +176,7 @@ export function listSmsForMerchantKey(
     }
 
     for (const row of missing) {
-        if (effectiveCatalogKey(undefined, row.body, parser, overrides?.get(row.smsId)) === key) {
+        if (effectiveCatalogKey(undefined, row.body, parser, overrides?.get(row.smsId), aliases) === key) {
             rows.push({
                 smsId: row.smsId,
                 merchant:

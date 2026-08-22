@@ -92,7 +92,7 @@ curl -X POST "http://192.168.1.32:4000/merchants/apply" \
   -d '{"all":true}'
 ```
 
-`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label`, `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only.
+`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label` (rename display; omit `category` to only rename), optional `mergeInto` (fold this key into another catalog id; later SMS with the old spelling follow the merge), optional `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only. Rename / merge persist in `merchant_aliases`.
 
 `PUT /merchants/sms/:smsId` body: optional `category` (same buckets, or `null`/`""` to inherit the merchant), optional `merchantKey` (`""` = pattern group, `__own__` = this SMS as its own row, or another catalog key), and optional `applyToDhan` for that one journal. Stored in `sms_spend_overrides`. The SMS preview also has **Apply this SMS in Dhan**.
 

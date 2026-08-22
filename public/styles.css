@@ -517,6 +517,43 @@ h2 {
   font-size: 0.95rem;
 }
 
+.merchant-name-field,
+.merchant-merge {
+  display: block;
+  margin: 0 0 0.4rem;
+}
+
+.merchant-name {
+  width: 100%;
+  max-width: 22rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.15rem 0.35rem;
+  font: inherit;
+  font-weight: 650;
+  font-size: 1.05rem;
+}
+
+.merchant-name:hover,
+.merchant-name:focus {
+  border-color: var(--border);
+  background: var(--bg);
+  outline: none;
+}
+
+.merchant-merge select {
+  max-width: 16rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.28rem 0.45rem;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
 .merchant-cat select {
   width: 100%;
   border: 1px solid var(--border);
