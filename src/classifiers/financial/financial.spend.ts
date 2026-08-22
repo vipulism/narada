@@ -159,6 +159,7 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
 const BUCKET_CAP = 6;
 const LARGE_MERCHANT_INR = 5000;
 const LARGE_MERCHANT_CAP = 3;
+const SAMPLE_SMS_CAP = 3;
 
 /**
  * Firefly / digest label for a spend bucket.
@@ -304,6 +305,7 @@ export interface MerchantCatalogItem {
     pushedCount: number;
     totalAmount: number;
     lastSeenAt: Date | null;
+    sampleSmsIds: number[];
 }
 
 /** Persisted user assignment for a catalog key. */
@@ -317,6 +319,7 @@ export interface MerchantSpendTotal {
     merchant: string;
     txCount: number;
     pushedCount?: number;
+    sampleSmsIds?: number[];
     totalAmount: number;
     lastSeenAt: Date;
 }
@@ -342,6 +345,10 @@ export function buildMerchantCatalog(
             existing.txCount += row.txCount;
             existing.pushedCount += row.pushedCount ?? 0;
             existing.totalAmount += row.totalAmount;
+            existing.sampleSmsIds = mergeSampleSmsIds(
+                existing.sampleSmsIds,
+                row.sampleSmsIds
+            );
 
             if (!existing.lastSeenAt || row.lastSeenAt > existing.lastSeenAt) {
                 existing.lastSeenAt = row.lastSeenAt;
@@ -360,6 +367,7 @@ export function buildMerchantCatalog(
             pushedCount: row.pushedCount ?? 0,
             totalAmount: row.totalAmount,
             lastSeenAt: row.lastSeenAt,
+            sampleSmsIds: (row.sampleSmsIds ?? []).slice(0, SAMPLE_SMS_CAP),
         });
     }
 
@@ -380,6 +388,7 @@ export function buildMerchantCatalog(
             pushedCount: 0,
             totalAmount: 0,
             lastSeenAt: null,
+            sampleSmsIds: [],
         });
     }
 
@@ -467,6 +476,26 @@ export function spendMerchantLabel(merchant?: string | null): string {
     }
 
     return trimmed;
+}
+
+function mergeSampleSmsIds(left?: number[], right?: number[]): number[] {
+    const seen = new Set<number>();
+    const merged: number[] = [];
+
+    for (const id of [...(left ?? []), ...(right ?? [])]) {
+        if (!Number.isFinite(id) || seen.has(id)) {
+            continue;
+        }
+
+        seen.add(id);
+        merged.push(id);
+
+        if (merged.length >= SAMPLE_SMS_CAP) {
+            break;
+        }
+    }
+
+    return merged;
 }
 
 function normalizeSpendText(value: string): string {

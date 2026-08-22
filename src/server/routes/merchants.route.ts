@@ -187,6 +187,7 @@ async function loadCatalogItem(key: string, fallbackLabel: string): Promise<Merc
         pushedCount: 0,
         totalAmount: 0,
         lastSeenAt: null,
+        sampleSmsIds: [],
     };
 }
 
@@ -200,6 +201,7 @@ function toMerchantJson(item: MerchantCatalogItem): Record<string, unknown> {
         pushedCount: item.pushedCount,
         totalAmount: item.totalAmount,
         lastSeenAt: item.lastSeenAt?.toISOString() ?? null,
+        sampleSmsIds: item.sampleSmsIds,
     };
 }
 

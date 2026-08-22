@@ -347,6 +347,7 @@ export class FinancialEventRepository {
             merchant: string;
             txCount: number;
             pushedCount: number;
+            sampleSmsIds: number[];
             totalAmount: number;
             lastSeenAt: Date;
         }>
@@ -359,7 +360,12 @@ export class FinancialEventRepository {
                 COUNT(*) AS tx_count,
                 SUM(CASE WHEN firefly_transaction_id IS NOT NULL THEN 1 ELSE 0 END) AS pushed_count,
                 SUM(amount) AS total_amount,
-                MAX(occurred_at) AS last_seen
+                MAX(occurred_at) AS last_seen,
+                SUBSTRING_INDEX(
+                    GROUP_CONCAT(sms_id ORDER BY occurred_at DESC, sms_id DESC SEPARATOR ','),
+                    ',',
+                    3
+                ) AS sample_sms_ids
             FROM financial_events
             WHERE kind = 'expense'
             GROUP BY COALESCE(NULLIF(TRIM(merchant), ''), 'Unknown')
@@ -370,6 +376,7 @@ export class FinancialEventRepository {
             merchant: String(row.merchant ?? "Unknown"),
             txCount: Number(row.tx_count ?? 0),
             pushedCount: Number(row.pushed_count ?? 0),
+            sampleSmsIds: parseSmsIdList(row.sample_sms_ids),
             totalAmount: Number(row.total_amount ?? 0),
             lastSeenAt: new Date(row.last_seen),
         }));
@@ -487,6 +494,17 @@ function rowToEvent(row: RowDataPacket): FinancialEvent {
         fireflyTransactionId: asOptionalString(row.firefly_transaction_id),
         fireflyPushedAt: row.firefly_pushed_at ? new Date(row.firefly_pushed_at) : undefined,
     };
+}
+
+function parseSmsIdList(value: unknown): number[] {
+    if (value == null) {
+        return [];
+    }
+
+    return String(value)
+        .split(",")
+        .map((part) => Number(part.trim()))
+        .filter((id) => Number.isFinite(id) && id > 0);
 }
 
 function asOptionalString(value: unknown): string | undefined {

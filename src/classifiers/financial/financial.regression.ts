@@ -2345,6 +2345,7 @@ function runAttentionDigestRegression(): void {
                 merchant: "paytmqr5wpzku@ptys",
                 txCount: 2,
                 pushedCount: 2,
+                sampleSmsIds: [13060, 13059],
                 totalAmount: 80,
                 lastSeenAt: new Date("2026-08-01T00:00:00Z"),
             },
@@ -2352,6 +2353,7 @@ function runAttentionDigestRegression(): void {
                 merchant: "paytmqrabc@ptys",
                 txCount: 1,
                 pushedCount: 1,
+                sampleSmsIds: [14001],
                 totalAmount: 20,
                 lastSeenAt: new Date("2026-08-20T00:00:00Z"),
             },
@@ -2376,7 +2378,8 @@ function runAttentionDigestRegression(): void {
         paytm.txCount !== 3 ||
         paytm.pushedCount !== 3 ||
         paytm.totalAmount !== 100 ||
-        paytm.category !== "grocery"
+        paytm.category !== "grocery" ||
+        paytm.sampleSmsIds.join(",") !== "13060,13059,14001"
     ) {
         failures.push(`Paytm QR collapse ${JSON.stringify(paytm)}`);
     }

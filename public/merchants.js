@@ -154,6 +154,11 @@
             item.key
           )}">Apply ${pushed} in Dhan</button>`
         : "";
+    const smsIds = Array.isArray(item.sampleSmsIds)
+      ? item.sampleSmsIds
+          .map((id) => `<span class="sms-id">#${escapeHtml(id)}</span>`)
+          .join(" ")
+      : "";
     return `
       <article class="merchant-row card" data-key="${escapeHtml(item.key)}">
         <div>
@@ -163,6 +168,7 @@
               item.totalAmount
             )} · last ${escapeHtml(when)}
           </p>
+          ${smsIds ? `<p class="merchant-meta">SMS ${smsIds}</p>` : ""}
           ${apply}
         </div>
         <label class="merchant-cat">
