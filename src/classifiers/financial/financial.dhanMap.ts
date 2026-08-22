@@ -7,6 +7,7 @@ import {
 } from "./financial.accountType";
 import {
     isEquityBuyMessage,
+    isGrowwFundingMessage,
     isIndianClearingSipMessage,
     isMutualFundMessage,
     isNewFdMessage,
@@ -81,7 +82,7 @@ export function resolveInvestmentDestination(
     body: string,
     accounts: KnownAccountIndex
 ): KnownAccount | undefined {
-    if (isMutualFundMessage(body) || isIndianClearingSipMessage(body)) {
+    if (isMutualFundMessage(body) || isIndianClearingSipMessage(body) || isGrowwFundingMessage(body)) {
         return accounts.resolveUniqueByBankAndType("Mutual Fund", "investment");
     }
 

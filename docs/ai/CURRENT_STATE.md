@@ -28,7 +28,7 @@ Completed:
 ✅ `FinancialEvent` matches the table: `classifier` + `classifier_version` are required (same values as `sms_analysis`)
 ✅ Firefly III connector (Dhan): last4 account map, dry-run, openings, push with `external_id`
 ✅ Unique-bank account resolve at persist/push: last4 → unique (bank + type) → unique bank → skip
-✅ Dhan investment buckets: FD/MF/equity/SGB/EPF seeded; `investment` SMS → Firefly transfer (kind+bank dest); Zerodha / ICCL Zerodha UPI funding → Equity/Demat; EPF snapshot-only
+✅ Dhan investment buckets: FD/MF/equity/SGB/EPF seeded; `investment` SMS → Firefly transfer (kind+bank dest); Zerodha / ICCL Zerodha UPI funding → Equity/Demat; Indian Clearing / Groww ACH → Mutual Fund; EPF snapshot-only
 ✅ SMS import follow-up: classify pending → rebuild `financial_events` (applies current kinds, e.g. Zerodha funding → investment, even when analysis still says expense) → push ready rows to Firefly
 ✅ Import / knowledge read APIs: `GET /imports`, `GET /sms`, `GET /knowledge` (financial envelope, id = smsId)
 ✅ Due feed: `GET /knowledge?kind=due` unique last4+dueDate+amount (undated still unique on last4+amount in the same SMS month); Airtel WiFi/Fixedline collapse as one broadband biller; paid when a received/credited SMS hits that last4 in-cycle; ₹0 outstanding omitted; overdue only if due date passed and unpaid
@@ -36,7 +36,7 @@ Completed:
 ✅ Mixed timeline: `GET /timeline` (dues + exceptions + infra events; `type=financial` opt-in)
 ✅ Telegram attention: new dues + new/repeated Firefly blocked (seed then delta); daily 08:00 IST digest of unpaid (open + overdue) dues, Dhan this-month vs last-month income/expense, and SMS spend buckets (grocery/education/custom/merchant vs last month). Home mark-paid stays paid on Telegram and is not listed.
 ✅ Attention-only dashboard at `GET /` (dues, blocked pushes, services, last import; no Money charts)
-✅ Merchant spend categories at `GET /merchants.html` (`merchant_categories`; builtin Education plus user-created `spend_buckets`; SMS preview can override one SMS category or move it to another merchant item via `sms_spend_overrides`; rename / merge via `merchant_aliases`; Zerodha/ICCL funding is investment, not a spend row; HDFC `At _TITAN COMPANY LI..` POS is catalogued as Tanishq (shopping); Dhan `category_name` on new withdrawals and on apply for already-pushed journals)
+✅ Merchant spend categories at `GET /merchants.html` (`merchant_categories`; builtin Education plus user-created `spend_buckets`; SMS preview can override one SMS category or move it to another merchant item via `sms_spend_overrides`; rename / merge via `merchant_aliases`; Zerodha/ICCL/Indian Clearing/Groww ACH funding is investment, not a spend row; HDFC SI Hub AutoPay Success is Netflix/LinkedIn subscriptions; truncated IKEA UPI VPA is shopping; HDFC `At _TITAN COMPANY LI..` POS is catalogued as Tanishq (shopping); Dhan `category_name` on new withdrawals and on apply for already-pushed journals)
 ✅ Manual due paid mark (`POST /knowledge/:id/paid`) when the issuer credit SMS is missing
 ✅ Attention search: Home filter/sort/search plus `GET /knowledge/search?q=` (dues + exceptions, not the ledger)
 

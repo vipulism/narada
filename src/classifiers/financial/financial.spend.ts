@@ -136,6 +136,7 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
             "RELIANCE DIGITAL",
             "TANISHQ",
             "TITAN COMPANY",
+            "IKEA",
             "GARMENTS",
             "BOUTIQUE",
             "FOOTWEAR",
