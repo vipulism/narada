@@ -551,6 +551,10 @@ export class FinancialParser {
             return "Indian Clearing";
         }
 
+        if (/\bindraprastha\s+ga/i.test(body) || /\bigl\b/i.test(body)) {
+            return "IGL";
+        }
+
         if (/ikeaindia|\bikea\b/i.test(body)) {
             return "IKEA";
         }

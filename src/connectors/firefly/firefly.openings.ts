@@ -3,6 +3,20 @@ import { resolve } from "node:path";
 import { FinancialEvent } from "../../classifiers/financial/financial.model";
 
 const LEDGER_START = "2026-08-16";
+const MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+];
 
 interface OpeningsFile {
     defaultOpenOn?: string;
@@ -28,7 +42,10 @@ export class FireflyOpenings {
      * @param event - Posted financial event
      * @param sourceLast4 - Resolved debit/source last4
      */
-    skipReason(event: FinancialEvent, sourceLast4?: string): string | undefined {
+    skipReason(
+        event: Pick<FinancialEvent, "occurredAt" | "accountLast4" | "counterpartyLast4">,
+        sourceLast4?: string
+    ): string | undefined {
         const last4s = [sourceLast4, event.accountLast4, event.counterpartyLast4].filter(
             (value): value is string => Boolean(value)
         );
@@ -91,6 +108,36 @@ export function loadFireflyOpenings(ownedLast4s: string[] = []): FireflyOpenings
     }
 
     return new FireflyOpenings(new Map(Object.entries(openOn)), defaultOpenOn);
+}
+
+/**
+ * Merchants Apply-this-SMS copy when the expense has no Firefly journal.
+ *
+ * @param event - Stored financial event without `fireflyTransactionId`
+ * @param openings - Ledger opening dates
+ */
+export function dhanApplyUnpushedReason(
+    event: Pick<FinancialEvent, "occurredAt" | "accountLast4" | "counterpartyLast4">,
+    openings: FireflyOpenings
+): string {
+    const skip = openings.skipReason(event);
+    const iso = skip?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+
+    if (!skip || !iso) {
+        return "this SMS is not in Dhan yet";
+    }
+
+    return `this SMS is before the Dhan ledger opening (${formatIsoDay(iso)})`;
+}
+
+function formatIsoDay(iso: string): string {
+    const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (!match) {
+        return iso;
+    }
+
+    return `${Number(match[3])} ${MONTHS[Number(match[2]) - 1]} ${match[1]}`;
 }
 
 function calendarDayIst(date: Date): string {

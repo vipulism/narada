@@ -162,6 +162,8 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
             "ELECTRIC",
             "WATER BOARD",
             "INDIANESE",
+            "IGL",
+            "INDRAPRASTHA GA",
         ],
     },
     {
@@ -728,6 +730,10 @@ export function spendMerchantLabel(merchant?: string | null): string {
 
     if (/titan\s*company/i.test(trimmed) || /\btanishq\b/i.test(trimmed)) {
         return "Tanishq";
+    }
+
+    if (/\bindraprastha\s+ga/i.test(trimmed) || /^igl$/i.test(trimmed)) {
+        return "IGL";
     }
 
     const vpa = trimmed.match(/^([^@\s]+)@([A-Za-z0-9.]+)$/);
