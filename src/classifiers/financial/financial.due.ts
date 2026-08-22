@@ -85,23 +85,28 @@ export function isCardPaymentAckRow(
 }
 
 /**
- * Reads min due and total due labels. First unlabeled `amount` in the SMS is often min due.
- * Also matches HSBC `Total amount is 361 and minimum amount is 100` (no "due" word).
+ * Reads min due and total due labels.
+ * Covers `Total Due INR 6447`, HSBC `Total amount is 361 and minimum amount is 100`,
+ * and `total payment due … is INR 1131` (last4 may sit between due and the amount).
  *
  * @param body - Raw SMS body
  */
 export function parseDueAmounts(body: string): DueAmounts {
     return {
-        minDue: firstAmount(body, MIN_DUE_REGEX),
-        totalDue: firstAmount(body, TOTAL_DUE_REGEX),
+        minDue: firstAmount(body, MIN_DUE_PATTERNS),
+        totalDue: firstAmount(body, TOTAL_DUE_PATTERNS),
     };
 }
 
-const MIN_DUE_REGEX =
-    /min(?:imum)?(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i;
+const TOTAL_DUE_PATTERNS = [
+    /total\s+payment\s+due[\s\S]{0,80}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
+    /total(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i,
+];
 
-const TOTAL_DUE_REGEX =
-    /total(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i;
+const MIN_DUE_PATTERNS = [
+    /min(?:imum)?\s+payment\s+due[\s\S]{0,40}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
+    /min(?:imum)?(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i,
+];
 
 const MONTHS: Record<string, string> = {
     JAN: "01",
@@ -185,15 +190,23 @@ function normalizeYear(year: string): string {
     return year.length === 2 ? `20${year}` : year;
 }
 
-function firstAmount(body: string, pattern: RegExp): number | undefined {
-    const match = body.match(pattern);
+function firstAmount(body: string, pattern: RegExp | RegExp[]): number | undefined {
+    const patterns = Array.isArray(pattern) ? pattern : [pattern];
 
-    if (!match?.[1]) {
-        return undefined;
+    for (const next of patterns) {
+        const match = body.match(next);
+
+        if (!match?.[1]) {
+            continue;
+        }
+
+        const parsed = Number(match[1].replace(/,/g, "").trim());
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
     }
 
-    const parsed = Number(match[1].replace(/,/g, "").trim());
-    return Number.isFinite(parsed) ? parsed : undefined;
+    return undefined;
 }
 
 /**
