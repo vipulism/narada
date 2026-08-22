@@ -7,7 +7,7 @@ import {
     type MerchantSpendTotal,
     type SmsSpendOverride,
 } from "../classifiers/financial/financial.spend";
-import { isInvestmentFundingMessage } from "../classifiers/financial/financial.kind";
+import { isCardBillPayMessage, isInvestmentFundingMessage } from "../classifiers/financial/financial.kind";
 
 /** Expense with no `financial_events.merchant` (older classify). */
 export interface MissingMerchantExpense {
@@ -115,7 +115,7 @@ export function groupExpenseTotals(
     const recovered = new Map<string, MerchantSpendTotal>();
 
     for (const row of rows) {
-        if (isInvestmentFundingMessage(row.body ?? "")) {
+        if (isInvestmentFundingMessage(row.body ?? "") || isCardBillPayMessage(row.body ?? "")) {
             continue;
         }
 
@@ -182,7 +182,7 @@ export function listSmsForMerchantKey(
     const rows: MerchantExpenseSms[] = [];
 
     for (const row of named) {
-        if (isInvestmentFundingMessage(row.body ?? "")) {
+        if (isInvestmentFundingMessage(row.body ?? "") || isCardBillPayMessage(row.body ?? "")) {
             continue;
         }
 
@@ -205,7 +205,7 @@ export function listSmsForMerchantKey(
     }
 
     for (const row of missing) {
-        if (isInvestmentFundingMessage(row.body)) {
+        if (isInvestmentFundingMessage(row.body) || isCardBillPayMessage(row.body)) {
             continue;
         }
 

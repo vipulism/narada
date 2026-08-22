@@ -603,6 +603,70 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "13384-icici-credclub-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 2731.00 on 24-Dec-24; CredClub credited. UPI:435938914895. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 2731,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "12980-hdfc-amt-sent-to-cred-bill",
+        address: "VM-HDFCBK",
+        body: "Amt Sent Rs.1259.96\nFrom HDFC Bank A/C *1260\nTo CRED\nOn 08-11\nRef 431395842437",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 1259.96,
+            accountLast4: "1260",
+        },
+    },
+    {
+        id: "5538-icici-ampersand-cred-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XXX412 debited for INR 842.00 on 03-Nov-21 & CRED credited.UPI:130713230750.Call 18002662 for dispute or SMS BLOCK 412 to 9215676766.\nNot You? Call 18002586161/SMS BLOCK UPI to 7308080808",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 842,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "14370-icici-axis-card-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 100.00 on 24-Apr-25; Axis credited. UPI:511446389313. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 100,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "7467-icici-sbi-cards-bill",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 1590.23 on 10-Nov-22; SBI CARDS credited. UPI:231490020071. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 1590.23,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
         id: "14236-sbi-home-loan-emi-due-skip",
         address: "VA-CBSSBI",
         body: "Dear customer, EMI due on 05042025 in A/c XXXXX489751. Please pay in time. Please ignore, if already paid.-SBI",
@@ -2896,6 +2960,79 @@ function runAttentionDigestRegression(): void {
         clearingSpend.some((row) => row.catalogKey === "indian clearing")
     ) {
         failures.push(`Indian Clearing SIP should drop off merchants, got ${JSON.stringify(clearingSpend)}`);
+    }
+
+    const credClubBody =
+        "ICICI Bank Acct XX412 debited for Rs 2731.00 on 24-Dec-24; CredClub credited. UPI:435938914895. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const staleCredClub: AnalysisEventSource = {
+        smsId: 13384,
+        occurredAt: new Date("2024-12-24T00:00:00Z"),
+        body: credClubBody,
+        category: "FINANCIAL",
+        subcategory: "expense",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 2731,
+            cashFlow: "OUTFLOW",
+            merchant: "CredClub",
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    };
+
+    if (toFinancialEvent(staleCredClub)?.kind !== "bill") {
+        failures.push(`stale CredClub expense should rebuild as bill, got ${toFinancialEvent(staleCredClub)?.kind}`);
+    }
+
+    const cardBillSpend = groupExpenseTotals([
+        {
+            smsId: 13384,
+            merchant: "CredClub",
+            amount: 2731,
+            occurredAt: new Date("2024-12-24T00:00:00Z"),
+            body: credClubBody,
+            pushed: false,
+        },
+        {
+            smsId: 14370,
+            merchant: "Axis",
+            amount: 100,
+            occurredAt: new Date("2025-04-24T00:00:00Z"),
+            body: "ICICI Bank Acct XX412 debited for Rs 100.00 on 24-Apr-25; Axis credited. UPI:511446389313. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+            pushed: false,
+        },
+        {
+            smsId: 7467,
+            merchant: "SBI CARDS",
+            amount: 1590.23,
+            occurredAt: new Date("2022-11-10T00:00:00Z"),
+            body: "ICICI Bank Acct XX412 debited for Rs 1590.23 on 10-Nov-22; SBI CARDS credited. UPI:231490020071. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+            pushed: false,
+        },
+        {
+            smsId: 12980,
+            merchant: "CRED",
+            amount: 1259.96,
+            occurredAt: new Date("2024-11-08T00:00:00Z"),
+            body: "Amt Sent Rs.1259.96\nFrom HDFC Bank A/C *1260\nTo CRED\nOn 08-11\nRef 431395842437",
+            pushed: false,
+        },
+        {
+            smsId: 2,
+            merchant: "Tanishq",
+            amount: 1000,
+            occurredAt: new Date("2026-08-01T00:00:00Z"),
+            pushed: false,
+        },
+    ]);
+
+    if (
+        cardBillSpend.length !== 1 ||
+        cardBillSpend[0]?.catalogKey !== "tanishq" ||
+        cardBillSpend.some((row) => ["credclub", "axis", "sbi cards", "cred"].includes(row.catalogKey ?? ""))
+    ) {
+        failures.push(`card bill pays should drop off merchants, got ${JSON.stringify(cardBillSpend)}`);
     }
 
     if (

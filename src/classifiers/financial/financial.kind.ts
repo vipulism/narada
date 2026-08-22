@@ -359,16 +359,38 @@ export function isCreditCardPaymentAck(body: string): boolean {
 }
 
 /**
- * Savings/UPI debit that pays a credit-card bill via CRED, not a merchant spend.
+ * Savings/UPI debit that pays a credit-card bill (CRED, CredClub, SBI Cards, Axis).
+ * Not a household spend — the card swipe was already the expense.
+ *
+ * @param body - SMS body (any case)
  */
+export function isCardBillPayMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    if (
+        upper.includes("PAYMENT ON CRED") ||
+        upper.includes("UPI-CRED-") ||
+        /CRED@[A-Z]/.test(upper)
+    ) {
+        return true;
+    }
+
+    if (
+        /(?:;|&)\s*CRED(?:CLUB|\s+CLUB)?\s+CREDITED/.test(upper) ||
+        /\bTO\s+CRED(?:CLUB|\s+CLUB)?\b/.test(upper)
+    ) {
+        return true;
+    }
+
+    if (/(?:;|&)\s*SBI\s+CARDS?\s+CREDITED/.test(upper)) {
+        return true;
+    }
+
+    return /(?:;|&)\s*AXIS\s+CREDITED/.test(upper);
+}
+
 function isCredBillPay(body: string): boolean {
-    return (
-        body.includes("PAYMENT ON CRED") ||
-        body.includes("UPI-CRED-") ||
-        body.includes("CRED CLUB") ||
-        /;\s*CRED CREDITED/.test(body) ||
-        /CRED@[A-Z]/.test(body)
-    );
+    return isCardBillPayMessage(body);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { CashFlow, FinancialEvent } from "./financial.model";
-import { FinancialKind, isInvestmentFundingMessage } from "./financial.kind";
+import { FinancialKind, isCardBillPayMessage, isInvestmentFundingMessage } from "./financial.kind";
 
 /**
  * Posted kinds that become ledger events. Due reminders and CC payment acks
@@ -89,6 +89,10 @@ export function toFinancialEvent(source: AnalysisEventSource): FinancialEvent | 
 function postedKind(subcategory: string | null, body: string): FinancialKind | null {
     if (isInvestmentFundingMessage(body)) {
         return "investment";
+    }
+
+    if (isCardBillPayMessage(body)) {
+        return "bill";
     }
 
     return subcategory as FinancialKind | null;
