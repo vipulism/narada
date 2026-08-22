@@ -10,6 +10,7 @@ import {
     isMutualFundMessage,
     isNewFdMessage,
     isSgbMessage,
+    isZerodhaFundingMessage,
 } from "./financial.kind";
 
 export type DhanMapBucket = "mapped" | "unique-bank" | "unmapped";
@@ -87,7 +88,7 @@ export function resolveInvestmentDestination(
         return accounts.resolveUniqueByBankAndType("SGB", "investment");
     }
 
-    if (isEquityBuyMessage(body)) {
+    if (isEquityBuyMessage(body) || isZerodhaFundingMessage(body)) {
         return accounts.resolveUniqueByBankAndType("Demat", "investment");
     }
 
