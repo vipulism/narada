@@ -15,7 +15,9 @@
     toolbar: document.getElementById("toolbar"),
     query: document.getElementById("query"),
     status: document.getElementById("status"),
+    sort: document.getElementById("sort"),
     refresh: document.getElementById("refresh"),
+    resetView: document.getElementById("reset-view"),
     applyDhan: document.getElementById("apply-dhan"),
     applyAll: document.getElementById("apply-all"),
     bucketList: document.getElementById("bucket-list"),
@@ -47,6 +49,7 @@
   const view = {
     q: "",
     status: "uncategorized",
+    sort: "lastSeen",
     page: 1,
   };
 
@@ -131,6 +134,9 @@
     const status = params.get("status");
     view.status =
       status === "categorized" || status === "all" ? status : "uncategorized";
+    const sort = params.get("sort");
+    view.sort =
+      sort === "amount" || sort === "name" || sort === "open" ? sort : "lastSeen";
     const page = Number(params.get("page") ?? 1);
     view.page = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
 
@@ -139,6 +145,9 @@
     }
     if (els.status instanceof HTMLSelectElement) {
       els.status.value = view.status;
+    }
+    if (els.sort instanceof HTMLSelectElement) {
+      els.sort.value = view.sort;
     }
   }
 
@@ -149,6 +158,9 @@
     }
     if (view.status !== "uncategorized") {
       params.set("status", view.status);
+    }
+    if (view.sort !== "lastSeen") {
+      params.set("sort", view.sort);
     }
     if (view.page > 1) {
       params.set("page", String(view.page));
@@ -441,6 +453,7 @@
   async function load() {
     const params = new URLSearchParams({
       status: view.status,
+      sort: view.sort,
       page: String(view.page),
       limit: String(LIST_LIMIT),
     });
@@ -594,6 +607,34 @@
     }
     view.status = els.status.value;
     view.page = 1;
+    writeUrl();
+    load();
+  });
+
+  els.sort?.addEventListener("change", () => {
+    if (!(els.sort instanceof HTMLSelectElement)) {
+      return;
+    }
+    view.sort = els.sort.value;
+    view.page = 1;
+    writeUrl();
+    load();
+  });
+
+  els.resetView?.addEventListener("click", () => {
+    view.q = "";
+    view.status = "uncategorized";
+    view.sort = "lastSeen";
+    view.page = 1;
+    if (els.query instanceof HTMLInputElement) {
+      els.query.value = "";
+    }
+    if (els.status instanceof HTMLSelectElement) {
+      els.status.value = view.status;
+    }
+    if (els.sort instanceof HTMLSelectElement) {
+      els.sort.value = view.sort;
+    }
     writeUrl();
     load();
   });

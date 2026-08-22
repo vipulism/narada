@@ -73,7 +73,8 @@ POST /merchants/apply
 | Query | Meaning |
 |---|---|
 | `status` | `uncategorized` (default), `categorized`, or `all` |
-| `q` | Case-insensitive merchant label / key |
+| `q` | Case-insensitive merchant, bucket, or sample SMS id |
+| `sort` | `lastSeen` (default, newest SMS in the group first), `amount`, `name`, or `open` (uncategorized first) |
 | `page` / `limit` | Default 100, max 500 |
 
 Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`. Each row includes `sampleSmsIds` (newest 3 SMS ids) plus a **+N more** control. `GET /merchants/sms?key=` lists every expense SMS for that catalog key so you can check they are the same merchant. Click an id to open `GET /sms/:id`. `GET /merchants/sms/:smsId` is the dropdown payload for that preview (current category, pattern merchant, other catalog items).

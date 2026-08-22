@@ -41,7 +41,7 @@
       <section class="panel" aria-labelledby="merchant-tools-heading">
         <div class="section-head">
           <h2 id="merchant-tools-heading">Find</h2>
-          <p id="merchant-meta" class="muted"></p>
+          <button type="button" id="reset-view" class="btn">Reset</button>
         </div>
         <form id="toolbar" class="toolbar merchant-toolbar" action="/merchants.html" method="get">
           <label class="grow">
@@ -50,7 +50,7 @@
               id="query"
               name="q"
               type="search"
-              placeholder="Search merchant…"
+              placeholder="Search merchant, SMS id…"
               autocomplete="off"
             />
           </label>
@@ -62,18 +62,27 @@
               <option value="all">All</option>
             </select>
           </label>
+          <label>
+            <span class="field-label">Sort</span>
+            <select id="sort" name="sort">
+              <option value="lastSeen" selected>Newest SMS</option>
+              <option value="amount">Amount</option>
+              <option value="name">Name</option>
+              <option value="open">Uncategorized first</option>
+            </select>
+          </label>
           <label class="check">
             <input id="apply-dhan" type="checkbox" checked />
             <span>Update existing Dhan txs</span>
           </label>
         </form>
         <p class="hint">
-          Newest 3 SMS ids are on the row; <strong>+more</strong> lists every
-          SMS for that merchant so you can confirm they match. Click an id to
-          read the body. In that box you can change <strong>this SMS</strong>
-          category or move it to another merchant item. Edit the name to
-          rename; <strong>Merge into</strong> folds another SMS spelling into
-          this shop. The SMS box has
+          Groups with the newest SMS sit first. Newest 3 SMS ids are on the
+          row; <strong>+more</strong> lists every SMS for that merchant so you
+          can confirm they match. Click an id to read the body. In that box you
+          can change <strong>this SMS</strong> category or move it to another
+          merchant item. Edit the name to rename; <strong>Merge into</strong>
+          folds another SMS spelling into this shop. The SMS box has
           <strong>Apply this SMS in Dhan</strong> for that one journal.
         </p>
         <p class="toolbar-extra">
@@ -112,8 +121,9 @@
       <section class="panel" aria-labelledby="merchant-list-heading">
         <div class="section-head">
           <h2 id="merchant-list-heading">List</h2>
-          <p id="page-meta" class="muted"></p>
+          <p id="merchant-meta" class="muted"></p>
         </div>
+        <p id="page-meta" class="muted"></p>
         <div id="merchants" class="merchant-list"></div>
         <div id="pager" class="pager" hidden>
           <button type="button" id="prev-page" class="btn">Previous</button>

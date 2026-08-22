@@ -544,6 +544,60 @@ export interface MerchantCatalogItem {
     sampleSmsIds: number[];
 }
 
+/** How the Merchants list can be ordered. */
+export type MerchantSortField = "lastSeen" | "amount" | "name" | "open";
+
+/**
+ * Parses `sort` for GET /merchants. Default is newest SMS in the group.
+ *
+ * @param value - Raw `sort` query
+ */
+export function parseMerchantSort(value: string | undefined): MerchantSortField {
+    if (value === "amount" || value === "name" || value === "open") {
+        return value;
+    }
+
+    return "lastSeen";
+}
+
+/**
+ * True when `q` matches the merchant label, key, bucket, or a sample SMS id.
+ *
+ * @param item - Catalog row
+ * @param query - User search string
+ */
+export function matchesMerchantQuery(item: MerchantCatalogItem, query?: string): boolean {
+    const needle = query?.trim().toLowerCase();
+
+    if (!needle) {
+        return true;
+    }
+
+    if (
+        item.label.toLowerCase().includes(needle) ||
+        item.key.includes(needle) ||
+        item.suggested.includes(needle) ||
+        (item.category ?? "").includes(needle)
+    ) {
+        return true;
+    }
+
+    return item.sampleSmsIds.some((smsId) => String(smsId).includes(needle));
+}
+
+/**
+ * Orders merchant groups. Newest SMS first unless `sort` says otherwise.
+ *
+ * @param items - Catalog rows
+ * @param sort - List order
+ */
+export function sortMerchantCatalog(
+    items: readonly MerchantCatalogItem[],
+    sort: MerchantSortField = "lastSeen"
+): MerchantCatalogItem[] {
+    return [...items].sort((left, right) => compareMerchantCatalog(left, right, sort));
+}
+
 /** Persisted user assignment for a catalog key. */
 export interface MerchantCategoryAssignment {
     category: SpendBucket;
@@ -634,20 +688,54 @@ export function buildMerchantCatalog(
         });
     }
 
-    return [...byKey.values()].sort((left, right) => {
+    return sortMerchantCatalog([...byKey.values()], "open");
+}
+
+function compareMerchantCatalog(
+    left: MerchantCatalogItem,
+    right: MerchantCatalogItem,
+    sort: MerchantSortField
+): number {
+    if (sort === "name") {
+        return left.label.localeCompare(right.label) || left.key.localeCompare(right.key);
+    }
+
+    if (sort === "open") {
         const leftOpen = left.category ? 1 : 0;
         const rightOpen = right.category ? 1 : 0;
 
         if (leftOpen !== rightOpen) {
             return leftOpen - rightOpen;
         }
+    }
 
+    if (sort === "amount" || sort === "open") {
         if (right.totalAmount !== left.totalAmount) {
             return right.totalAmount - left.totalAmount;
         }
 
-        return left.label.localeCompare(right.label);
-    });
+        return compareLastSeen(left, right) || left.label.localeCompare(right.label);
+    }
+
+    const seen = compareLastSeen(left, right);
+
+    if (seen !== 0) {
+        return seen;
+    }
+
+    if (right.totalAmount !== left.totalAmount) {
+        return right.totalAmount - left.totalAmount;
+    }
+
+    return left.label.localeCompare(right.label);
+}
+
+function compareLastSeen(left: MerchantCatalogItem, right: MerchantCatalogItem): number {
+    return lastSeenMillis(right) - lastSeenMillis(left);
+}
+
+function lastSeenMillis(item: MerchantCatalogItem): number {
+    return item.lastSeenAt?.getTime() ?? 0;
 }
 
 function sumBuckets(
