@@ -547,7 +547,7 @@ export class FinancialParser {
             return "Zerodha";
         }
 
-        if (/\bindian clearing\b/i.test(body)) {
+        if (/\bindian\s*clearingc?\b/i.test(body)) {
             return "Indian Clearing";
         }
 
