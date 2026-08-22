@@ -69,7 +69,7 @@ POST /merchants/apply
 | `q` | Case-insensitive merchant label / key |
 | `page` / `limit` | Default 100, max 500 |
 
-Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`. Each row includes `sampleSmsIds` (newest 3 SMS ids) so you can look up the original message.
+Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`. Each row includes `sampleSmsIds` (newest 3 SMS ids). On `/merchants.html` those ids open the original SMS (`GET /sms/:id`) so you can read amount, sender, and body before assigning a category.
 
 ```bash
 curl "http://192.168.1.32:4000/merchants?status=uncategorized"
