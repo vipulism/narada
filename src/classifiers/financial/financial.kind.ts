@@ -618,7 +618,8 @@ export function detectFinancialKind(
         isMutualFundMessage(body, sender) ||
         isNewFdMessage(body) ||
         isSgbMessage(body) ||
-        isEquityBuyMessage(body)
+        isEquityBuyMessage(body) ||
+        isZerodhaFundingMessage(body)
     ) {
         return "investment";
     }
@@ -804,4 +805,19 @@ export function isEquityBuyMessage(body: string): boolean {
         /\bBUY\b/.test(upper);
 
     return product && buy;
+}
+
+/**
+ * Bank UPI/card debit that funds Zerodha (or ICCL Zerodha clearing), not spend.
+ *
+ * @param body - SMS body (any case)
+ */
+export function isZerodhaFundingMessage(body: string): boolean {
+    const upper = body.toUpperCase();
+
+    if (!upper.includes("ZERODHA")) {
+        return false;
+    }
+
+    return upper.includes("DEBITED") || upper.includes("SPENT");
 }

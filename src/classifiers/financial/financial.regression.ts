@@ -560,6 +560,34 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "icici-zerodha-upi-investment",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 9900.00 on 07-Oct-24; Zerodha credited. UPI:428102836837. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "investment",
+            cashFlow: "OUTFLOW",
+            amount: 9900,
+            accountLast4: "1412",
+            merchant: "Zerodha",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "icici-iccl-zerodha-upi-investment",
+        address: "JM-ICICIB",
+        body: "ICICI Bank Acct XX412 debited for Rs 2000.00 on 26-Sep-24; ICCL ZERODHA CO credited. UPI:427059091929. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "investment",
+            cashFlow: "OUTFLOW",
+            amount: 2000,
+            accountLast4: "1412",
+            merchant: "Zerodha",
+            transactionType: "UPI",
+        },
+    },
+    {
         id: "14236-sbi-home-loan-emi-due-skip",
         address: "VA-CBSSBI",
         body: "Dear customer, EMI due on 05042025 in A/c XXXXX489751. Please pay in time. Please ignore, if already paid.-SBI",
@@ -1528,6 +1556,21 @@ function runDhanResolveRegression(): void {
 
     if (sip.event.counterpartyLast4 !== "3333") {
         failures.push(`Axis SIP dest ${sip.event.counterpartyLast4} != 3333`);
+    }
+
+    const zerodhaBody =
+        "ICICI Bank Acct XX412 debited for Rs 9900.00 on 07-Oct-24; Zerodha credited. UPI:428102836837. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const zerodha = stampDhanAccount(
+        {
+            ...stubEvent(99001, "investment", 9900, "1412", new Date("2026-08-16T12:00:00+05:30")),
+            bank: "ICICI Bank",
+        },
+        accounts,
+        zerodhaBody
+    );
+
+    if (zerodha.event.counterpartyLast4 !== "4444") {
+        failures.push(`Zerodha funding dest ${zerodha.event.counterpartyLast4} != 4444`);
     }
 
     if (failures.length > 0) {

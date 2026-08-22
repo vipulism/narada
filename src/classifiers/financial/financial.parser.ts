@@ -543,6 +543,10 @@ export class FinancialParser {
             return "Blinkit";
         }
 
+        if (/\bzerodha\b/i.test(body)) {
+            return "Zerodha";
+        }
+
         if (/\bdomino'?s\b/i.test(body) || /\bdominos\b/i.test(body) || /dominos?pizza/i.test(body)) {
             return "Domino's";
         }
