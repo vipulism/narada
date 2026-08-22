@@ -16,6 +16,20 @@ export type SpendBucket =
     | "health"
     | "other";
 
+/** Allowed buckets for the merchants page and Firefly `category_name`. */
+export const SPEND_BUCKETS: readonly SpendBucket[] = [
+    "grocery",
+    "dining",
+    "shopping",
+    "fuel",
+    "transport",
+    "utilities",
+    "subscriptions",
+    "insurance",
+    "health",
+    "other",
+];
+
 /** One this-month vs last-month total. */
 export interface SpendCompareLine {
     key: string;
@@ -62,6 +76,13 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
             "KIRANA",
             "VEGETABLE",
             "SABZI",
+            "SABJI",
+            "GENERAL STORE",
+            "PROVISION",
+            "PANSARI",
+            "DAIRY",
+            "BAKERY",
+            "SWEETS",
         ],
     },
     {
@@ -94,6 +115,10 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
             "WESTSIDE",
             "CROMA",
             "RELIANCE DIGITAL",
+            "GARMENTS",
+            "BOUTIQUE",
+            "FOOTWEAR",
+            "MOBILES",
         ],
     },
     {
@@ -127,7 +152,7 @@ const BUCKET_KEYWORDS: Array<{ bucket: SpendBucket; needles: string[] }> = [
     },
     {
         bucket: "health",
-        needles: ["APOLLO", "1MG", "PHARMEASY", "PHARMACY", "HOSPITAL", "MEDPLUS", "NETMEDS"],
+        needles: ["APOLLO", "1MG", "PHARMEASY", "PHARMACY", "HOSPITAL", "MEDPLUS", "NETMEDS", "MEDICAL", "CHEMIST", "MEDICOS"],
     },
 ];
 
@@ -142,6 +167,48 @@ const LARGE_MERCHANT_CAP = 3;
  */
 export function spendBucketLabel(bucket: SpendBucket): string {
     return BUCKET_LABEL[bucket];
+}
+
+/**
+ * True when `value` is a persisted spend bucket key.
+ *
+ * @param value - Request or DB string
+ */
+export function isSpendBucket(value: string): value is SpendBucket {
+    return (SPEND_BUCKETS as readonly string[]).includes(value);
+}
+
+/**
+ * Dropdown rows for GET /merchants.
+ *
+ * @returns Bucket key and Firefly / UI label
+ */
+export function spendBucketOptions(): Array<{ key: SpendBucket; label: string }> {
+    return SPEND_BUCKETS.map((key) => ({ key, label: spendBucketLabel(key) }));
+}
+
+/**
+ * Stable id for one merchant on the catalog (Paytm QR VPAs collapse).
+ *
+ * @param merchant - Extracted merchant or VPA
+ */
+export function merchantCatalogKey(merchant?: string | null): string {
+    return spendMerchantLabel(merchant).toLowerCase();
+}
+
+/**
+ * User map first, then keyword heuristics.
+ *
+ * @param merchant - Extracted merchant
+ * @param assigned - `merchant_categories` keyed by catalog id
+ * @param body - Raw SMS body when merchant is thin
+ */
+export function resolveSpendBucket(
+    merchant?: string | null,
+    assigned?: ReadonlyMap<string, SpendBucket>,
+    body?: string | null
+): SpendBucket {
+    return assigned?.get(merchantCatalogKey(merchant)) ?? spendBucket(merchant, body);
 }
 
 /**
@@ -173,15 +240,17 @@ export function spendBucket(merchant?: string | null, body?: string | null): Spe
  * @param lastRows - Posted expenses in last-month same-days range
  * @param thisLabel - e.g. `Aug 1–22`
  * @param lastLabel - e.g. `Jul 1–22`
+ * @param assigned - Optional Narada merchant → bucket map
  */
 export function buildSpendMonthStats(
     thisRows: SpendEvent[],
     lastRows: SpendEvent[],
     thisLabel: string,
-    lastLabel: string
+    lastLabel: string,
+    assigned?: ReadonlyMap<string, SpendBucket>
 ): SpendMonthStats {
-    const thisBuckets = sumBuckets(thisRows);
-    const lastBuckets = sumBuckets(lastRows);
+    const thisBuckets = sumBuckets(thisRows, assigned);
+    const lastBuckets = sumBuckets(lastRows, assigned);
     const thisMerchants = sumMerchants(thisRows);
     const lastMerchants = sumMerchants(lastRows);
 
@@ -225,7 +294,110 @@ export interface SpendEvent {
     kind?: string | null;
 }
 
-function sumBuckets(rows: SpendEvent[]): Map<SpendBucket, number> {
+/** One SMS merchant group for the Narada merchants page. */
+export interface MerchantCatalogItem {
+    key: string;
+    label: string;
+    category: SpendBucket | null;
+    suggested: SpendBucket;
+    txCount: number;
+    totalAmount: number;
+    lastSeenAt: Date | null;
+}
+
+/** Persisted user assignment for a catalog key. */
+export interface MerchantCategoryAssignment {
+    category: SpendBucket;
+    label: string;
+}
+
+/** Grouped `financial_events` spend for one raw merchant string. */
+export interface MerchantSpendTotal {
+    merchant: string;
+    txCount: number;
+    totalAmount: number;
+    lastSeenAt: Date;
+}
+
+/**
+ * Collapses SMS merchants (UPI VPAs, casing) and overlays user categories.
+ *
+ * @param rows - Expense totals grouped by raw `financial_events.merchant`
+ * @param assignments - Saved categories keyed by {@link merchantCatalogKey}
+ */
+export function buildMerchantCatalog(
+    rows: MerchantSpendTotal[],
+    assignments: ReadonlyMap<string, MerchantCategoryAssignment>
+): MerchantCatalogItem[] {
+    const byKey = new Map<string, MerchantCatalogItem>();
+
+    for (const row of rows) {
+        const label = spendMerchantLabel(row.merchant);
+        const key = merchantCatalogKey(row.merchant);
+        const existing = byKey.get(key);
+
+        if (existing) {
+            existing.txCount += row.txCount;
+            existing.totalAmount += row.totalAmount;
+
+            if (!existing.lastSeenAt || row.lastSeenAt > existing.lastSeenAt) {
+                existing.lastSeenAt = row.lastSeenAt;
+                existing.label = label;
+            }
+
+            continue;
+        }
+
+        byKey.set(key, {
+            key,
+            label,
+            category: null,
+            suggested: spendBucket(row.merchant),
+            txCount: row.txCount,
+            totalAmount: row.totalAmount,
+            lastSeenAt: row.lastSeenAt,
+        });
+    }
+
+    for (const [key, assignment] of assignments) {
+        const existing = byKey.get(key);
+
+        if (existing) {
+            existing.category = assignment.category;
+            continue;
+        }
+
+        byKey.set(key, {
+            key,
+            label: assignment.label,
+            category: assignment.category,
+            suggested: spendBucket(assignment.label),
+            txCount: 0,
+            totalAmount: 0,
+            lastSeenAt: null,
+        });
+    }
+
+    return [...byKey.values()].sort((left, right) => {
+        const leftOpen = left.category ? 1 : 0;
+        const rightOpen = right.category ? 1 : 0;
+
+        if (leftOpen !== rightOpen) {
+            return leftOpen - rightOpen;
+        }
+
+        if (right.totalAmount !== left.totalAmount) {
+            return right.totalAmount - left.totalAmount;
+        }
+
+        return left.label.localeCompare(right.label);
+    });
+}
+
+function sumBuckets(
+    rows: SpendEvent[],
+    assigned?: ReadonlyMap<string, SpendBucket>
+): Map<SpendBucket, number> {
     const totals = new Map<SpendBucket, number>();
 
     for (const row of rows) {
@@ -233,7 +405,7 @@ function sumBuckets(rows: SpendEvent[]): Map<SpendBucket, number> {
             continue;
         }
 
-        const bucket = spendBucket(row.merchant);
+        const bucket = resolveSpendBucket(row.merchant, assigned);
         totals.set(bucket, (totals.get(bucket) ?? 0) + row.amount);
     }
 
@@ -248,16 +420,48 @@ function sumMerchants(rows: SpendEvent[]): Map<string, number> {
             continue;
         }
 
-        const label = displayMerchant(row.merchant);
+        const label = spendMerchantLabel(row.merchant);
         totals.set(label, (totals.get(label) ?? 0) + row.amount);
     }
 
     return totals;
 }
 
-function displayMerchant(merchant?: string | null): string {
+/**
+ * Digest label for a merchant or UPI VPA (`shop@okaxis`, Paytm QR).
+ *
+ * @param merchant - Extracted merchant
+ */
+export function spendMerchantLabel(merchant?: string | null): string {
     const trimmed = merchant?.replace(/\s+/g, " ").trim();
-    return trimmed && trimmed.length > 0 ? trimmed : "Unknown";
+
+    if (!trimmed) {
+        return "Unknown";
+    }
+
+    const vpa = trimmed.match(/^([^@\s]+)@([A-Za-z0-9.]+)$/);
+
+    if (!vpa) {
+        return trimmed;
+    }
+
+    const local = vpa[1];
+
+    if (/^paytmqr/i.test(local)) {
+        return "Paytm QR";
+    }
+
+    const words = local
+        .replace(/[._-]+/g, " ")
+        .replace(/\d+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (words.length >= 3 && /[A-Za-z]{3}/.test(words)) {
+        return words.replace(/\b([a-z])/gi, (char) => char.toUpperCase());
+    }
+
+    return trimmed;
 }
 
 function normalizeSpendText(value: string): string {

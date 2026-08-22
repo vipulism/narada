@@ -336,6 +336,36 @@ export class FinancialEventRepository {
 
         return rows.map(rowToEvent);
     }
+
+    /**
+     * Expense totals grouped by the raw merchant string (for the merchants page).
+     *
+     * @returns One row per distinct `financial_events.merchant`
+     */
+    async listExpenseMerchantTotals(): Promise<
+        Array<{ merchant: string; txCount: number; totalAmount: number; lastSeenAt: Date }>
+    > {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                COALESCE(NULLIF(TRIM(merchant), ''), 'Unknown') AS merchant,
+                COUNT(*) AS tx_count,
+                SUM(amount) AS total_amount,
+                MAX(occurred_at) AS last_seen
+            FROM financial_events
+            WHERE kind = 'expense'
+            GROUP BY COALESCE(NULLIF(TRIM(merchant), ''), 'Unknown')
+            `
+        );
+
+        return rows.map((row) => ({
+            merchant: String(row.merchant ?? "Unknown"),
+            txCount: Number(row.tx_count ?? 0),
+            totalAmount: Number(row.total_amount ?? 0),
+            lastSeenAt: new Date(row.last_seen),
+        }));
+    }
 }
 
 /** Pagination and filters for GET /knowledge. */

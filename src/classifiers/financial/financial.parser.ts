@@ -569,6 +569,12 @@ export class FinancialParser {
 
         }
 
+        const upiPayee = this.extractUpiPayee(body);
+
+        if (upiPayee) {
+            return upiPayee;
+        }
+
         const upiAt = body.match(
             /@UPI[_ ]([A-Z0-9][A-Z0-9 ]{1,40}?)(?=\s+\d{1,2}-|\s+Avl|\s*$)/i
         );
@@ -583,6 +589,33 @@ export class FinancialParser {
 
         return this.extractBiller(body) ?? this.extractCreditedPayee(body);
 
+    }
+
+    /**
+     * UPI SMS often names the payee: `At shop@okaxis`, `To:name@ybl`, `trf to SHARMA KIRANA`.
+     */
+    private extractUpiPayee(body: string): string | undefined {
+        const patterns = [
+            /\bat\s+([A-Za-z0-9][A-Za-z0-9._\-]{1,40}@[A-Za-z0-9.]{2,20})\b/i,
+            /\bTo:([A-Za-z0-9._\-]+@[A-Za-z0-9.]{2,20})\b/i,
+            /\btrf\s+to\s+([A-Za-z][A-Za-z0-9@._\-& ]{1,40}?)(?=\s+Ref|\s+UPI|\s+on\b|\s*$)/i,
+        ];
+
+        for (const pattern of patterns) {
+            const match = body.match(pattern);
+
+            if (!match?.[1]) {
+                continue;
+            }
+
+            const merchant = this.normalizeMerchant(match[1].trim());
+
+            if (!this.isInvalidMerchant(merchant)) {
+                return merchant;
+            }
+        }
+
+        return undefined;
     }
 
     private extractInsurer(body: string): string | undefined {

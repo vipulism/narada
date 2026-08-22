@@ -14,7 +14,8 @@ export function resolvePublicDir(): string {
 }
 
 /**
- * Serves the attention-only home UI (dues, blocked pushes, services, last import).
+ * Serves the attention-only home UI (dues, blocked pushes, services, last import)
+ * and `/merchants.html` (SMS merchant categories).
  *
  * Mount after API routers so `/health`, `/knowledge`, and `/services` stay JSON.
  *
@@ -24,7 +25,7 @@ export function mountAttentionDashboard(app: Express): void {
     const publicDir = resolvePublicDir();
 
     app.use((req, res, next) => {
-        if (req.path === "/" || req.path === "/index.html") {
+        if (req.path === "/" || req.path === "/index.html" || req.path === "/merchants.html") {
             res.setHeader("Cache-Control", "no-store");
         }
         next();

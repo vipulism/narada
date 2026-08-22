@@ -6,6 +6,7 @@ import {
 } from "../connectors/firefly/firefly.exceptions";
 import { loadFireflyClient } from "../connectors/firefly/firefly.client";
 import { FinancialEventRepository } from "../db/repositories/financialEvent.repository";
+import { MerchantCategoryRepository } from "../db/repositories/merchantCategory.repository";
 import { loadSettledDueKnowledge } from "../server/due.feed";
 import {
     formatBlockedDigest,
@@ -21,6 +22,7 @@ import { TelegramNotifier } from "./telegram.notifier";
 
 const state = new AttentionAlertState();
 const events = new FinancialEventRepository();
+const merchantCategories = new MerchantCategoryRepository();
 const telegram = new TelegramNotifier();
 
 export { formatBlockedDigest, formatDailyAttentionDigest, formatDueDigest };
@@ -183,10 +185,11 @@ async function loadSpendMonthStats(today: string): Promise<SpendMonthStats> {
     const ranges = istComparableMonthRanges(today);
     const thisBounds = istInclusiveBounds(ranges.thisStart, ranges.thisEnd);
     const lastBounds = istInclusiveBounds(ranges.lastStart, ranges.lastEnd);
-    const [thisRows, lastRows] = await Promise.all([
+    const [thisRows, lastRows, assigned] = await Promise.all([
         events.listExpensesInRange(thisBounds.from, thisBounds.to),
         events.listExpensesInRange(lastBounds.from, lastBounds.to),
+        merchantCategories.listBucketMap(),
     ]);
 
-    return buildSpendMonthStats(thisRows, lastRows, ranges.thisLabel, ranges.lastLabel);
+    return buildSpendMonthStats(thisRows, lastRows, ranges.thisLabel, ranges.lastLabel, assigned);
 }

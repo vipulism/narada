@@ -10,7 +10,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { buildSpendMonthStats, spendBucket } from "./financial.spend";
+import { buildSpendMonthStats, buildMerchantCatalog, merchantCatalogKey, resolveSpendBucket, spendBucket, spendMerchantLabel } from "./financial.spend";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
@@ -602,6 +602,7 @@ const CASES: RegressionCase[] = [
             amount: 30,
             accountLast4: "1687",
             transactionType: "UPI",
+            merchant: "paytmqr5wpzku@ptys",
         },
     },
     {
@@ -998,6 +999,7 @@ const CASES: RegressionCase[] = [
             subcategory: "expense",
             cashFlow: "OUTFLOW",
             amount: 24,
+            merchant: "Vipin kashyap",
         },
     },
     {
@@ -1010,6 +1012,7 @@ const CASES: RegressionCase[] = [
             cashFlow: "OUTFLOW",
             amount: 130,
             accountLast4: "1260",
+            merchant: "VIPIN GUPTA",
         },
     },
     {
@@ -1540,6 +1543,20 @@ function runFireflyMapRegression(): void {
     if (!swiggyPlan.ok || swiggyPlan.plan.categoryName !== "Dining") {
         failures.push(
             `Swiggy withdrawal category ${swiggyPlan.ok ? swiggyPlan.plan.categoryName : "blocked"} != Dining`
+        );
+    }
+
+    const swiggyOverride = planFireflyTransaction(
+        swiggy,
+        firefly,
+        owned,
+        new FireflyOpenings(new Map()),
+        new Map([["swiggy", "shopping"]])
+    );
+
+    if (!swiggyOverride.ok || swiggyOverride.plan.categoryName !== "Shopping") {
+        failures.push(
+            `assigned Swiggy category ${swiggyOverride.ok ? swiggyOverride.plan.categoryName : "blocked"} != Shopping`
         );
     }
 
@@ -2295,6 +2312,76 @@ function runAttentionDigestRegression(): void {
 
     if (spendBucket("Swiggy") !== "dining" || spendBucket("Amazon") !== "shopping") {
         failures.push("Swiggy/Amazon buckets");
+    }
+
+    if (spendBucket("RAMESH KIRANA") !== "grocery" || spendBucket("sharma-kirana@okaxis") !== "grocery") {
+        failures.push("UPI kirana names should be grocery");
+    }
+
+    if (spendBucket("VIPIN GUPTA") !== "other") {
+        failures.push("person UPI payee stays other");
+    }
+
+    if (spendMerchantLabel("paytmqr5wpzku@ptys") !== "Paytm QR") {
+        failures.push("Paytm QR VPA label");
+    }
+
+    if (spendMerchantLabel("ramesh-kirana@okaxis") !== "Ramesh Kirana") {
+        failures.push(`UPI VPA label ${spendMerchantLabel("ramesh-kirana@okaxis")}`);
+    }
+
+    if (merchantCatalogKey("paytmqr5wpzku@ptys") !== "paytm qr") {
+        failures.push(`Paytm QR catalog key ${merchantCatalogKey("paytmqr5wpzku@ptys")}`);
+    }
+
+    if (resolveSpendBucket("paytmqr5wpzku@ptys", new Map([["paytm qr", "grocery"]])) !== "grocery") {
+        failures.push("assigned Paytm QR should be grocery");
+    }
+
+    const catalog = buildMerchantCatalog(
+        [
+            {
+                merchant: "paytmqr5wpzku@ptys",
+                txCount: 2,
+                totalAmount: 80,
+                lastSeenAt: new Date("2026-08-01T00:00:00Z"),
+            },
+            {
+                merchant: "paytmqrabc@ptys",
+                txCount: 1,
+                totalAmount: 20,
+                lastSeenAt: new Date("2026-08-20T00:00:00Z"),
+            },
+            {
+                merchant: "VIPIN GUPTA",
+                txCount: 1,
+                totalAmount: 130,
+                lastSeenAt: new Date("2026-08-10T00:00:00Z"),
+            },
+        ],
+        new Map([["paytm qr", { category: "grocery", label: "Paytm QR" }]])
+    );
+
+    if (catalog[0]?.key !== "vipin gupta" || catalog[0]?.category !== null) {
+        failures.push(`uncategorized merchants should sort first, got ${catalog[0]?.key}`);
+    }
+
+    const paytm = catalog.find((row) => row.key === "paytm qr");
+
+    if (!paytm || paytm.txCount !== 3 || paytm.totalAmount !== 100 || paytm.category !== "grocery") {
+        failures.push(`Paytm QR collapse ${JSON.stringify(paytm)}`);
+    }
+
+    const assignedSpend = buildSpendMonthStats(
+        [{ amount: 80, merchant: "paytmqr5wpzku@ptys", kind: "expense" }],
+        [],
+        "Aug 1–22",
+        "Jul 1–22",
+        new Map([["paytm qr", "grocery"]])
+    );
+
+    if (!assignedSpend.buckets.some((row) => row.key === "grocery" && row.thisAmount === 80)) {
+        failures.push("assigned catalog should drive spend buckets");
     }
 
     const spend = buildSpendMonthStats(

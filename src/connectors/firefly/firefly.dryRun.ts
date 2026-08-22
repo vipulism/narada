@@ -1,5 +1,9 @@
 import { inferOwnedAccountTypeFromTxn } from "../../classifiers/financial/financial.accountType";
-import { spendBucket, spendBucketLabel } from "../../classifiers/financial/financial.spend";
+import {
+    resolveSpendBucket,
+    spendBucketLabel,
+    type SpendBucket,
+} from "../../classifiers/financial/financial.spend";
 import { FinancialEvent } from "../../classifiers/financial/financial.model";
 import { KnownAccountIndex } from "../../classifiers/financial/knownAccounts";
 import { FireflyLast4Index } from "./firefly.accountMap";
@@ -13,12 +17,14 @@ import { FireflyDryRunRow, PlannedFireflyTransaction } from "./firefly.types";
  * @param firefly - Last4 → Firefly account
  * @param owned - Local owned accounts (unique-bank when last4 is missing)
  * @param openings - Ledger opening dates; events before these are skipped
+ * @param assigned - Optional Narada merchant → spend bucket map
  */
 export function planFireflyTransaction(
     event: FinancialEvent,
     firefly: FireflyLast4Index,
     owned: KnownAccountIndex,
-    openings: FireflyOpenings = new FireflyOpenings(new Map())
+    openings: FireflyOpenings = new FireflyOpenings(new Map()),
+    assigned?: ReadonlyMap<string, SpendBucket>
 ): FireflyDryRunRow {
     const sourceLast4 = event.accountLast4 ?? uniqueBankLast4(event, owned);
     const skipReason = openings.skipReason(event, sourceLast4);
@@ -54,10 +60,15 @@ export function planFireflyTransaction(
     if (event.cashFlow === "OUTFLOW") {
         return {
             ok: true,
-            plan: basePlan(event, "withdrawal", {
-                sourceId: source.account.id,
-                destinationName: event.merchant ?? event.kind,
-            }),
+            plan: basePlan(
+                event,
+                "withdrawal",
+                {
+                    sourceId: source.account.id,
+                    destinationName: event.merchant ?? event.kind,
+                },
+                assigned
+            ),
         };
     }
 
@@ -145,7 +156,8 @@ function basePlan(
     legs: Partial<Pick<
         PlannedFireflyTransaction,
         "sourceId" | "destinationId" | "sourceName" | "destinationName"
-    >>
+    >>,
+    assigned?: ReadonlyMap<string, SpendBucket>
 ): PlannedFireflyTransaction {
     const plan: PlannedFireflyTransaction = {
         smsId: event.smsId,
@@ -158,7 +170,7 @@ function basePlan(
     };
 
     if (type === "withdrawal") {
-        plan.categoryName = spendBucketLabel(spendBucket(event.merchant));
+        plan.categoryName = spendBucketLabel(resolveSpendBucket(event.merchant, assigned));
     }
 
     return plan;

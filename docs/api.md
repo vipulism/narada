@@ -34,7 +34,7 @@ GET /health
 
 ## Dashboard
 
-Attention-only HTML at `GET /` (dues, blocked Firefly pushes, service strip, last SMS import). `GET /dashboard` redirects to `/`. No transaction list, charts, or budgets — those stay in Dhan.
+Attention-only HTML at `GET /` (dues, blocked Firefly pushes, service strip, last SMS import). `GET /dashboard` redirects to `/`. No transaction list, charts, or budgets — those stay in Dhan. Merchant spend categories are a separate page at `GET /merchants.html` (browser `GET /merchants` redirects there).
 
 The page reads:
 
@@ -48,6 +48,36 @@ GET /health
 ```
 
 Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). The query string on `/` is kept in sync (`/?since=6&status=overdue`).
+
+---
+
+## Merchants
+
+SMS expense merchants from `financial_events`, with optional user spend categories. Used for Telegram spend buckets and Firefly `category_name` on **new** withdrawals. Already-pushed Dhan journals are not rewritten.
+
+```text
+GET /merchants
+PUT /merchants
+```
+
+`GET` filters:
+
+| Query | Meaning |
+|---|---|
+| `status` | `uncategorized` (default), `categorized`, or `all` |
+| `q` | Case-insensitive merchant label / key |
+| `page` / `limit` | Default 100, max 500 |
+
+Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`.
+
+```bash
+curl "http://192.168.1.32:4000/merchants?status=uncategorized"
+curl -X PUT "http://192.168.1.32:4000/merchants" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"paytm qr","label":"Paytm QR","category":"grocery"}'
+```
+
+`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label`, and `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`). `category: null` or `""` clears the assignment so the keyword guess applies again.
 
 ---
 
