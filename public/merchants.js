@@ -23,6 +23,12 @@
     smsDialogMeta: document.getElementById("sms-dialog-meta"),
     smsDialogBody: document.getElementById("sms-dialog-body"),
     smsDialogClose: document.getElementById("sms-dialog-close"),
+    smsListDialog: document.getElementById("sms-list-dialog"),
+    smsListTitle: document.getElementById("sms-list-title"),
+    smsListMeta: document.getElementById("sms-list-meta"),
+    smsList: document.getElementById("sms-list"),
+    smsListClose: document.getElementById("sms-list-close"),
+    smsListMore: document.getElementById("sms-list-more"),
     pager: document.getElementById("pager"),
     prevPage: document.getElementById("prev-page"),
     nextPage: document.getElementById("next-page"),
@@ -32,6 +38,13 @@
     q: "",
     status: "uncategorized",
     page: 1,
+  };
+
+  const smsListState = {
+    key: "",
+    label: "",
+    page: 1,
+    total: 0,
   };
 
   /** @type {Array<{ key: string, label: string }>} */
@@ -56,6 +69,21 @@
    * @param {unknown} value
    * @returns {string}
    */
+  /**
+   * @param {unknown} value
+   * @returns {string}
+   */
+  function decodeSmsBody(value) {
+    return String(value ?? "")
+      .replaceAll("&#10;", "\n")
+      .replaceAll("&#13;", "")
+      .replaceAll("&amp;", "&")
+      .replaceAll("&apos;", "'")
+      .replaceAll("&quot;", '"')
+      .replaceAll("&lt;", "<")
+      .replaceAll("&gt;", ">");
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -159,16 +187,24 @@
             item.key
           )}">Apply ${pushed} in Dhan</button>`
         : "";
-    const smsIds = Array.isArray(item.sampleSmsIds)
-      ? item.sampleSmsIds
-          .map(
-            (id) =>
-              `<button type="button" class="sms-ref" data-sms="${escapeHtml(
-                id
-              )}">#${escapeHtml(id)}</button>`
-          )
-          .join(" ")
-      : "";
+    const samples = Array.isArray(item.sampleSmsIds) ? item.sampleSmsIds : [];
+    const extra = Number(item.txCount ?? 0) - samples.length;
+    const smsIds = samples
+      .map(
+        (id) =>
+          `<button type="button" class="sms-ref" data-sms="${escapeHtml(
+            id
+          )}">#${escapeHtml(id)}</button>`
+      )
+      .join(" ");
+    const more =
+      extra > 0
+        ? `<button type="button" class="sms-ref" data-sms-more="${escapeHtml(
+            item.key
+          )}" data-sms-label="${escapeHtml(item.label)}" data-sms-total="${escapeHtml(
+            item.txCount
+          )}">+${extra} more</button>`
+        : "";
     return `
       <article class="merchant-row card" data-key="${escapeHtml(item.key)}">
         <div>
@@ -178,7 +214,11 @@
               item.totalAmount
             )} · last ${escapeHtml(when)}
           </p>
-          ${smsIds ? `<p class="merchant-meta">SMS ${smsIds}</p>` : ""}
+          ${
+            smsIds || more
+              ? `<p class="merchant-meta">SMS ${smsIds}${more ? ` ${more}` : ""}</p>`
+              : ""
+          }
           ${apply}
         </div>
         <label class="merchant-cat">
@@ -400,6 +440,110 @@
     load();
   });
 
+  /**
+   * @param {object} row
+   * @returns {string}
+   */
+  function smsListRow(row) {
+    const when = row.occurredAt
+      ? new Date(row.occurredAt).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        })
+      : "";
+    return `
+      <button type="button" class="sms-list-item btn" data-sms="${escapeHtml(row.smsId)}">
+        <span class="sms-ref">#${escapeHtml(row.smsId)}</span>
+        <span class="merchant-meta">
+          ${escapeHtml(row.merchant || "")} · ${money.format(Number(row.amount ?? 0))}
+          ${when ? ` · ${escapeHtml(when)}` : ""}
+        </span>
+      </button>
+    `;
+  }
+
+  /**
+   * @param {boolean} append
+   */
+  async function loadMerchantSms(append) {
+    const params = new URLSearchParams({
+      key: smsListState.key,
+      page: String(smsListState.page),
+      limit: "50",
+    });
+    const res = await api(`/merchants/sms?${params.toString()}`);
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(payload.message || `HTTP ${res.status}`);
+    }
+    const items = payload.items ?? [];
+    smsListState.total = payload.pagination?.total ?? items.length;
+    const html = items.map(smsListRow).join("");
+    if (append) {
+      els.smsList?.insertAdjacentHTML("beforeend", html);
+    } else {
+      setHtml(els.smsList, html || `<p class="empty">No SMS for this merchant.</p>`);
+    }
+    const loaded = Math.min(smsListState.page * 50, smsListState.total);
+    setText(
+      els.smsListMeta,
+      `${loaded} of ${smsListState.total} · click an id to read the SMS`
+    );
+    if (els.smsListMore instanceof HTMLButtonElement) {
+      els.smsListMore.hidden = loaded >= smsListState.total;
+    }
+  }
+
+  /**
+   * @param {string} key
+   * @param {string} label
+   */
+  async function showMerchantSmsList(key, label) {
+    if (!(els.smsListDialog instanceof HTMLDialogElement)) {
+      return;
+    }
+    smsListState.key = key;
+    smsListState.label = label;
+    smsListState.page = 1;
+    setText(els.smsListTitle, label || key);
+    setText(els.smsListMeta, "Loading…");
+    setHtml(els.smsList, "");
+    els.smsListDialog.showModal();
+    await loadMerchantSms(false);
+  }
+
+  els.smsListClose?.addEventListener("click", () => {
+    if (els.smsListDialog instanceof HTMLDialogElement) {
+      els.smsListDialog.close();
+    }
+  });
+
+  els.smsListMore?.addEventListener("click", async () => {
+    smsListState.page += 1;
+    try {
+      await loadMerchantSms(true);
+    } catch (error) {
+      setText(
+        els.smsListMeta,
+        error instanceof Error ? error.message : "Could not load more SMS"
+      );
+    }
+  });
+
+  els.smsList?.addEventListener("click", async (event) => {
+    const target = event.target instanceof HTMLElement
+      ? event.target.closest("button[data-sms]")
+      : null;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+    const id = Number(target.dataset.sms);
+    if (Number.isFinite(id) && id > 0) {
+      await showSms(id);
+    }
+  });
+
   els.smsDialogClose?.addEventListener("click", () => {
     if (els.smsDialog instanceof HTMLDialogElement) {
       els.smsDialog.close();
@@ -451,7 +595,7 @@
       ].filter(Boolean);
       setText(els.smsDialogTitle, `SMS #${id}`);
       setText(els.smsDialogMeta, bits.join(" · "));
-      setText(els.smsDialogBody, sms.body || "No SMS body.");
+      setText(els.smsDialogBody, decodeSmsBody(sms.body) || "No SMS body.");
     } catch (error) {
       setText(
         els.smsDialogMeta,
@@ -462,6 +606,20 @@
 
   els.list?.addEventListener("click", async (event) => {
     const target = event.target;
+    if (target instanceof HTMLButtonElement && target.dataset.smsMore) {
+      try {
+        await showMerchantSmsList(
+          target.dataset.smsMore,
+          target.dataset.smsLabel ?? target.dataset.smsMore
+        );
+      } catch (error) {
+        setText(
+          els.pageMeta,
+          error instanceof Error ? error.message : "Could not load SMS list"
+        );
+      }
+      return;
+    }
     if (target instanceof HTMLButtonElement && target.dataset.sms) {
       const id = Number(target.dataset.sms);
       if (Number.isFinite(id) && id > 0) {

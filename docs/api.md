@@ -53,10 +53,11 @@ Home has search, a **past 6 months** since filter (3 / 12 / all time), due statu
 
 ## Merchants
 
-SMS expense merchants from `financial_events`, with optional user spend categories. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
+SMS expense merchants from `financial_events`, with optional user spend categories. Expenses stored without a merchant are re-parsed from the SMS body on this list (HDFC `&#10;` UPI `At shop@vpa`, ICICI `spent … on MERCHANT`) so they do not collapse into one Unknown row. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
 
 ```text
 GET /merchants
+GET /merchants/sms?key=blinkit
 PUT /merchants
 POST /merchants/apply
 ```
@@ -69,7 +70,7 @@ POST /merchants/apply
 | `q` | Case-insensitive merchant label / key |
 | `page` / `limit` | Default 100, max 500 |
 
-Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`. Each row includes `sampleSmsIds` (newest 3 SMS ids). On `/merchants.html` those ids open the original SMS (`GET /sms/:id`) so you can read amount, sender, and body before assigning a category.
+Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`. Each row includes `sampleSmsIds` (newest 3 SMS ids) plus a **+N more** control. `GET /merchants/sms?key=` lists every expense SMS for that catalog key so you can check they are the same merchant. Click an id to open `GET /sms/:id`.
 
 ```bash
 curl "http://192.168.1.32:4000/merchants?status=uncategorized"

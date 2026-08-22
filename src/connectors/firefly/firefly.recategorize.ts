@@ -1,3 +1,4 @@
+import { FinancialParser } from "../../classifiers/financial/financial.parser";
 import { FinancialEvent } from "../../classifiers/financial/financial.model";
 import { merchantCatalogKey } from "../../classifiers/financial/financial.spend";
 import { FireflyClient } from "./firefly.client";
@@ -19,17 +20,22 @@ export interface DhanRecategorizeStats {
  *
  * @param events - Posted financial events (usually already pushed)
  * @param key - {@link merchantCatalogKey}
+ * @param parser - SMS merchant extract for blank stored merchants
  */
 export function pushedExpensesForMerchant(
-    events: FinancialEvent[],
-    key: string
+    events: Array<FinancialEvent & { body?: string }>,
+    key: string,
+    parser = new FinancialParser()
 ): FinancialEvent[] {
-    return events.filter(
-        (event) =>
-            event.kind === "expense" &&
-            Boolean(event.fireflyTransactionId) &&
-            merchantCatalogKey(event.merchant) === key
-    );
+    return events.filter((event) => {
+        if (event.kind !== "expense" || !event.fireflyTransactionId) {
+            return false;
+        }
+
+        const merchant =
+            event.merchant || parser.extractMerchantFromBody(event.body ?? "");
+        return merchantCatalogKey(merchant) === key;
+    });
 }
 
 /**
@@ -43,12 +49,13 @@ export function pushedExpensesForMerchant(
  */
 export async function applyMerchantCategoryToDhan(
     client: FireflyClient,
-    events: FinancialEvent[],
+    events: Array<FinancialEvent & { body?: string }>,
     key: string,
     categoryName: string,
     cap = DHAN_RECATEGORIZE_CAP
 ): Promise<DhanRecategorizeStats> {
-    const matched = pushedExpensesForMerchant(events, key);
+    const parser = new FinancialParser();
+    const matched = pushedExpensesForMerchant(events, key, parser);
     const batch = matched.slice(0, cap);
     const stats: DhanRecategorizeStats = {
         matched: matched.length,
@@ -92,12 +99,13 @@ export async function applyMerchantCategoryToDhan(
  */
 export async function applyAssignedCategoriesToDhan(
     client: FireflyClient,
-    events: FinancialEvent[],
+    events: Array<FinancialEvent & { body?: string }>,
     work: Array<{ key: string; categoryName: string }>,
     cap = DHAN_RECATEGORIZE_CAP
 ): Promise<DhanRecategorizeStats> {
+    const parser = new FinancialParser();
     const jobs = work.flatMap((row) =>
-        pushedExpensesForMerchant(events, row.key).map((event) => ({
+        pushedExpensesForMerchant(events, row.key, parser).map((event) => ({
             event,
             categoryName: row.categoryName,
         }))

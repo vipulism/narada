@@ -383,39 +383,112 @@ export class FinancialEventRepository {
     }
 
     /**
-     * Expense rows already posted to Dhan.
+     * Expense rows that already have a stored merchant (no SMS body).
      *
-     * @returns Pushed `expense` events, newest first
+     * @returns Newest-first named expenses
      */
-    async listPushedExpenses(): Promise<FinancialEvent[]> {
+    async listExpensesWithMerchant(): Promise<
+        Array<{ smsId: number; merchant: string; amount: number; occurredAt: Date }>
+    > {
         const db = getDb();
         const [rows] = await db.query<RowDataPacket[]>(
             `
-            SELECT
-                sms_id,
-                kind,
-                cash_flow,
-                amount,
-                currency,
-                account_last4,
-                counterparty_last4,
-                account_name,
-                bank,
-                merchant,
-                transaction_type,
-                occurred_at,
-                classifier,
-                classifier_version,
-                firefly_transaction_id,
-                firefly_pushed_at
+            SELECT sms_id, merchant, amount, occurred_at
             FROM financial_events
             WHERE kind = 'expense'
-              AND firefly_transaction_id IS NOT NULL
+              AND merchant IS NOT NULL
+              AND TRIM(merchant) <> ''
             ORDER BY occurred_at DESC, sms_id DESC
             `
         );
 
-        return rows.map(rowToEvent);
+        return rows.map((row) => ({
+            smsId: Number(row.sms_id),
+            merchant: String(row.merchant),
+            amount: Number(row.amount ?? 0),
+            occurredAt: new Date(row.occurred_at),
+        }));
+    }
+
+    /**
+     * Expense rows with no stored merchant (for read-time SMS parse).
+     *
+     * @returns Newest-first expenses whose `merchant` is blank
+     */
+    async listExpensesMissingMerchant(): Promise<
+        Array<{
+            smsId: number;
+            amount: number;
+            occurredAt: Date;
+            pushed: boolean;
+            body: string;
+        }>
+    > {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                fe.sms_id,
+                fe.amount,
+                fe.occurred_at,
+                fe.firefly_transaction_id,
+                s.body
+            FROM financial_events fe
+            INNER JOIN sms_messages s ON s.id = fe.sms_id
+            WHERE fe.kind = 'expense'
+              AND (fe.merchant IS NULL OR TRIM(fe.merchant) = '')
+            ORDER BY fe.occurred_at DESC, fe.sms_id DESC
+            `
+        );
+
+        return rows.map((row) => ({
+            smsId: Number(row.sms_id),
+            amount: Number(row.amount ?? 0),
+            occurredAt: new Date(row.occurred_at),
+            pushed: Boolean(asOptionalString(row.firefly_transaction_id)),
+            body: String(row.body ?? ""),
+        }));
+    }
+
+    /**
+     * Expense rows already posted to Dhan.
+     *
+     * @returns Pushed `expense` events, newest first
+     */
+    async listPushedExpenses(): Promise<Array<FinancialEvent & { body: string }>> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                fe.sms_id,
+                fe.kind,
+                fe.cash_flow,
+                fe.amount,
+                fe.currency,
+                fe.account_last4,
+                fe.counterparty_last4,
+                fe.account_name,
+                fe.bank,
+                fe.merchant,
+                fe.transaction_type,
+                fe.occurred_at,
+                fe.classifier,
+                fe.classifier_version,
+                fe.firefly_transaction_id,
+                fe.firefly_pushed_at,
+                s.body
+            FROM financial_events fe
+            LEFT JOIN sms_messages s ON s.id = fe.sms_id
+            WHERE fe.kind = 'expense'
+              AND fe.firefly_transaction_id IS NOT NULL
+            ORDER BY fe.occurred_at DESC, fe.sms_id DESC
+            `
+        );
+
+        return rows.map((row) => ({
+            ...rowToEvent(row),
+            body: String(row.body ?? ""),
+        }));
     }
 }
 

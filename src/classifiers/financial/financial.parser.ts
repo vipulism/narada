@@ -35,6 +35,26 @@ import { KnownAccountIndex, loadKnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { isCreditCardPaymentAck, isDueReminder, isPaidBillReceipt, isSelfTransfer, isWalletTopUp, resolveOwnedTransferToken, selfTransferLast4s } from "./financial.kind";
 
+/**
+ * SMS Backup XML often stores newlines as `&#10;` in the body.
+ *
+ * @param body - Raw SMS text
+ */
+export function decodeSmsText(body: string): string {
+    return body
+        .replace(/&#10;/gi, "\n")
+        .replace(/&#13;/gi, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&#(\d+);/g, (_, digits) => {
+            const code = Number(digits);
+            return Number.isFinite(code) && code > 0 ? String.fromCharCode(code) : "";
+        });
+}
+
 const MONTHS: Record<string, string> = {
     JAN: "01",
     FEB: "02",
@@ -65,8 +85,8 @@ export class FinancialParser {
      */
     parse(message: SmsMessage): FinancialFacts {
 
-        const body = message.body;
-        const matchedAccount = this.matchOwnedAccount(message);
+        const body = decodeSmsText(message.body);
+        const matchedAccount = this.matchOwnedAccount({ ...message, body });
 
         return {
             amount: this.extractAmount(body),
@@ -519,7 +539,11 @@ export class FinancialParser {
             return insurer;
         }
 
-        if (/\bdomino'?s\b/i.test(body) || /\bdominos\b/i.test(body)) {
+        if (/\bblinkit\b/i.test(body) || /blinkit\d/i.test(body)) {
+            return "Blinkit";
+        }
+
+        if (/\bdomino'?s\b/i.test(body) || /\bdominos\b/i.test(body) || /dominos?pizza/i.test(body)) {
             return "Domino's";
         }
 
@@ -587,8 +611,23 @@ export class FinancialParser {
             }
         }
 
+        const spentOn = this.extractCardSpendMerchant(body);
+
+        if (spentOn) {
+            return spentOn;
+        }
+
         return this.extractBiller(body) ?? this.extractCreditedPayee(body);
 
+    }
+
+    /**
+     * Merchant from an SMS body. Decodes XML newline entities first.
+     *
+     * @param body - Raw or entity-encoded SMS text
+     */
+    extractMerchantFromBody(body: string): string | undefined {
+        return this.extractMerchant(decodeSmsText(body));
     }
 
     /**
@@ -596,8 +635,8 @@ export class FinancialParser {
      */
     private extractUpiPayee(body: string): string | undefined {
         const patterns = [
-            /\bat\s+([A-Za-z0-9][A-Za-z0-9._\-]{1,40}@[A-Za-z0-9.]{2,20})\b/i,
-            /\bTo:([A-Za-z0-9._\-]+@[A-Za-z0-9.]{2,20})\b/i,
+            /\bat\s+([A-Za-z0-9][A-Za-z0-9._\-]{1,60}@[A-Za-z0-9.]{2,30})\b/i,
+            /\bTo:([A-Za-z0-9._\-]+@[A-Za-z0-9.]{2,30})\b/i,
             /\btrf\s+to\s+([A-Za-z][A-Za-z0-9@._\-& ]{1,40}?)(?=\s+Ref|\s+UPI|\s+on\b|\s*$)/i,
         ];
 
@@ -616,6 +655,27 @@ export class FinancialParser {
         }
 
         return undefined;
+    }
+
+    /**
+     * ICICI / similar: `spent using Card XX0004 on 20-Aug-26 on AMAZON PAY IN E.`
+     */
+    private extractCardSpendMerchant(body: string): string | undefined {
+        const match = body.match(
+            /\bspent\b[\s\S]{0,120}?\bon\s+\d{1,2}[-/][A-Za-z]{3}[-/]\d{2}\s+on\s+([A-Z][A-Z0-9 .&*'-]{2,50}?)(?=\.\s|\s+Avl|\s+If not|$)/i
+        );
+
+        if (!match?.[1]) {
+            return undefined;
+        }
+
+        const merchant = this.normalizeMerchant(match[1].trim().replace(/\.+$/, ""));
+
+        if (this.isInvalidMerchant(merchant)) {
+            return undefined;
+        }
+
+        return merchant;
     }
 
     private extractInsurer(body: string): string | undefined {

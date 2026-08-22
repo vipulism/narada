@@ -66,9 +66,9 @@
           </label>
         </form>
         <p class="hint">
-          Click an SMS id to read the original message (amount, sender, body)
-          before you pick a category. Telegram uses the map as soon as you
-          assign. Dhan already-pushed withdrawals need a PUT.
+          Newest 3 SMS ids are on the row; <strong>+more</strong> lists every
+          SMS for that merchant so you can confirm they match. Click an id to
+          read the body.
         </p>
         <p class="toolbar-extra">
           <button type="button" id="apply-all" class="btn">
@@ -89,6 +89,18 @@
         </div>
       </section>
     </main>
+
+    <dialog id="sms-list-dialog" class="sms-dialog">
+      <div class="sms-dialog-head">
+        <h2 id="sms-list-title">SMS</h2>
+        <button type="button" id="sms-list-close" class="btn">Close</button>
+      </div>
+      <p id="sms-list-meta" class="muted"></p>
+      <div id="sms-list" class="sms-list"></div>
+      <p class="toolbar-extra">
+        <button type="button" id="sms-list-more" class="btn" hidden>Load more</button>
+      </p>
+    </dialog>
 
     <dialog id="sms-dialog" class="sms-dialog">
       <div class="sms-dialog-head">
