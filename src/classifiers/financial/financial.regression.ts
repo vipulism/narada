@@ -1504,6 +1504,23 @@ function runEventFilterRegression(): void {
         failures.push(`IMPS pair kept ${twoLakh.length} events, expected 1`);
     }
 
+    const irctcBody =
+        "Rs 6,062.94 Debited to Ac XX0592 on 16-MAR 20:56-UPI/907560566744/From:vipulism@ybl/To:IRCTCINAPP@ybl/Payment from PhonePe Tot Avbl Bal-Rs 1,076,343.65 on 16-Mar 20:56";
+    const irctcDupes = filterPostedEvents([
+        {
+            event: stubEvent(454, "expense", 6062.94, "0592", new Date("2020-03-16T20:56:00+05:30")),
+            body: irctcBody,
+        },
+        {
+            event: stubEvent(463, "expense", 6062.94, "0592", new Date("2020-03-16T20:56:00+05:30")),
+            body: irctcBody,
+        },
+    ]);
+
+    if (irctcDupes.length !== 1 || irctcDupes[0]?.smsId !== 454) {
+        failures.push(`duplicate IRCTC SMS should keep #454, got ${irctcDupes.map((row) => row.smsId)}`);
+    }
+
     if (failures.length > 0) {
         throw new Error(`event filter regression failed:\n${failures.join("\n")}`);
     }
@@ -2860,6 +2877,60 @@ function runAttentionDigestRegression(): void {
 
     if (linkedInSms.length !== 1 || linkedInSms[0]?.smsId !== 31) {
         failures.push(`LinkedIn SMS list should be only #31, got ${linkedInSms.map((row) => row.smsId)}`);
+    }
+
+    const irctcBody =
+        "Rs 6,062.94 Debited to Ac XX0592 on 16-MAR 20:56-UPI/907560566744/From:vipulism@ybl/To:IRCTCINAPP@ybl/Payment from PhonePe Tot Avbl Bal-Rs 1,076,343.65 on 16-Mar 20:56";
+    const irctcTotals = groupExpenseTotals([
+        {
+            smsId: 454,
+            merchant: "IRCTCINAPP@ybl",
+            amount: 6062.94,
+            occurredAt: new Date("2020-03-16T20:56:00+05:30"),
+            body: irctcBody,
+            pushed: false,
+        },
+        {
+            smsId: 463,
+            merchant: "IRCTCINAPP@ybl",
+            amount: 6062.94,
+            occurredAt: new Date("2020-03-16T20:56:00+05:30"),
+            body: irctcBody,
+            pushed: false,
+        },
+    ]);
+
+    if (
+        irctcTotals.length !== 1 ||
+        irctcTotals[0]?.txCount !== 1 ||
+        irctcTotals[0]?.totalAmount !== 6062.94
+    ) {
+        failures.push(`duplicate IRCTC SMS should count once, got ${JSON.stringify(irctcTotals)}`);
+    }
+
+    const irctcSms = listSmsForMerchantKey(
+        [
+            {
+                smsId: 454,
+                merchant: "IRCTCINAPP@ybl",
+                amount: 6062.94,
+                occurredAt: new Date("2020-03-16T20:56:00+05:30"),
+                body: irctcBody,
+            },
+            {
+                smsId: 463,
+                merchant: "IRCTCINAPP@ybl",
+                amount: 6062.94,
+                occurredAt: new Date("2020-03-16T20:56:00+05:30"),
+                body: irctcBody,
+            },
+        ],
+        [],
+        merchantCatalogKey("IRCTCINAPP@ybl")
+    );
+
+    if (irctcSms.length !== 1 || irctcSms[0]?.smsId !== 454) {
+        failures.push(`IRCTC SMS list should be only #454, got ${irctcSms.map((row) => row.smsId)}`);
     }
 
     const zerodhaBody =

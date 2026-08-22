@@ -8,6 +8,7 @@ import {
     type SmsSpendOverride,
 } from "../classifiers/financial/financial.spend";
 import { isCardBillPayMessage, isInvestmentFundingMessage } from "../classifiers/financial/financial.kind";
+import { smsDuplicateKey } from "../classifiers/financial/financial.eventFilter";
 
 /** Expense with no `financial_events.merchant` (older classify). */
 export interface MissingMerchantExpense {
@@ -113,9 +114,10 @@ export function groupExpenseTotals(
 ): MerchantSpendTotal[] {
     const parser = new FinancialParser();
     const recovered = new Map<string, MerchantSpendTotal>();
+    const seenDupes = new Set<string>();
 
     for (const row of rows) {
-        if (isInvestmentFundingMessage(row.body ?? "") || isCardBillPayMessage(row.body ?? "")) {
+        if (skipSpendCatalogRow(row.body, seenDupes)) {
             continue;
         }
 
@@ -180,9 +182,10 @@ export function listSmsForMerchantKey(
 ): MerchantExpenseSms[] {
     const parser = new FinancialParser();
     const rows: MerchantExpenseSms[] = [];
+    const seenDupes = new Set<string>();
 
     for (const row of named) {
-        if (isInvestmentFundingMessage(row.body ?? "") || isCardBillPayMessage(row.body ?? "")) {
+        if (skipSpendCatalogRow(row.body, seenDupes)) {
             continue;
         }
 
@@ -205,7 +208,7 @@ export function listSmsForMerchantKey(
     }
 
     for (const row of missing) {
-        if (isInvestmentFundingMessage(row.body) || isCardBillPayMessage(row.body)) {
+        if (skipSpendCatalogRow(row.body, seenDupes)) {
             continue;
         }
 
@@ -285,6 +288,30 @@ export function recoverUnknownMerchantTotals(
     }
 
     return [...named, ...recovered.values()];
+}
+
+/**
+ * Drop investment funding, card bill pays, and a second SMS for the same UPI/body.
+ */
+function skipSpendCatalogRow(body: string | undefined, seenDupes: Set<string>): boolean {
+    const text = body ?? "";
+
+    if (isInvestmentFundingMessage(text) || isCardBillPayMessage(text)) {
+        return true;
+    }
+
+    if (!text.trim()) {
+        return false;
+    }
+
+    const key = smsDuplicateKey(text);
+
+    if (seenDupes.has(key)) {
+        return true;
+    }
+
+    seenDupes.add(key);
+    return false;
 }
 
 function uniqueSmsIds(ids: number[]): number[] {
