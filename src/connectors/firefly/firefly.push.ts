@@ -1,4 +1,5 @@
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
+import { MerchantCategoryRepository } from "../../db/repositories/merchantCategory.repository";
 import { loadKnownAccountIndex } from "../../classifiers/financial/knownAccounts";
 import { FireflyLast4Index } from "./firefly.accountMap";
 import { FireflyClient } from "./firefly.client";
@@ -28,6 +29,7 @@ export async function pushReadyFireflyTransactions(
     const openings = loadFireflyOpenings(owned.all().map((account) => account.last4));
     const firefly = new FireflyLast4Index(await client.listLedgerAccounts());
     const repository = new FinancialEventRepository();
+    const assigned = await new MerchantCategoryRepository().listBucketMap();
     const events = await repository.listAll();
     const stats: FireflyPushStats = {
         posted: 0,
@@ -43,7 +45,7 @@ export async function pushReadyFireflyTransactions(
             continue;
         }
 
-        const row = planFireflyTransaction(event, firefly, owned, openings);
+        const row = planFireflyTransaction(event, firefly, owned, openings, assigned);
 
         if (!row.ok) {
             if (row.skip) {

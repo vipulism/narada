@@ -4,6 +4,8 @@ This guide explains how to deploy Narada on the Mandara homelab server using Doc
 
 Narada serves an attention-only dashboard at `GET /` (dues, blocked Firefly pushes, service strip, last SMS import). Ledger charts stay in Dhan.
 
+Public hostname (same pattern as Dhan): **`https://narada.apnalab.xyz`** → Nginx Proxy Manager → `http://192.168.1.32:4000`. Keep `:4000` on LAN as a fallback.
+
 ---
 
 ## Mandara Network Topology

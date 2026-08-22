@@ -1,6 +1,6 @@
 # HTTP API
 
-Narada listens on `PORT` (default `4000`). Live: `http://192.168.1.32:4000`.
+Narada listens on `PORT` (default `4000`). Live: `http://192.168.1.32:4000` (hostname `https://narada.apnalab.xyz` once Nginx Proxy Manager points at `:4000`).
 
 No authentication. Homelab LAN only. JSON is camelCase.
 
@@ -34,7 +34,7 @@ GET /health
 
 ## Dashboard
 
-Attention-only HTML at `GET /` (dues, blocked Firefly pushes, service strip, last SMS import). `GET /dashboard` redirects to `/`. No transaction list, charts, or budgets — those stay in Dhan.
+Attention-only HTML at `GET /` (dues, blocked Firefly pushes, service strip, last SMS import). `GET /dashboard` redirects to `/`. No transaction list, charts, or budgets — those stay in Dhan. Merchant spend categories are a separate page at `GET /merchants.html` (browser `GET /merchants` redirects there).
 
 The page reads:
 
@@ -48,6 +48,45 @@ GET /health
 ```
 
 Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). The query string on `/` is kept in sync (`/?since=6&status=overdue`).
+
+---
+
+## Merchants
+
+SMS expense merchants from `financial_events`, with optional user spend categories. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
+
+```text
+GET /merchants
+PUT /merchants
+POST /merchants/apply
+```
+
+`GET` filters:
+
+| Query | Meaning |
+|---|---|
+| `status` | `uncategorized` (default), `categorized`, or `all` |
+| `q` | Case-insensitive merchant label / key |
+| `page` / `limit` | Default 100, max 500 |
+
+Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`. Each row includes `sampleSmsIds` (newest 3 SMS ids). On `/merchants.html` those ids open the original SMS (`GET /sms/:id`) so you can read amount, sender, and body before assigning a category.
+
+```bash
+curl "http://192.168.1.32:4000/merchants?status=uncategorized"
+curl -X PUT "http://192.168.1.32:4000/merchants" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"paytm qr","label":"Paytm QR","category":"grocery","applyToDhan":true}'
+curl -X POST "http://192.168.1.32:4000/merchants/apply" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"paytm qr"}'
+curl -X POST "http://192.168.1.32:4000/merchants/apply" \
+  -H "Content-Type: application/json" \
+  -d '{"all":true}'
+```
+
+`PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label`, `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only.
+
+`POST /merchants/apply` needs a saved category. `{ "key": "…" }` one merchant; `{ "all": true }` every assigned merchant. Opening-skipped SMS never reached Dhan.
 
 ---
 

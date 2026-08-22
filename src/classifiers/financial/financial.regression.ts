@@ -4,13 +4,15 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
 import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
+import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
 import { FireflyOpenings } from "../../connectors/firefly/firefly.openings";
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
+import { buildSpendMonthStats, buildMerchantCatalog, merchantCatalogKey, resolveSpendBucket, spendBucket, spendMerchantLabel } from "./financial.spend";
+import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
 
@@ -601,6 +603,7 @@ const CASES: RegressionCase[] = [
             amount: 30,
             accountLast4: "1687",
             transactionType: "UPI",
+            merchant: "paytmqr5wpzku@ptys",
         },
     },
     {
@@ -997,6 +1000,7 @@ const CASES: RegressionCase[] = [
             subcategory: "expense",
             cashFlow: "OUTFLOW",
             amount: 24,
+            merchant: "Vipin kashyap",
         },
     },
     {
@@ -1009,6 +1013,7 @@ const CASES: RegressionCase[] = [
             cashFlow: "OUTFLOW",
             amount: 130,
             accountLast4: "1260",
+            merchant: "VIPIN GUPTA",
         },
     },
     {
@@ -1527,6 +1532,32 @@ function runFireflyMapRegression(): void {
     } else if (loanPay.plan.sourceId !== "11" || loanPay.plan.destinationId !== "22") {
         failures.push(
             `loan transfer ids ${loanPay.plan.sourceId}→${loanPay.plan.destinationId} != 11→22`
+        );
+    } else if (loanPay.plan.categoryName) {
+        failures.push("transfers must not get a spend category");
+    }
+
+    const swiggy = stubEvent(40, "expense", 410, "1260", new Date("2026-08-16T12:00:00+05:30"));
+    swiggy.merchant = "Swiggy";
+    const swiggyPlan = planFireflyTransaction(swiggy, firefly, owned);
+
+    if (!swiggyPlan.ok || swiggyPlan.plan.categoryName !== "Dining") {
+        failures.push(
+            `Swiggy withdrawal category ${swiggyPlan.ok ? swiggyPlan.plan.categoryName : "blocked"} != Dining`
+        );
+    }
+
+    const swiggyOverride = planFireflyTransaction(
+        swiggy,
+        firefly,
+        owned,
+        new FireflyOpenings(new Map()),
+        new Map([["swiggy", "shopping"]])
+    );
+
+    if (!swiggyOverride.ok || swiggyOverride.plan.categoryName !== "Shopping") {
+        failures.push(
+            `assigned Swiggy category ${swiggyOverride.ok ? swiggyOverride.plan.categoryName : "blocked"} != Shopping`
         );
     }
 
@@ -2274,6 +2305,149 @@ function runAttentionDigestRegression(): void {
 
     if (!paidOnlyDaily.includes("nothing unpaid") || paidOnlyDaily.includes("Axis Bank")) {
         failures.push(`daily digest must omit paid dues, got ${paidOnlyDaily}`);
+    }
+
+    if (spendBucket("RAZ*COMMODUM GROCERIES") !== "grocery") {
+        failures.push("Commodum groceries should be grocery");
+    }
+
+    if (spendBucket("Swiggy") !== "dining" || spendBucket("Amazon") !== "shopping") {
+        failures.push("Swiggy/Amazon buckets");
+    }
+
+    if (spendBucket("RAMESH KIRANA") !== "grocery" || spendBucket("sharma-kirana@okaxis") !== "grocery") {
+        failures.push("UPI kirana names should be grocery");
+    }
+
+    if (spendBucket("VIPIN GUPTA") !== "other") {
+        failures.push("person UPI payee stays other");
+    }
+
+    if (spendMerchantLabel("paytmqr5wpzku@ptys") !== "Paytm QR") {
+        failures.push("Paytm QR VPA label");
+    }
+
+    if (spendMerchantLabel("ramesh-kirana@okaxis") !== "Ramesh Kirana") {
+        failures.push(`UPI VPA label ${spendMerchantLabel("ramesh-kirana@okaxis")}`);
+    }
+
+    if (merchantCatalogKey("paytmqr5wpzku@ptys") !== "paytm qr") {
+        failures.push(`Paytm QR catalog key ${merchantCatalogKey("paytmqr5wpzku@ptys")}`);
+    }
+
+    if (resolveSpendBucket("paytmqr5wpzku@ptys", new Map([["paytm qr", "grocery"]])) !== "grocery") {
+        failures.push("assigned Paytm QR should be grocery");
+    }
+
+    const catalog = buildMerchantCatalog(
+        [
+            {
+                merchant: "paytmqr5wpzku@ptys",
+                txCount: 2,
+                pushedCount: 2,
+                sampleSmsIds: [13060, 13059],
+                totalAmount: 80,
+                lastSeenAt: new Date("2026-08-01T00:00:00Z"),
+            },
+            {
+                merchant: "paytmqrabc@ptys",
+                txCount: 1,
+                pushedCount: 1,
+                sampleSmsIds: [14001],
+                totalAmount: 20,
+                lastSeenAt: new Date("2026-08-20T00:00:00Z"),
+            },
+            {
+                merchant: "VIPIN GUPTA",
+                txCount: 1,
+                totalAmount: 130,
+                lastSeenAt: new Date("2026-08-10T00:00:00Z"),
+            },
+        ],
+        new Map([["paytm qr", { category: "grocery", label: "Paytm QR" }]])
+    );
+
+    if (catalog[0]?.key !== "vipin gupta" || catalog[0]?.category !== null) {
+        failures.push(`uncategorized merchants should sort first, got ${catalog[0]?.key}`);
+    }
+
+    const paytm = catalog.find((row) => row.key === "paytm qr");
+
+    if (
+        !paytm ||
+        paytm.txCount !== 3 ||
+        paytm.pushedCount !== 3 ||
+        paytm.totalAmount !== 100 ||
+        paytm.category !== "grocery" ||
+        paytm.sampleSmsIds.join(",") !== "13060,13059,14001"
+    ) {
+        failures.push(`Paytm QR collapse ${JSON.stringify(paytm)}`);
+    }
+
+    const paytmPushed = stubEvent(1, "expense", 30, "1687", new Date("2026-08-16T12:00:00+05:30"));
+    paytmPushed.merchant = "paytmqr5wpzku@ptys";
+    paytmPushed.fireflyTransactionId = "11";
+    const swiggyPushed = stubEvent(2, "expense", 80, "1687", new Date("2026-08-16T12:00:00+05:30"));
+    swiggyPushed.merchant = "Swiggy";
+    swiggyPushed.fireflyTransactionId = "22";
+    const paytmUnpushed = stubEvent(3, "expense", 10, "1687", new Date("2026-08-16T12:00:00+05:30"));
+    paytmUnpushed.merchant = "paytmqrabc@ptys";
+    const dhanMatch = pushedExpensesForMerchant(
+        [paytmPushed, swiggyPushed, paytmUnpushed],
+        "paytm qr"
+    );
+
+    if (dhanMatch.length !== 1 || dhanMatch[0]?.smsId !== 1) {
+        failures.push("Dhan recategorize should match pushed Paytm QR expenses only");
+    }
+
+    const assignedSpend = buildSpendMonthStats(
+        [{ amount: 80, merchant: "paytmqr5wpzku@ptys", kind: "expense" }],
+        [],
+        "Aug 1–22",
+        "Jul 1–22",
+        new Map([["paytm qr", "grocery"]])
+    );
+
+    if (!assignedSpend.buckets.some((row) => row.key === "grocery" && row.thisAmount === 80)) {
+        failures.push("assigned catalog should drive spend buckets");
+    }
+
+    const spend = buildSpendMonthStats(
+        [
+            { amount: 800, merchant: "Swiggy", kind: "expense" },
+            { amount: 6200, merchant: "Amazon", kind: "expense" },
+            { amount: 400, merchant: "RAZ*COMMODUM GROCERIES", kind: "expense" },
+        ],
+        [
+            { amount: 500, merchant: "Swiggy", kind: "expense" },
+            { amount: 2000, merchant: "Amazon", kind: "expense" },
+        ],
+        "Aug 1–22",
+        "Jul 1–22"
+    );
+    const spendBlock = formatSpendMonthStats(spend);
+
+    if (
+        !spendBlock ||
+        !spendBlock.includes("Groceries") ||
+        !spendBlock.includes("Dining") ||
+        !spendBlock.includes("Shopping") ||
+        !spendBlock.includes("top Amazon") ||
+        !spendBlock.includes("₹6,200")
+    ) {
+        failures.push(`spend digest ${spendBlock}`);
+    }
+
+    const withSpend = formatDailyAttentionDigest(
+        [],
+        { configured: false, ...ranges },
+        "2026-08-22",
+        spend
+    );
+
+    if (!withSpend.includes("Spend") || !withSpend.includes("Groceries")) {
+        failures.push(`daily digest missing spend ${withSpend}`);
     }
 
     if (failures.length > 0) {

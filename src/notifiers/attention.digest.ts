@@ -3,6 +3,7 @@ import {
     formatRemainingDays,
     isUnpaidDueAttention,
 } from "../classifiers/financial/financial.due";
+import type { SpendMonthStats } from "../classifiers/financial/financial.spend";
 import { BlockedAlert, DueAlert } from "./attention.state";
 
 const DIGEST_CAP = 8;
@@ -65,6 +66,19 @@ export function istComparableMonthRanges(today: string): {
 }
 
 /**
+ * Inclusive IST midnight bounds for a `YYYY-MM-DD` range.
+ *
+ * @param start - First day IST
+ * @param end - Last day IST
+ */
+export function istInclusiveBounds(start: string, end: string): { from: Date; to: Date } {
+    return {
+        from: new Date(`${start}T00:00:00+05:30`),
+        to: new Date(`${end}T23:59:59.999+05:30`),
+    };
+}
+
+/**
  * Open + overdue rows only. Home mark-paid and payment-ack `paid` stay out.
  *
  * @param rows - Due alerts (may include paid)
@@ -118,22 +132,74 @@ export function formatBlockedDigest(title: string, rows: BlockedAlert[]): string
 }
 
 /**
- * Morning unpaid-dues list plus Dhan this-month vs last-month income/expense.
+ * Morning unpaid-dues list plus Dhan totals and SMS spend buckets.
  * Paid rows (Home mark or payment-ack) are omitted.
  *
  * @param dues - Due reminders; paid is stripped before send
  * @param dhan - Firefly month stats
  * @param today - `YYYY-MM-DD` IST
+ * @param spend - Optional SMS expense buckets vs last month
  */
 export function formatDailyAttentionDigest(
     dues: DueAlert[],
     dhan: DhanMonthStats,
-    today: string
+    today: string,
+    spend?: SpendMonthStats
 ): string {
     const heading = `📅 <b>Daily attention</b> (${escapeHtml(today)})`;
     const dueBlock = formatDueDigest("Dues", dues, today) ?? "📬 <b>Dues</b>\n• nothing unpaid";
+    const parts = [heading, dueBlock, formatDhanMonthStats(dhan)];
+    const spendBlock = formatSpendMonthStats(spend);
 
-    return `${heading}\n\n${dueBlock}\n\n${formatDhanMonthStats(dhan)}`;
+    if (spendBlock) {
+        parts.push(spendBlock);
+    }
+
+    return parts.join("\n\n");
+}
+
+/**
+ * Grocery / shopping / merchant totals from Narada `financial_events` (not Dhan categories).
+ *
+ * @param stats - This vs last month spend
+ */
+export function formatSpendMonthStats(stats?: SpendMonthStats): string | undefined {
+    if (!stats) {
+        return undefined;
+    }
+
+    if (stats.buckets.length === 0) {
+        return "🛒 <b>Spend</b>\n• no posted expenses this range";
+    }
+
+    const bucketLines = stats.buckets.map((row) => {
+        const last =
+            row.lastAmount > 0 ? ` · last ${formatInr(row.lastAmount)}` : " · ₹0 last month";
+        return `• ${escapeHtml(row.label)} ${formatInr(row.thisAmount)}${escapeHtml(last)} · ${escapeHtml(
+            spendDeltaPhrase(row.thisAmount, row.lastAmount)
+        )}`;
+    });
+
+    const extra: string[] = [];
+    if (stats.topMerchant) {
+        extra.push(
+            `• top ${escapeHtml(stats.topMerchant.label)} ${formatInr(stats.topMerchant.thisAmount)}` +
+                (stats.topMerchant.lastAmount > 0
+                    ? ` (last ${formatInr(stats.topMerchant.lastAmount)})`
+                    : "")
+        );
+    }
+
+    for (const row of stats.largeMerchants) {
+        if (row.key === stats.topMerchant?.key) {
+            continue;
+        }
+        extra.push(`• large ${escapeHtml(row.label)} ${formatInr(row.thisAmount)}`);
+    }
+
+    return `🛒 <b>Spend</b> (${escapeHtml(stats.thisLabel)} vs ${escapeHtml(stats.lastLabel)})\n${bucketLines.join(
+        "\n"
+    )}${extra.length ? `\n${extra.join("\n")}` : ""}`;
 }
 
 /**
@@ -190,6 +256,24 @@ export function monthOverMonthPhrase(noun: string, current: number, previous: nu
     }
 
     return `${noun} ${Math.abs(pct)}% less than last month`;
+}
+
+function spendDeltaPhrase(current: number, previous: number): string {
+    if (previous === 0) {
+        return "new vs last month";
+    }
+
+    const pct = Math.round(((current - previous) / previous) * 100);
+
+    if (pct === 0) {
+        return "same as last month";
+    }
+
+    if (pct > 0) {
+        return `${pct}% more than last month`;
+    }
+
+    return `${Math.abs(pct)}% less than last month`;
 }
 
 function formatDueLine(row: DueAlert, today?: string): string {

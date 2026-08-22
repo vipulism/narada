@@ -1,0 +1,6 @@
+CREATE TABLE merchant_categories (
+    merchant_key VARCHAR(255) NOT NULL PRIMARY KEY,
+    merchant_label VARCHAR(255) NOT NULL,
+    category VARCHAR(32) NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

@@ -24,6 +24,8 @@ export interface PlannedFireflyTransaction {
     destinationId?: string;
     sourceName?: string;
     destinationName?: string;
+    /** Firefly category (created on POST if missing). Withdrawals only. */
+    categoryName?: string;
     externalId: string;
 }
 

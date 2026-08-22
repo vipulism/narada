@@ -297,6 +297,126 @@ export class FinancialEventRepository {
 
         return rows.map(rowToEvent);
     }
+
+    /**
+     * Posted `expense` rows whose `occurred_at` falls in `[from, to]` (inclusive).
+     *
+     * @param from - Range start
+     * @param to - Range end
+     */
+    async listExpensesInRange(from: Date, to: Date): Promise<FinancialEvent[]> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                sms_id,
+                kind,
+                cash_flow,
+                amount,
+                currency,
+                account_last4,
+                counterparty_last4,
+                account_name,
+                bank,
+                merchant,
+                transaction_type,
+                occurred_at,
+                classifier,
+                classifier_version,
+                firefly_transaction_id,
+                firefly_pushed_at
+            FROM financial_events
+            WHERE kind = 'expense'
+              AND occurred_at >= ?
+              AND occurred_at <= ?
+            ORDER BY occurred_at ASC, sms_id ASC
+            `,
+            [from, to]
+        );
+
+        return rows.map(rowToEvent);
+    }
+
+    /**
+     * Expense totals grouped by the raw merchant string (for the merchants page).
+     *
+     * @returns One row per distinct `financial_events.merchant`
+     */
+    async listExpenseMerchantTotals(): Promise<
+        Array<{
+            merchant: string;
+            txCount: number;
+            pushedCount: number;
+            sampleSmsIds: number[];
+            totalAmount: number;
+            lastSeenAt: Date;
+        }>
+    > {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                COALESCE(NULLIF(TRIM(merchant), ''), 'Unknown') AS merchant,
+                COUNT(*) AS tx_count,
+                SUM(CASE WHEN firefly_transaction_id IS NOT NULL THEN 1 ELSE 0 END) AS pushed_count,
+                SUM(amount) AS total_amount,
+                MAX(occurred_at) AS last_seen,
+                SUBSTRING_INDEX(
+                    GROUP_CONCAT(sms_id ORDER BY occurred_at DESC, sms_id DESC SEPARATOR ','),
+                    ',',
+                    3
+                ) AS sample_sms_ids
+            FROM financial_events
+            WHERE kind = 'expense'
+            GROUP BY COALESCE(NULLIF(TRIM(merchant), ''), 'Unknown')
+            `
+        );
+
+        return rows.map((row) => ({
+            merchant: String(row.merchant ?? "Unknown"),
+            txCount: Number(row.tx_count ?? 0),
+            pushedCount: Number(row.pushed_count ?? 0),
+            sampleSmsIds: parseSmsIdList(row.sample_sms_ids),
+            totalAmount: Number(row.total_amount ?? 0),
+            lastSeenAt: new Date(row.last_seen),
+        }));
+    }
+
+    /**
+     * Expense rows already posted to Dhan.
+     *
+     * @returns Pushed `expense` events, newest first
+     */
+    async listPushedExpenses(): Promise<FinancialEvent[]> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                sms_id,
+                kind,
+                cash_flow,
+                amount,
+                currency,
+                account_last4,
+                counterparty_last4,
+                account_name,
+                bank,
+                merchant,
+                transaction_type,
+                occurred_at,
+                classifier,
+                classifier_version,
+                firefly_transaction_id,
+                firefly_pushed_at
+            FROM financial_events
+            WHERE kind = 'expense'
+              AND firefly_transaction_id IS NOT NULL
+            ORDER BY occurred_at DESC, sms_id DESC
+            `
+        );
+
+        return rows.map(rowToEvent);
+    }
 }
 
 /** Pagination and filters for GET /knowledge. */
@@ -374,6 +494,17 @@ function rowToEvent(row: RowDataPacket): FinancialEvent {
         fireflyTransactionId: asOptionalString(row.firefly_transaction_id),
         fireflyPushedAt: row.firefly_pushed_at ? new Date(row.firefly_pushed_at) : undefined,
     };
+}
+
+function parseSmsIdList(value: unknown): number[] {
+    if (value == null) {
+        return [];
+    }
+
+    return String(value)
+        .split(",")
+        .map((part) => Number(part.trim()))
+        .filter((id) => Number.isFinite(id) && id > 0);
 }
 
 function asOptionalString(value: unknown): string | undefined {
