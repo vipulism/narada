@@ -59,6 +59,25 @@ export class MerchantCategoryRepository {
     }
 
     /**
+     * How many merchant rows use this spend bucket.
+     *
+     * @param category - Spend bucket slug
+     */
+    async countByCategory(category: string): Promise<number> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT COUNT(*) AS n
+            FROM merchant_categories
+            WHERE category = ?
+            `,
+            [category]
+        );
+
+        return Number(rows[0]?.n ?? 0);
+    }
+
+    /**
      * Upserts a category for one merchant catalog key.
      *
      * @param merchantKey - {@link merchantCatalogKey}

@@ -66,6 +66,25 @@ export class SmsSpendOverrideRepository {
     }
 
     /**
+     * How many SMS overrides use this spend bucket.
+     *
+     * @param category - Spend bucket slug
+     */
+    async countByCategory(category: string): Promise<number> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT COUNT(*) AS n
+            FROM sms_spend_overrides
+            WHERE category = ?
+            `,
+            [category]
+        );
+
+        return Number(rows[0]?.n ?? 0);
+    }
+
+    /**
      * Upserts a per-SMS category and/or merchant move.
      *
      * @param smsId - Expense SMS id
