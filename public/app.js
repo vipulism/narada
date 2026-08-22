@@ -48,6 +48,17 @@
   /** @type {Map<string, object>} */
   let servicesById = new Map();
 
+  /** Last dues + blocked paint; mark-paid refreshes dues only. */
+  const attention = {
+    dues: /** @type {object[]} */ ([]),
+    dueTotal: 0,
+    blocked: /** @type {object[]} */ ([]),
+    blockedTotal: 0,
+    /** @type {string | null} */
+    exceptionError: null,
+    duesOk: false,
+  };
+
   /**
    * @param {string} path
    * @returns {Promise<Response>}
@@ -617,46 +628,91 @@
       setText(els.importStatus, "Could not load import status.");
     }
 
-    /** @type {object[]} */
-    let dues = [];
-    let dueTotal = 0;
-    if (dueRes.status === "fulfilled" && dueRes.value.ok) {
-      const body = await dueRes.value.json();
-      dues = Array.isArray(body.items) ? body.items : [];
-      dueTotal = Number(body.pagination?.total ?? dues.length);
-    } else {
+    await applyDueResponse(dueRes.status === "fulfilled" ? dueRes.value : null);
+    await applyBlockedResponse(exceptionRes.status === "fulfilled" ? exceptionRes.value : null);
+    paintAttention();
+  }
+
+  /**
+   * @param {Response | null} res
+   */
+  async function applyDueResponse(res) {
+    if (res?.ok) {
+      const body = await res.json();
+      attention.dues = Array.isArray(body.items) ? body.items : [];
+      attention.dueTotal = Number(body.pagination?.total ?? attention.dues.length);
+      attention.duesOk = true;
+      return;
+    }
+
+    attention.duesOk = false;
+    setHtml(els.dues, `<p class="error">Could not load dues.</p>`);
+  }
+
+  /**
+   * @param {Response | null} res
+   */
+  async function applyBlockedResponse(res) {
+    if (!res) {
+      attention.blocked = [];
+      attention.blockedTotal = 0;
+      attention.exceptionError = "Could not load blocked pushes.";
+      return;
+    }
+
+    if (res.ok) {
+      const body = await res.json();
+      attention.blocked = Array.isArray(body.items) ? body.items : [];
+      attention.blockedTotal = Number(body.pagination?.total ?? attention.blocked.length);
+      attention.exceptionError = null;
+      return;
+    }
+
+    attention.blocked = [];
+    attention.blockedTotal = 0;
+    attention.exceptionError =
+      res.status === 503
+        ? "Dhan is not configured — blocked pushes cannot be checked."
+        : "Could not load blocked pushes.";
+  }
+
+  /**
+   * Paints dues + blocked from the last fetched attention snapshot.
+   */
+  function paintAttention() {
+    if (attention.duesOk) {
+      renderAttention(
+        attention.dues,
+        attention.dueTotal,
+        attention.blocked,
+        attention.blockedTotal,
+        attention.exceptionError
+      );
+      return;
+    }
+
+    setText(els.summary, "Could not load attention feeds");
+    if (attention.exceptionError) {
+      setHtml(els.blocked, `<p class="error">${escapeHtml(attention.exceptionError)}</p>`);
+    } else if (attention.blocked.length) {
+      setHtml(els.blocked, attention.blocked.map(blockedCard).join(""));
+    }
+  }
+
+  /**
+   * Reloads the due list only (mark paid / unmark). Health, import, services,
+   * and blocked pushes stay as last full `load()`.
+   */
+  async function refreshDues() {
+    setText(els.clock, `Updated ${new Date().toLocaleTimeString()}`);
+
+    try {
+      const dueRes = await api(dueQuery());
+      await applyDueResponse(dueRes);
+      paintAttention();
+    } catch {
+      attention.duesOk = false;
       setHtml(els.dues, `<p class="error">Could not load dues.</p>`);
-    }
-
-    /** @type {object[]} */
-    let blocked = [];
-    let blockedTotal = 0;
-    /** @type {string | null} */
-    let exceptionError = null;
-    if (exceptionRes.status === "fulfilled") {
-      const res = exceptionRes.value;
-      if (res.ok) {
-        const body = await res.json();
-        blocked = Array.isArray(body.items) ? body.items : [];
-        blockedTotal = Number(body.pagination?.total ?? blocked.length);
-      } else if (res.status === 503) {
-        exceptionError = "Dhan is not configured — blocked pushes cannot be checked.";
-      } else {
-        exceptionError = "Could not load blocked pushes.";
-      }
-    } else {
-      exceptionError = "Could not load blocked pushes.";
-    }
-
-    if (dueRes.status === "fulfilled" && dueRes.value.ok) {
-      renderAttention(dues, dueTotal, blocked, blockedTotal, exceptionError);
-    } else {
-      setText(els.summary, "Could not load attention feeds");
-      if (exceptionError) {
-        setHtml(els.blocked, `<p class="error">${escapeHtml(exceptionError)}</p>`);
-      } else if (blocked.length) {
-        setHtml(els.blocked, blocked.map(blockedCard).join(""));
-      }
     }
   }
 
@@ -711,7 +767,7 @@
       if (!res.ok) {
         throw new Error("Could not update due");
       }
-      await load();
+      await refreshDues();
     } catch {
       button.removeAttribute("disabled");
       window.alert("Could not update this due. Try refresh.");
@@ -728,7 +784,7 @@
   els.dueStatus?.addEventListener("change", () => {
     readForm();
     writeViewToUrl();
-    void load();
+    void refreshDues();
   });
   els.since?.addEventListener("change", () => {
     readForm();
