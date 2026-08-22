@@ -160,6 +160,14 @@ const BUCKET_CAP = 6;
 const LARGE_MERCHANT_INR = 5000;
 const LARGE_MERCHANT_CAP = 3;
 const SAMPLE_SMS_CAP = 3;
+const SMS_OWN_MERCHANT_PREFIX = "sms:";
+
+/** Per-SMS category and/or merchant catalog move. */
+export interface SmsSpendOverride {
+    category?: SpendBucket | null;
+    merchantKey?: string | null;
+    merchantLabel?: string | null;
+}
 
 /**
  * Firefly / digest label for a spend bucket.
@@ -198,18 +206,43 @@ export function merchantCatalogKey(merchant?: string | null): string {
 }
 
 /**
- * User map first, then keyword heuristics.
+ * Catalog key that keeps one SMS on its own merchant row.
+ *
+ * @param smsId - Expense SMS id
+ */
+export function ownSmsMerchantKey(smsId: number): string {
+    return `${SMS_OWN_MERCHANT_PREFIX}${smsId}`;
+}
+
+/**
+ * True when `key` is a one-SMS merchant row (`sms:{id}`).
+ *
+ * @param key - Catalog id
+ */
+export function isOwnSmsMerchantKey(key: string): boolean {
+    return key.startsWith(SMS_OWN_MERCHANT_PREFIX);
+}
+
+/**
+ * SMS override first, then user merchant map, then keyword heuristics.
  *
  * @param merchant - Extracted merchant
  * @param assigned - `merchant_categories` keyed by catalog id
  * @param body - Raw SMS body when merchant is thin
+ * @param smsOverride - Per-SMS category or merchant move
  */
 export function resolveSpendBucket(
     merchant?: string | null,
     assigned?: ReadonlyMap<string, SpendBucket>,
-    body?: string | null
+    body?: string | null,
+    smsOverride?: SmsSpendOverride | null
 ): SpendBucket {
-    return assigned?.get(merchantCatalogKey(merchant)) ?? spendBucket(merchant, body);
+    if (smsOverride?.category) {
+        return smsOverride.category;
+    }
+
+    const key = smsOverride?.merchantKey || merchantCatalogKey(merchant);
+    return assigned?.get(key) ?? spendBucket(merchant, body);
 }
 
 /**
@@ -242,16 +275,18 @@ export function spendBucket(merchant?: string | null, body?: string | null): Spe
  * @param thisLabel - e.g. `Aug 1–22`
  * @param lastLabel - e.g. `Jul 1–22`
  * @param assigned - Optional Narada merchant → bucket map
+ * @param smsOverrides - Optional per-SMS category / merchant moves
  */
 export function buildSpendMonthStats(
     thisRows: SpendEvent[],
     lastRows: SpendEvent[],
     thisLabel: string,
     lastLabel: string,
-    assigned?: ReadonlyMap<string, SpendBucket>
+    assigned?: ReadonlyMap<string, SpendBucket>,
+    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>
 ): SpendMonthStats {
-    const thisBuckets = sumBuckets(thisRows, assigned);
-    const lastBuckets = sumBuckets(lastRows, assigned);
+    const thisBuckets = sumBuckets(thisRows, assigned, smsOverrides);
+    const lastBuckets = sumBuckets(lastRows, assigned, smsOverrides);
     const thisMerchants = sumMerchants(thisRows);
     const lastMerchants = sumMerchants(lastRows);
 
@@ -290,6 +325,7 @@ export function buildSpendMonthStats(
 
 /** Posted expense fields used for spend grouping. */
 export interface SpendEvent {
+    smsId?: number;
     amount: number;
     merchant?: string | null;
     kind?: string | null;
@@ -317,6 +353,7 @@ export interface MerchantCategoryAssignment {
 /** Grouped `financial_events` spend for one raw merchant string. */
 export interface MerchantSpendTotal {
     merchant: string;
+    catalogKey?: string;
     txCount: number;
     pushedCount?: number;
     sampleSmsIds?: number[];
@@ -338,7 +375,7 @@ export function buildMerchantCatalog(
 
     for (const row of rows) {
         const label = spendMerchantLabel(row.merchant);
-        const key = merchantCatalogKey(row.merchant);
+        const key = row.catalogKey ?? merchantCatalogKey(row.merchant);
         const existing = byKey.get(key);
 
         if (existing) {
@@ -410,7 +447,8 @@ export function buildMerchantCatalog(
 
 function sumBuckets(
     rows: SpendEvent[],
-    assigned?: ReadonlyMap<string, SpendBucket>
+    assigned?: ReadonlyMap<string, SpendBucket>,
+    smsOverrides?: ReadonlyMap<number, SmsSpendOverride>
 ): Map<SpendBucket, number> {
     const totals = new Map<SpendBucket, number>();
 
@@ -419,7 +457,8 @@ function sumBuckets(
             continue;
         }
 
-        const bucket = resolveSpendBucket(row.merchant, assigned);
+        const override = row.smsId != null ? smsOverrides?.get(row.smsId) : undefined;
+        const bucket = resolveSpendBucket(row.merchant, assigned, undefined, override);
         totals.set(bucket, (totals.get(bucket) ?? 0) + row.amount);
     }
 
@@ -439,6 +478,32 @@ function sumMerchants(rows: SpendEvent[]): Map<string, number> {
     }
 
     return totals;
+}
+
+/**
+ * Display name when one SMS is split onto its own merchant row.
+ *
+ * @param merchant - Extracted merchant or VPA
+ * @param smsId - Expense SMS id
+ */
+export function ownSmsMerchantLabel(merchant: string | undefined, smsId: number): string {
+    const trimmed = merchant?.replace(/\s+/g, " ").trim();
+
+    if (!trimmed) {
+        return `SMS #${smsId}`;
+    }
+
+    const base = spendMerchantLabel(trimmed)
+        .replace(/\b[A-Za-z]\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const vpa = trimmed.match(/^([^@\s]+)@/);
+
+    if (vpa && vpa[1].length > 8) {
+        return `${base || spendMerchantLabel(trimmed)} ${vpa[1].slice(-6)}`;
+    }
+
+    return base === "Unknown" ? `SMS #${smsId}` : `${base} #${smsId}`;
 }
 
 /**

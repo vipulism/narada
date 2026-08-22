@@ -55,10 +55,14 @@ Home has search, a **past 6 months** since filter (3 / 12 / all time), due statu
 
 SMS expense merchants from `financial_events`, with optional user spend categories. Expenses stored without a merchant are re-parsed from the SMS body on this list (HDFC `&#10;` UPI `At shop@vpa`, ICICI `spent … on MERCHANT`) so they do not collapse into one Unknown row. Telegram and **new** Firefly withdrawals use the map immediately. Already-pushed Dhan journals get `category_name` only when you apply (`applyToDhan` or `POST /merchants/apply`).
 
+Open an SMS from the merchant row to change **that SMS only**: a category dropdown (overrides the merchant bucket) and a merchant-item dropdown (move it to another catalog row, or **This SMS only** to split it out). The other SMS in the group stay put.
+
 ```text
 GET /merchants
 GET /merchants/sms?key=blinkit
+GET /merchants/sms/:smsId
 PUT /merchants
+PUT /merchants/sms/:smsId
 POST /merchants/apply
 ```
 
@@ -70,7 +74,7 @@ POST /merchants/apply
 | `q` | Case-insensitive merchant label / key |
 | `page` / `limit` | Default 100, max 500 |
 
-Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`. Each row includes `sampleSmsIds` (newest 3 SMS ids) plus a **+N more** control. `GET /merchants/sms?key=` lists every expense SMS for that catalog key so you can check they are the same merchant. Click an id to open `GET /sms/:id`.
+Paytm QR VPAs collapse to one `paytm qr` row. Until you assign, a keyword guess is returned as `suggested`. Each row includes `sampleSmsIds` (newest 3 SMS ids) plus a **+N more** control. `GET /merchants/sms?key=` lists every expense SMS for that catalog key so you can check they are the same merchant. Click an id to open `GET /sms/:id`. `GET /merchants/sms/:smsId` is the dropdown payload for that preview (current category, pattern merchant, other catalog items).
 
 ```bash
 curl "http://192.168.1.32:4000/merchants?status=uncategorized"
@@ -86,6 +90,8 @@ curl -X POST "http://192.168.1.32:4000/merchants/apply" \
 ```
 
 `PUT` body: `key` or `merchant` (normalized to the catalog id), optional `label`, `category` (`grocery`, `dining`, `shopping`, `fuel`, `transport`, `utilities`, `subscriptions`, `insurance`, `health`, `other`), and optional `applyToDhan` (PUT `category_name` on already-pushed Dhan withdrawals for that merchant, max 500 per call). `category: null` or `""` clears the Narada assignment only.
+
+`PUT /merchants/sms/:smsId` body: optional `category` (same buckets, or `null`/`""` to inherit the merchant), optional `merchantKey` (`""` = pattern group, `__own__` = this SMS as its own row, or another catalog key), and optional `applyToDhan` for that one journal. Stored in `sms_spend_overrides`.
 
 `POST /merchants/apply` needs a saved category. `{ "key": "…" }` one merchant; `{ "all": true }` every assigned merchant. Opening-skipped SMS never reached Dhan.
 

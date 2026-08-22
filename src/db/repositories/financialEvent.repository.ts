@@ -383,6 +383,48 @@ export class FinancialEventRepository {
     }
 
     /**
+     * Expense rows plus SMS body for merchant catalog grouping.
+     *
+     * @returns Newest-first expenses used by GET /merchants
+     */
+    async listExpenseCatalogRows(): Promise<
+        Array<{
+            smsId: number;
+            merchant?: string;
+            amount: number;
+            occurredAt: Date;
+            pushed: boolean;
+            body: string;
+        }>
+    > {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                fe.sms_id,
+                fe.merchant,
+                fe.amount,
+                fe.occurred_at,
+                fe.firefly_transaction_id,
+                s.body
+            FROM financial_events fe
+            LEFT JOIN sms_messages s ON s.id = fe.sms_id
+            WHERE fe.kind = 'expense'
+            ORDER BY fe.occurred_at DESC, fe.sms_id DESC
+            `
+        );
+
+        return rows.map((row) => ({
+            smsId: Number(row.sms_id),
+            merchant: asOptionalString(row.merchant),
+            amount: Number(row.amount ?? 0),
+            occurredAt: new Date(row.occurred_at),
+            pushed: Boolean(asOptionalString(row.firefly_transaction_id)),
+            body: String(row.body ?? ""),
+        }));
+    }
+
+    /**
      * Expense rows that already have a stored merchant (no SMS body).
      *
      * @returns Newest-first named expenses

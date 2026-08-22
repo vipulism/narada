@@ -21,6 +21,10 @@
     smsDialog: document.getElementById("sms-dialog"),
     smsDialogTitle: document.getElementById("sms-dialog-title"),
     smsDialogMeta: document.getElementById("sms-dialog-meta"),
+    smsDialogAssign: document.getElementById("sms-dialog-assign"),
+    smsDialogCategory: document.getElementById("sms-dialog-category"),
+    smsDialogMerchant: document.getElementById("sms-dialog-merchant"),
+    smsDialogAssignMeta: document.getElementById("sms-dialog-assign-meta"),
     smsDialogBody: document.getElementById("sms-dialog-body"),
     smsDialogClose: document.getElementById("sms-dialog-close"),
     smsListDialog: document.getElementById("sms-list-dialog"),
@@ -166,6 +170,81 @@
       })
       .join("");
     return `${blank}${opts}`;
+  }
+
+  /**
+   * @param {Array<{ key: string, label: string }>} options
+   * @param {string | null} selected
+   * @param {string} suggested
+   * @returns {string}
+   */
+  function smsCategorySelect(options, selected, suggested) {
+    const inherit = options.find((row) => row.key === suggested)?.label ?? suggested;
+    const blank = selected
+      ? `<option value="">Clear (use merchant / guess)</option>`
+      : `<option value="">Use merchant / guess: ${escapeHtml(inherit)}</option>`;
+    const opts = options
+      .map((row) => {
+        const isSelected = row.key === selected ? " selected" : "";
+        return `<option value="${escapeHtml(row.key)}"${isSelected}>${escapeHtml(
+          row.label
+        )}</option>`;
+      })
+      .join("");
+    return `${blank}${opts}`;
+  }
+
+  /**
+   * @param {object} ctx
+   * @returns {string}
+   */
+  function smsMerchantSelect(ctx) {
+    const overrideKey = ctx.override?.merchantKey ?? "";
+    const ownKey = ctx.ownMerchantKey ?? "";
+    const patternSelected = !overrideKey ? " selected" : "";
+    const ownSelected = overrideKey && overrideKey === ownKey ? " selected" : "";
+    const others = (ctx.merchants ?? [])
+      .map((row) => {
+        const isSelected = row.key === overrideKey ? " selected" : "";
+        return `<option value="${escapeHtml(row.key)}"${isSelected}>${escapeHtml(
+          row.label
+        )}</option>`;
+      })
+      .join("");
+    return `
+      <option value=""${patternSelected}>Pattern: ${escapeHtml(
+        ctx.patternLabel ?? "this merchant"
+      )}</option>
+      <option value="__own__"${ownSelected}>This SMS only</option>
+      ${others}
+    `;
+  }
+
+  /**
+   * @param {object} ctx
+   */
+  function renderSmsAssign(ctx) {
+    if (
+      !(els.smsDialogAssign instanceof HTMLFormElement) ||
+      !(els.smsDialogCategory instanceof HTMLSelectElement) ||
+      !(els.smsDialogMerchant instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+
+    const bucketOptions = ctx.buckets?.length ? ctx.buckets : buckets;
+    els.smsDialogAssign.dataset.smsId = String(ctx.smsId);
+    els.smsDialogAssign.hidden = false;
+    els.smsDialogCategory.innerHTML = smsCategorySelect(
+      bucketOptions,
+      ctx.override?.category ?? null,
+      ctx.suggested
+    );
+    els.smsDialogMerchant.innerHTML = smsMerchantSelect(ctx);
+    if (els.smsDialogAssignMeta) {
+      els.smsDialogAssignMeta.hidden = true;
+      els.smsDialogAssignMeta.textContent = "";
+    }
   }
 
   /**
@@ -560,6 +639,13 @@
     setText(els.smsDialogTitle, `SMS #${id}`);
     setText(els.smsDialogMeta, "Loading…");
     setText(els.smsDialogBody, "");
+    if (els.smsDialogAssign instanceof HTMLFormElement) {
+      els.smsDialogAssign.hidden = true;
+    }
+    if (els.smsDialogAssignMeta) {
+      els.smsDialogAssignMeta.hidden = true;
+      els.smsDialogAssignMeta.textContent = "";
+    }
     els.smsDialog.showModal();
 
     try {
@@ -596,6 +682,11 @@
       setText(els.smsDialogTitle, `SMS #${id}`);
       setText(els.smsDialogMeta, bits.join(" · "));
       setText(els.smsDialogBody, decodeSmsBody(sms.body) || "No SMS body.");
+
+      const ctxRes = await api(`/merchants/sms/${id}`);
+      if (ctxRes.ok) {
+        renderSmsAssign(await ctxRes.json());
+      }
     } catch (error) {
       setText(
         els.smsDialogMeta,
@@ -640,6 +731,69 @@
         error instanceof Error ? error.message : "Could not update Dhan"
       );
       target.disabled = false;
+    }
+  });
+
+  els.smsDialogAssign?.addEventListener("submit", (event) => {
+    event.preventDefault();
+  });
+
+  els.smsDialogAssign?.addEventListener("change", async (event) => {
+    const target = event.target;
+    if (
+      !(target instanceof HTMLSelectElement) ||
+      !(els.smsDialogAssign instanceof HTMLFormElement) ||
+      !(els.smsDialogCategory instanceof HTMLSelectElement) ||
+      !(els.smsDialogMerchant instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+
+    const smsId = Number(els.smsDialogAssign.dataset.smsId);
+    if (!Number.isFinite(smsId) || smsId <= 0) {
+      return;
+    }
+
+    els.smsDialogCategory.disabled = true;
+    els.smsDialogMerchant.disabled = true;
+    setText(els.smsDialogAssignMeta, "Saving…");
+    if (els.smsDialogAssignMeta) {
+      els.smsDialogAssignMeta.hidden = false;
+    }
+
+    try {
+      const res = await api(`/merchants/sms/${smsId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          category:
+            els.smsDialogCategory.value === "" ? null : els.smsDialogCategory.value,
+          merchantKey:
+            els.smsDialogMerchant.value === "" ? null : els.smsDialogMerchant.value,
+          applyToDhan:
+            els.applyDhan instanceof HTMLInputElement && els.applyDhan.checked,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+      if (body.sms) {
+        renderSmsAssign(body.sms);
+      }
+      await load();
+      showDhanResult(body.dhan);
+      if (els.smsDialogAssignMeta) {
+        els.smsDialogAssignMeta.hidden = false;
+      }
+      setText(els.smsDialogAssignMeta, "Saved — this SMS only.");
+    } catch (error) {
+      setText(
+        els.smsDialogAssignMeta,
+        error instanceof Error ? error.message : "Could not save"
+      );
+    } finally {
+      els.smsDialogCategory.disabled = false;
+      els.smsDialogMerchant.disabled = false;
     }
   });
 

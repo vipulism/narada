@@ -1,5 +1,10 @@
 import { FinancialParser } from "../classifiers/financial/financial.parser";
-import { merchantCatalogKey, type MerchantSpendTotal } from "../classifiers/financial/financial.spend";
+import {
+    merchantCatalogKey,
+    spendMerchantLabel,
+    type MerchantSpendTotal,
+    type SmsSpendOverride,
+} from "../classifiers/financial/financial.spend";
 
 /** Expense with no `financial_events.merchant` (older classify). */
 export interface MissingMerchantExpense {
@@ -17,6 +22,7 @@ export interface MerchantExpenseSms {
     amount: number;
     occurredAt: Date;
     body?: string;
+    pushed?: boolean;
 }
 
 /**
@@ -32,8 +38,94 @@ export function expenseCatalogKey(
     body: string | undefined,
     parser: FinancialParser
 ): string {
-    const raw = storedMerchant?.trim() || parser.extractMerchantFromBody(body ?? "") || "Unknown";
-    return merchantCatalogKey(raw);
+    return merchantCatalogKey(expenseMerchant(storedMerchant, body, parser));
+}
+
+/**
+ * Display merchant after recovering a blank stored value from the SMS body.
+ *
+ * @param storedMerchant - `financial_events.merchant`
+ * @param body - SMS body when the stored merchant is empty
+ * @param parser - Shared parser instance
+ */
+export function expenseMerchant(
+    storedMerchant: string | undefined,
+    body: string | undefined,
+    parser: FinancialParser
+): string {
+    return storedMerchant?.trim() || parser.extractMerchantFromBody(body ?? "") || "Unknown";
+}
+
+/**
+ * Catalog key for one expense after a per-SMS merchant move.
+ *
+ * @param storedMerchant - `financial_events.merchant`
+ * @param body - SMS body when the stored merchant is empty
+ * @param parser - Shared parser instance
+ * @param override - Optional merchant move
+ */
+export function effectiveCatalogKey(
+    storedMerchant: string | undefined,
+    body: string | undefined,
+    parser: FinancialParser,
+    override?: Pick<SmsSpendOverride, "merchantKey"> | null
+): string {
+    if (override?.merchantKey) {
+        return override.merchantKey;
+    }
+
+    return expenseCatalogKey(storedMerchant, body, parser);
+}
+
+/**
+ * Groups expense SMS into merchant totals, honoring per-SMS merchant moves.
+ *
+ * @param rows - Expense SMS with stored or recoverable merchants
+ * @param overrides - `sms_spend_overrides` keyed by SMS id
+ */
+export function groupExpenseTotals(
+    rows: MerchantExpenseSms[],
+    overrides?: ReadonlyMap<number, SmsSpendOverride>
+): MerchantSpendTotal[] {
+    const parser = new FinancialParser();
+    const recovered = new Map<string, MerchantSpendTotal>();
+
+    for (const row of rows) {
+        const override = overrides?.get(row.smsId);
+        const patternMerchant = expenseMerchant(row.merchant, row.body, parser);
+        const merchant = override?.merchantLabel?.trim() || override?.merchantKey || patternMerchant;
+        const catalogKey = effectiveCatalogKey(row.merchant, row.body, parser, override);
+        const existing = recovered.get(catalogKey);
+        const pushed = Boolean(row.pushed);
+
+        if (existing) {
+            existing.txCount += 1;
+            existing.pushedCount = (existing.pushedCount ?? 0) + (pushed ? 1 : 0);
+            existing.totalAmount += row.amount;
+
+            if (row.occurredAt >= existing.lastSeenAt) {
+                existing.lastSeenAt = row.occurredAt;
+                existing.merchant = merchant;
+                existing.sampleSmsIds = uniqueSmsIds([row.smsId, ...(existing.sampleSmsIds ?? [])]);
+            } else {
+                existing.sampleSmsIds = uniqueSmsIds([...(existing.sampleSmsIds ?? []), row.smsId]);
+            }
+
+            continue;
+        }
+
+        recovered.set(catalogKey, {
+            merchant,
+            catalogKey,
+            txCount: 1,
+            pushedCount: pushed ? 1 : 0,
+            sampleSmsIds: [row.smsId],
+            totalAmount: row.amount,
+            lastSeenAt: row.occurredAt,
+        });
+    }
+
+    return [...recovered.values()];
 }
 
 /**
@@ -42,29 +134,39 @@ export function expenseCatalogKey(
  * @param named - Expenses that already have a stored merchant
  * @param missing - Expenses with a blank merchant
  * @param key - {@link merchantCatalogKey}
+ * @param overrides - Optional per-SMS merchant moves
  */
 export function listSmsForMerchantKey(
     named: MerchantExpenseSms[],
     missing: MissingMerchantExpense[],
-    key: string
+    key: string,
+    overrides?: ReadonlyMap<number, SmsSpendOverride>
 ): MerchantExpenseSms[] {
     const parser = new FinancialParser();
     const rows: MerchantExpenseSms[] = [];
 
     for (const row of named) {
-        if (expenseCatalogKey(row.merchant, row.body, parser) === key) {
-            rows.push(row);
+        if (effectiveCatalogKey(row.merchant, row.body, parser, overrides?.get(row.smsId)) === key) {
+            rows.push({
+                ...row,
+                merchant:
+                    overrides?.get(row.smsId)?.merchantLabel?.trim() ||
+                    spendMerchantLabel(expenseMerchant(row.merchant, row.body, parser)),
+            });
         }
     }
 
     for (const row of missing) {
-        if (expenseCatalogKey(undefined, row.body, parser) === key) {
+        if (effectiveCatalogKey(undefined, row.body, parser, overrides?.get(row.smsId)) === key) {
             rows.push({
                 smsId: row.smsId,
-                merchant: parser.extractMerchantFromBody(row.body) ?? "Unknown",
+                merchant:
+                    overrides?.get(row.smsId)?.merchantLabel?.trim() ||
+                    spendMerchantLabel(parser.extractMerchantFromBody(row.body) ?? "Unknown"),
                 amount: row.amount,
                 occurredAt: row.occurredAt,
                 body: row.body,
+                pushed: row.pushed,
             });
         }
     }
