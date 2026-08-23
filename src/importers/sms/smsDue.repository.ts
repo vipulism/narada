@@ -1,6 +1,10 @@
 import { RowDataPacket } from "mysql2";
 import { getDb } from "../../db/mariaConnection";
-import { isCardPaymentAckRow, isDueKnowledgeRow } from "../../classifiers/financial/financial.due";
+import {
+    isCardPaymentAckRow,
+    isDueKnowledgeRow,
+    isUtilityDuePaymentRow,
+} from "../../classifiers/financial/financial.due";
 
 /** Analysis row that can become a due knowledge item. */
 export interface DueAnalysisSource {
@@ -11,6 +15,7 @@ export interface DueAnalysisSource {
     classifier: string;
     classifierVersion: string;
     extractedData: Record<string, unknown>;
+    subcategory?: string | null;
 }
 
 /** Pagination and filters for GET /knowledge?kind=due */
@@ -175,6 +180,54 @@ export class SmsDueRepository {
             return [source];
         });
     }
+
+    /**
+     * Lists IGL payment confirmations and IGL merchant expense SMS for due matching.
+     *
+     * @param options - Cap and classifier identity
+     */
+    async listUtilityDuePayments(options: {
+        limit: number;
+        classifier: string;
+        classifierVersion: string;
+    }): Promise<DueAnalysisSource[]> {
+        const db = getDb();
+        const { whereSql, params } = utilityPaymentWhere(options);
+
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                s.id AS sms_id,
+                s.received_at,
+                s.body,
+                s.address,
+                a.subcategory,
+                a.classifier,
+                a.classifier_version,
+                a.extracted_data
+            FROM sms_analysis a
+            JOIN sms_messages s ON s.id = a.sms_id
+            ${whereSql}
+            ORDER BY s.received_at DESC, s.id DESC
+            LIMIT ?
+            `,
+            [...params, options.limit]
+        );
+
+        return rows.flatMap((row) => {
+            const source = rowToSource(row);
+            const merchant =
+                typeof source.extractedData.merchant === "string"
+                    ? source.extractedData.merchant
+                    : null;
+
+            if (!isUtilityDuePaymentRow(source.subcategory, source.body, merchant)) {
+                return [];
+            }
+
+            return [source];
+        });
+    }
 }
 
 function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[] } {
@@ -201,6 +254,8 @@ function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[
             OR UPPER(s.body) LIKE '%MIN DUE%'
             OR UPPER(s.body) LIKE '%AMT DUE%'
             OR UPPER(s.body) LIKE '%AMOUNT DUE%'
+            OR UPPER(s.body) LIKE '%IS PENDING AGAINST%'
+            OR UPPER(s.body) LIKE '%PENDING AGAINST%'
         )`,
         "UPPER(s.body) NOT LIKE '%RECEIVED TOWARDS YOUR CREDIT CARD%'",
         "UPPER(s.body) NOT LIKE '%CREDITED TO YOUR CARD%'",
@@ -271,6 +326,37 @@ function paymentAckWhere(options: {
     return { whereSql: `WHERE ${where.join(" AND ")}`, params };
 }
 
+function utilityPaymentWhere(options: {
+    classifier: string;
+    classifierVersion: string;
+}): { whereSql: string; params: unknown[] } {
+    const where = [
+        "a.classifier = ?",
+        "a.classifier_version = ?",
+        "a.category = 'FINANCIAL'",
+        "a.subcategory = 'expense'",
+        `(
+            (
+                UPPER(s.body) LIKE '%RECEIVED AGAINST%'
+                AND (UPPER(s.body) LIKE '%BP NO%' OR UPPER(s.body) LIKE '%IGL%')
+            )
+            OR JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.merchant')) IN ('IGL', 'Indraprastha Ga')
+            OR UPPER(s.body) LIKE '%INDRAPRASTHA GA%'
+            OR (
+                UPPER(s.body) LIKE '%IGL%'
+                AND (
+                    UPPER(s.body) LIKE '%SPENT%'
+                    OR UPPER(s.body) LIKE '%DEBITED%'
+                    OR UPPER(s.body) LIKE '%RECEIVED AGAINST%'
+                )
+            )
+        )`,
+    ];
+    const params: unknown[] = [options.classifier, options.classifierVersion];
+
+    return { whereSql: `WHERE ${where.join(" AND ")}`, params };
+}
+
 function dueSourceIfReminder(row: RowDataPacket): DueAnalysisSource[] {
     const source = rowToSource(row);
     const cashFlow =
@@ -294,6 +380,7 @@ function rowToSource(row: RowDataPacket): DueAnalysisSource {
         classifier: String(row.classifier),
         classifierVersion: String(row.classifier_version),
         extractedData: parseJsonObject(row.extracted_data) ?? {},
+        subcategory: asOptionalString(row.subcategory) ?? null,
     };
 }
 
