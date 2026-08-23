@@ -16,8 +16,9 @@ const dues = new SmsDueRepository();
 const marks = new DueMarkRepository();
 
 /**
- * Unique due bills with paid/overdue/open from received/credited card SMS
- * and Home `POST /knowledge/:id/paid`. Default status omits paid (Telegram too).
+ * Unique due bills with paid/overdue/open from received/credited card SMS,
+ * IGL confirmation / IGL merchant spend, and Home `POST /knowledge/:id/paid`.
+ * Default status omits paid (Telegram too).
  *
  * @param options - Optional last4, bank, from/to, status, and search
  */
@@ -30,7 +31,7 @@ export async function loadSettledDueKnowledge(options?: {
     q?: string;
 }): Promise<KnowledgeItem[]> {
     const preferred = preferredClassifier();
-    const [dueResult, payments] = await Promise.all([
+    const [dueResult, cardPayments, utilityPayments] = await Promise.all([
         dues.list({
             page: 1,
             limit: DUE_FETCH_CAP,
@@ -45,10 +46,15 @@ export async function loadSettledDueKnowledge(options?: {
             classifier: preferred.name,
             classifierVersion: preferred.version,
         }),
+        dues.listUtilityDuePayments({
+            limit: DUE_FETCH_CAP,
+            classifier: preferred.name,
+            classifierVersion: preferred.version,
+        }),
     ]);
 
     const settled = applyManualDueMarks(
-        settleDueKnowledgeItems(dueResult.items, payments),
+        settleDueKnowledgeItems(dueResult.items, [...cardPayments, ...utilityPayments]),
         await marks.listKeys()
     );
     const bodies = new Map(dueResult.items.map((row) => [row.smsId, row.body]));

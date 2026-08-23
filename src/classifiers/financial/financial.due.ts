@@ -1,4 +1,4 @@
-import { isCreditCardPaymentAck, isDueReminder } from "./financial.kind";
+import { isCreditCardPaymentAck, isDueReminder, isPaidBillReceipt } from "./financial.kind";
 import { DUE_DATE_REGEX, DUE_ON_ORDINAL_REGEX, PAYMENT_DUE_DATE_REGEX } from "./financial.regex";
 
 /**
@@ -38,12 +38,17 @@ export function isUnpaidDueAttention(status?: DueAttentionStatus | string | null
     return status !== "paid";
 }
 
-/** Issuer SMS that a payment was received / credited to a card last4. */
+/**
+ * SMS that can settle a due: card received/credited ack, or a utility
+ * payment (IGL confirmation / spend at that biller).
+ */
 export interface CardPaymentAck {
     smsId: number;
     occurredAt: Date;
     accountLast4: string | null;
     amount: number | null;
+    /** Canonical biller when matching utility dues that have no card last4. */
+    dueParty?: string | null;
 }
 
 /**
@@ -85,6 +90,32 @@ export function isCardPaymentAckRow(
 }
 
 /**
+ * IGL confirmation (`Payment of Rs … received against BP No`) or an expense
+ * SMS at IGL / Indraprastha Gas. Pending BP reminders stay dues, not payments.
+ *
+ * @param subcategory - sms_analysis.subcategory
+ * @param body - SMS body
+ * @param merchant - Extracted merchant if any
+ */
+export function isUtilityDuePaymentRow(
+    subcategory: string | null | undefined,
+    body: string,
+    merchant?: string | null
+): boolean {
+    const upper = body.toUpperCase();
+
+    if (dueBillerAlias(merchant, upper) !== "igl") {
+        return false;
+    }
+
+    if (isDueReminder(upper) && !isPaidBillReceipt(upper)) {
+        return false;
+    }
+
+    return isPaidBillReceipt(upper) || subcategory === "expense";
+}
+
+/**
  * Reads min due and total due labels.
  * Covers `Total Due INR 6447`, HSBC `Total amount is 361` / `total payment due … is INR 1131`,
  * Axis `Payment of INR 280 … is due`, and Axis `Credit Card XX6147 of INR 409 has been generated`.
@@ -101,6 +132,7 @@ export function parseDueAmounts(body: string): DueAmounts {
 const TOTAL_DUE_PATTERNS = [
     /total\s+payment\s+due[\s\S]{0,80}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
     /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+due\b/i,
+    /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+pending\b/i,
     /\bof\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)\s+has\s+been\s+generated\b/i,
     /total(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i,
 ];
@@ -288,6 +320,10 @@ export function dueBillerAlias(
             text.includes("BROADBAND") ||
             text.includes("XSTREAM"));
 
+    if (/\bIGL\b/.test(text) || text.includes("INDRAPRASTHA GA")) {
+        return "igl";
+    }
+
     return isAirtelBroadband ? "airtel-broadband" : null;
 }
 
@@ -463,12 +499,14 @@ export function formatRemainingDays(days: number | null | undefined): string | n
 }
 
 /**
- * Marks each due paid when a received/credited SMS hits the same last4
- * in that bill cycle. Prefer the due whose amount matches, then the closest
- * reminder time, so an older open cycle does not steal a later payment.
+ * Marks each due paid when a matching payment hits the same last4 (card)
+ * or the same utility biller (IGL) in that bill cycle. Prefer the due whose
+ * amount matches, then the closest reminder time, so an older open cycle
+ * does not steal a later payment. IGL card-spend SMS settle the IGL due only,
+ * not the credit-card statement.
  *
  * @param dues - Unique due reminders
- * @param payments - Card payment-ack SMS
+ * @param payments - Card payment-ack or utility payment SMS
  * @param today - `YYYY-MM-DD` (defaults to today IST)
  */
 export function settleDueStatuses(
@@ -478,36 +516,69 @@ export function settleDueStatuses(
 ): Map<number, DueAttentionStatus> {
     const status = new Map<number, DueAttentionStatus>();
     const duesByLast4 = new Map<string, DueReminderIdentity[]>();
+    const duesByParty = new Map<string, DueReminderIdentity[]>();
 
     for (const due of dues) {
+        const party = dueSettleParty(due);
         const last4 = due.accountLast4?.trim() ?? "";
+
+        if (party) {
+            pushGroup(duesByParty, party, due);
+            continue;
+        }
 
         if (!last4) {
             status.set(due.smsId, statusFromDueDate(due.dueDate, today));
             continue;
         }
 
-        const group = duesByLast4.get(last4) ?? [];
-        group.push(due);
-        duesByLast4.set(last4, group);
+        pushGroup(duesByLast4, last4, due);
     }
 
     const paysByLast4 = new Map<string, CardPaymentAck[]>();
+    const paysByParty = new Map<string, CardPaymentAck[]>();
 
     for (const payment of payments) {
+        const party = payment.dueParty?.trim() ?? "";
         const last4 = payment.accountLast4?.trim() ?? "";
+
+        if (party) {
+            pushGroup(paysByParty, party, payment);
+            continue;
+        }
 
         if (!last4) {
             continue;
         }
 
-        const group = paysByLast4.get(last4) ?? [];
-        group.push(payment);
-        paysByLast4.set(last4, group);
+        pushGroup(paysByLast4, last4, payment);
     }
 
-    for (const [last4, cardDues] of duesByLast4) {
-        const sortedDues = [...cardDues].sort((left, right) => {
+    matchPaymentsToDues(duesByLast4, paysByLast4, status, today);
+    matchPaymentsToDues(duesByParty, paysByParty, status, today);
+
+    return status;
+}
+
+function dueSettleParty(due: DueReminderIdentity): string {
+    const party = dueBillerAlias(due.merchant, due.body) ?? due.dueParty?.trim() ?? "";
+    return party === "igl" ? "igl" : "";
+}
+
+function pushGroup<T>(groups: Map<string, T[]>, key: string, row: T): void {
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+}
+
+function matchPaymentsToDues(
+    duesByKey: Map<string, DueReminderIdentity[]>,
+    paysByKey: Map<string, CardPaymentAck[]>,
+    status: Map<number, DueAttentionStatus>,
+    today: string
+): void {
+    for (const [key, groupDues] of duesByKey) {
+        const sortedDues = [...groupDues].sort((left, right) => {
             const byDate = dueDay(left.dueDate).localeCompare(dueDay(right.dueDate));
             if (byDate !== 0) {
                 return byDate;
@@ -515,7 +586,7 @@ export function settleDueStatuses(
 
             return firstRemindedMs(left) - firstRemindedMs(right);
         });
-        const sortedPays = [...(paysByLast4.get(last4) ?? [])].sort(
+        const sortedPays = [...(paysByKey.get(key) ?? [])].sort(
             (left, right) => occurredAtMs(left) - occurredAtMs(right)
         );
         const used = new Set<number>();
@@ -540,8 +611,6 @@ export function settleDueStatuses(
             }
         }
     }
-
-    return status;
 }
 
 function dueDay(dueDate: string | null | undefined): string {

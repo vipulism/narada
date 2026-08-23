@@ -5,6 +5,7 @@ import {
     hasPayableDueAmount,
     isCardPaymentAckRow,
     isDueKnowledgeRow,
+    isUtilityDuePaymentRow,
     isUnpaidDueAttention,
     keepLatestDueReminders,
     parseDueAmounts,
@@ -148,12 +149,24 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
             accountLast4: asOptionalString(data.accountLast4),
             accountName: asOptionalString(data.accountName),
             bank: asOptionalString(data.bank),
-            merchant: merchant ?? (dueParty === "airtel-broadband" ? "Airtel" : null),
+            merchant: merchant ?? duePartyDisplay(dueParty),
             dueParty,
             classifier: source.classifier,
             classifierVersion: source.classifierVersion,
         },
     };
+}
+
+function duePartyDisplay(dueParty: string | null): string | null {
+    if (dueParty === "airtel-broadband") {
+        return "Airtel";
+    }
+
+    if (dueParty === "igl") {
+        return "IGL";
+    }
+
+    return null;
 }
 
 /**
@@ -179,10 +192,11 @@ export function dedupeDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[]
 }
 
 /**
- * Dedupes due SMS, then marks paid / overdue / open from card payment-ack SMS.
+ * Dedupes due SMS, then marks paid / overdue / open from card payment-ack
+ * SMS and IGL confirmation / IGL merchant spend SMS.
  *
  * @param dueSources - Due reminder analysis rows
- * @param paymentSources - Candidate received/credited analysis rows
+ * @param paymentSources - Candidate received/credited or utility payment rows
  * @param today - `YYYY-MM-DD` (defaults to today IST)
  */
 export function settleDueKnowledgeItems(
@@ -220,21 +234,35 @@ export function settleDueKnowledgeItems(
             typeof source.extractedData.cashFlow === "string"
                 ? source.extractedData.cashFlow
                 : undefined;
+        const merchant = asOptionalString(source.extractedData.merchant);
+        const subcategory = source.subcategory ?? "bill";
 
-        if (!isCardPaymentAckRow("bill", cashFlow, source.body)) {
-            return [];
+        if (isCardPaymentAckRow(subcategory, cashFlow, source.body)) {
+            return [
+                {
+                    smsId: source.smsId,
+                    occurredAt: source.occurredAt,
+                    accountLast4:
+                        asOptionalString(source.extractedData.accountLast4) ??
+                        cardLast4FromBody(source.body),
+                    amount: asFiniteNumber(source.extractedData.amount),
+                },
+            ];
         }
 
-        return [
-            {
-                smsId: source.smsId,
-                occurredAt: source.occurredAt,
-                accountLast4:
-                    asOptionalString(source.extractedData.accountLast4) ??
-                    cardLast4FromBody(source.body),
-                amount: asFiniteNumber(source.extractedData.amount),
-            },
-        ];
+        if (isUtilityDuePaymentRow(subcategory, source.body, merchant)) {
+            return [
+                {
+                    smsId: source.smsId,
+                    occurredAt: source.occurredAt,
+                    accountLast4: null,
+                    amount: asFiniteNumber(source.extractedData.amount),
+                    dueParty: dueBillerAlias(merchant, source.body),
+                },
+            ];
+        }
+
+        return [];
     });
     const statuses = settleDueStatuses(unique, payments, today);
 
