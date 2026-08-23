@@ -1,7 +1,12 @@
-:root {
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
   --bg: #0f1419;
   --bg-raise: #161d26;
+  --bg-glow: #1c2733;
+  --panel: color-mix(in srgb, var(--bg-raise) 88%, black);
+  --card: color-mix(in srgb, var(--bg) 55%, var(--bg-raise));
+  --overlay: rgb(0 0 0 / 55%);
   --border: #2a3542;
   --text: #e8eef4;
   --muted: #8b9aab;
@@ -19,6 +24,26 @@
   --sans: "Segoe UI", system-ui, sans-serif;
 }
 
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4efe6;
+  --bg-raise: #fffdf8;
+  --bg-glow: #f3e2c4;
+  --panel: #fffdf8;
+  --card: #f7f2ea;
+  --overlay: rgb(28 36 48 / 40%);
+  --border: #d5cbbd;
+  --text: #1c2430;
+  --muted: #5c6673;
+  --accent: #9a6b24;
+  --due: #9a6b24;
+  --blocked: #b54b3e;
+  --ok: #2f7a48;
+  --warn: #a67c00;
+  --fail: #b54b3e;
+  --focus: #3d6ea8;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -27,7 +52,7 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  background: radial-gradient(1200px 500px at 10% -10%, #1c2733 0%, var(--bg) 55%);
+  background: radial-gradient(1200px 500px at 10% -10%, var(--bg-glow) 0%, var(--bg) 55%);
   color: var(--text);
   font-family: var(--sans);
 }
@@ -182,7 +207,7 @@ h1 {
 }
 
 .panel {
-  background: color-mix(in srgb, var(--bg-raise) 88%, black);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1rem 1.1rem 1.15rem;
@@ -342,7 +367,7 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.8rem 0.9rem;
-  background: color-mix(in srgb, var(--bg) 55%, var(--bg-raise));
+  background: var(--card);
 }
 
 .card-top {
@@ -514,7 +539,7 @@ h2 {
 }
 
 .sms-dialog::backdrop {
-  background: rgb(0 0 0 / 55%);
+  background: var(--overlay);
 }
 
 .sms-dialog-head {

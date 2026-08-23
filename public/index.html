@@ -8,6 +8,20 @@
       name="description"
       content="Narada attention home: dues, blocked Firefly pushes, service health, last SMS import."
     />
+    <script>
+      (function () {
+        var theme = "dark";
+        try {
+          var saved = localStorage.getItem("narada.theme");
+          if (saved === "light" || saved === "dark") {
+            theme = saved;
+          } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+            theme = "light";
+          }
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
     <link rel="stylesheet" href="/styles.css" />
     <link
       rel="icon"
@@ -31,6 +45,7 @@
         <p id="attention-summary" class="summary" aria-live="polite">Loading…</p>
         <p id="clock" class="muted"></p>
         <p class="top-actions">
+          <button type="button" id="theme-toggle" class="btn">Light</button>
           <button type="button" id="refresh" class="btn">Refresh</button>
           <button type="button" id="send-digest" class="btn mark-due">
             Send digest
@@ -144,6 +159,7 @@
         this Narada instance.
       </p>
     </noscript>
+    <script src="/theme.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
 </html>
