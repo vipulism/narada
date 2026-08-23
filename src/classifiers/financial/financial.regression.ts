@@ -14,7 +14,7 @@ import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
-import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
+import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
 
@@ -2553,6 +2553,15 @@ console.log("docker snapshot regression ok");
 
 function runAttentionDigestRegression(): void {
     const failures: string[] = [];
+
+    if (isDailyDigestDue(new Date("2026-08-23T02:29:00.000Z"))) {
+        failures.push("07:59 IST should be before the daily digest window");
+    }
+
+    if (!isDailyDigestDue(new Date("2026-08-23T02:30:00.000Z"))) {
+        failures.push("08:00 IST should open the daily digest window");
+    }
+
     const airtel = {
         smsId: 18850,
         occurredAt: new Date("2026-08-16T07:21:00+05:30"),

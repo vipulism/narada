@@ -26,6 +26,23 @@ export interface DhanMonthStats {
 }
 
 /**
+ * True from 08:00 IST onward — the daily digest window.
+ *
+ * @param now - Instant to check
+ */
+export function isDailyDigestDue(now = new Date()): boolean {
+    const hour = Number(
+        new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Asia/Kolkata",
+            hour: "2-digit",
+            hourCycle: "h23",
+        }).format(now)
+    );
+
+    return Number.isFinite(hour) && hour >= 8;
+}
+
+/**
  * Inclusive IST ranges: 1st→today vs the same days last month (clamped).
  *
  * @param today - `YYYY-MM-DD` in IST
