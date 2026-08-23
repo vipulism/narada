@@ -233,29 +233,37 @@ export class SmsDueRepository {
 function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[] } {
     const where = [
         "a.classifier = ?",
-        "a.classifier_version = ?",
         "a.category = 'FINANCIAL'",
-        "a.subcategory = 'bill'",
-        "JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.cashFlow')) = 'NEUTRAL'",
         `(
             (
-                JSON_EXTRACT(a.extracted_data, '$.dueDate') IS NOT NULL
-                AND JSON_TYPE(JSON_EXTRACT(a.extracted_data, '$.dueDate')) <> 'NULL'
-                AND JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.dueDate')) <> ''
+                a.classifier_version = ?
+                AND a.subcategory = 'bill'
+                AND JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.cashFlow')) = 'NEUTRAL'
+                AND (
+                    (
+                        JSON_EXTRACT(a.extracted_data, '$.dueDate') IS NOT NULL
+                        AND JSON_TYPE(JSON_EXTRACT(a.extracted_data, '$.dueDate')) <> 'NULL'
+                        AND JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.dueDate')) <> ''
+                    )
+                    OR UPPER(s.body) LIKE '%IS DUE ON%'
+                    OR UPPER(s.body) LIKE '%IS DUE BY%'
+                    OR UPPER(s.body) LIKE '%IS DUE TODAY%'
+                    OR UPPER(s.body) LIKE '%BILL DUE%'
+                    OR UPPER(s.body) LIKE '%PAYMENT DUE%'
+                    OR UPPER(s.body) LIKE '%TO BE PAID BY%'
+                    OR UPPER(s.body) LIKE '%PAYABLE BY%'
+                    OR UPPER(s.body) LIKE '%TOTAL DUE%'
+                    OR UPPER(s.body) LIKE '%MIN DUE%'
+                    OR UPPER(s.body) LIKE '%AMT DUE%'
+                    OR UPPER(s.body) LIKE '%AMOUNT DUE%'
+                    OR UPPER(s.body) LIKE '%IS PENDING AGAINST%'
+                    OR UPPER(s.body) LIKE '%PENDING AGAINST%'
+                )
             )
-            OR UPPER(s.body) LIKE '%IS DUE ON%'
-            OR UPPER(s.body) LIKE '%IS DUE BY%'
-            OR UPPER(s.body) LIKE '%IS DUE TODAY%'
-            OR UPPER(s.body) LIKE '%BILL DUE%'
-            OR UPPER(s.body) LIKE '%PAYMENT DUE%'
-            OR UPPER(s.body) LIKE '%TO BE PAID BY%'
-            OR UPPER(s.body) LIKE '%PAYABLE BY%'
-            OR UPPER(s.body) LIKE '%TOTAL DUE%'
-            OR UPPER(s.body) LIKE '%MIN DUE%'
-            OR UPPER(s.body) LIKE '%AMT DUE%'
-            OR UPPER(s.body) LIKE '%AMOUNT DUE%'
-            OR UPPER(s.body) LIKE '%IS PENDING AGAINST%'
-            OR UPPER(s.body) LIKE '%PENDING AGAINST%'
+            OR (
+                UPPER(s.body) LIKE '%PENDING AGAINST%'
+                AND UPPER(s.body) NOT LIKE '%RECEIVED AGAINST%'
+            )
         )`,
         "UPPER(s.body) NOT LIKE '%RECEIVED TOWARDS YOUR CREDIT CARD%'",
         "UPPER(s.body) NOT LIKE '%CREDITED TO YOUR CARD%'",

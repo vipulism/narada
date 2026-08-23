@@ -65,12 +65,16 @@ export function isDueKnowledgeRow(
     body: string
 ): boolean {
     const upper = body.toUpperCase();
-    return (
-        subcategory === "bill" &&
-        cashFlow === "NEUTRAL" &&
-        isDueReminder(upper) &&
-        !isCreditCardPaymentAck(upper)
-    );
+
+    if (isCreditCardPaymentAck(upper) || isPaidBillReceipt(upper)) {
+        return false;
+    }
+
+    if (dueBillerAlias(null, upper) === "igl" && isDueReminder(upper)) {
+        return true;
+    }
+
+    return subcategory === "bill" && cashFlow === "NEUTRAL" && isDueReminder(upper);
 }
 
 /**
@@ -629,6 +633,12 @@ function paymentFitsDue(
 
     if (amountDistance(payment, due) <= 1) {
         return payAt >= windowStart && payAt <= cycleEnd;
+    }
+
+    // IGL confirmation / merchant spend must match the bill amount. A nearby
+    // older IGL UPI must not hide the open pending due.
+    if (payment.dueParty?.trim()) {
+        return false;
     }
 
     const index = orderedDues.indexOf(due);
