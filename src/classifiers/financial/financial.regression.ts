@@ -2433,6 +2433,10 @@ function runDueFeedRegression(): void {
         failures.push("IGL pending BP should be a due card");
     }
 
+    if (!isDueKnowledgeRow("expense", "OUTFLOW", iglPending)) {
+        failures.push("IGL pending BP should still be a due when analysis cashFlow is wrong");
+    }
+
     if (isDueKnowledgeRow("bill", "NEUTRAL", iglPaid)) {
         failures.push("IGL payment confirmation must not be a due card");
     }
@@ -2552,6 +2556,23 @@ function runDueFeedRegression(): void {
 
     if (iglWrongMonth.get(20) === "paid") {
         failures.push("Feb IGL confirmation must not pay the August IGL pending");
+    }
+
+    const iglNearbyOtherPay = {
+        smsId: 21,
+        occurredAt: new Date("2026-08-22T11:00:00+05:30"),
+        accountLast4: "1412",
+        amount: 1427.02,
+        dueParty: "igl",
+    };
+    const iglNearby = settleDueStatuses([iglDue2676], [iglNearbyOtherPay], "2026-08-23");
+
+    if (iglNearby.get(20) === "paid") {
+        failures.push("different-amount IGL spend in-window must not hide the pending due");
+    }
+
+    if (iglNearby.get(20) !== "open") {
+        failures.push(`August IGL pending should stay open, got ${iglNearby.get(20)}`);
     }
 
     const iglNotCardBill = settleDueStatuses(
