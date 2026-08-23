@@ -13,6 +13,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
+import { isIglPendingReminder } from "./financial.kind";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
@@ -467,6 +468,18 @@ const CASES: RegressionCase[] = [
         id: "igl-pending-bp-due",
         address: "JM-IGLMKT-S",
         body: "Payment of Rs 2676.78 is pending against the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid. IGL",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 2676.78,
+            merchant: "IGL",
+        },
+    },
+    {
+        id: "igl-pending-bp-wrapped",
+        address: "JM-IGLMKT-S",
+        body: "Payment of Rs 2676.78 is pending\nagainst the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid.",
         expect: {
             category: SmsCategory.FINANCIAL,
             subcategory: "bill",
@@ -2439,6 +2452,44 @@ function runDueFeedRegression(): void {
 
     if (isDueKnowledgeRow("bill", "NEUTRAL", iglPaid)) {
         failures.push("IGL payment confirmation must not be a due card");
+    }
+
+    const iglWrapped =
+        "Payment of Rs 2676.78 is pending\nagainst the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid.";
+
+    if (!isIglPendingReminder(iglWrapped, "JM-IGLMKT-S")) {
+        failures.push("newline IGL pending should still count as a reminder");
+    }
+
+    if (!isDueKnowledgeRow("UNKNOWN", undefined, iglWrapped, "JM-IGLMKT-S")) {
+        failures.push("IGLMKT pending without analysis facts should be a due");
+    }
+
+    const iglFromInbox = settleDueKnowledgeItems(
+        [
+            {
+                smsId: 42,
+                occurredAt: new Date("2026-08-20T10:00:00+05:30"),
+                body: iglWrapped,
+                address: "JM-IGLMKT-S",
+                classifier: "regex-financial",
+                classifierVersion: "1.3.25",
+                extractedData: {},
+                subcategory: "UNKNOWN",
+            },
+        ],
+        [],
+        "2026-08-23"
+    );
+    const iglInboxDue = iglFromInbox.find((item) => item.type === "due" && item.id === 42);
+
+    if (
+        iglInboxDue?.type !== "due" ||
+        iglInboxDue.payload.status !== "open" ||
+        iglInboxDue.payload.amount !== 2676.78 ||
+        iglInboxDue.payload.merchant !== "IGL"
+    ) {
+        failures.push("IGL pending SMS should become an open IGL due from the inbox scan");
     }
 
     const iglFirst = {

@@ -1,7 +1,7 @@
 import { CLASSIFIERS } from "../classifiers/classifier.registry";
 import { todayIstDate } from "../classifiers/financial/financial.due";
 import { DueMarkRepository } from "../db/repositories/dueMark.repository";
-import { SmsDueRepository } from "../importers/sms/smsDue.repository";
+import { SmsDueRepository, type DueAnalysisSource } from "../importers/sms/smsDue.repository";
 import {
     applyManualDueMarks,
     filterDueKnowledgeItems,
@@ -31,7 +31,7 @@ export async function loadSettledDueKnowledge(options?: {
     q?: string;
 }): Promise<KnowledgeItem[]> {
     const preferred = preferredClassifier();
-    const [dueResult, cardPayments, utilityPayments] = await Promise.all([
+    const [dueResult, iglPending, cardPayments, utilityPayments] = await Promise.all([
         dues.list({
             page: 1,
             limit: DUE_FETCH_CAP,
@@ -40,6 +40,7 @@ export async function loadSettledDueKnowledge(options?: {
             classifier: preferred.name,
             classifierVersion: preferred.version,
         }),
+        dues.listIglPendingDues({ limit: DUE_FETCH_CAP }),
         dues.listCardPaymentAcks({
             limit: DUE_FETCH_CAP,
             last4: options?.last4,
@@ -52,12 +53,13 @@ export async function loadSettledDueKnowledge(options?: {
             classifierVersion: preferred.version,
         }),
     ]);
+    const dueSources = mergeDueSources(dueResult.items, iglPending);
 
     const settled = applyManualDueMarks(
-        settleDueKnowledgeItems(dueResult.items, [...cardPayments, ...utilityPayments]),
+        settleDueKnowledgeItems(dueSources, [...cardPayments, ...utilityPayments]),
         await marks.listKeys()
     );
-    const bodies = new Map(dueResult.items.map((row) => [row.smsId, row.body]));
+    const bodies = new Map(dueSources.map((row) => [row.smsId, row.body]));
 
     return filterDueKnowledgeItems(settled, options?.status)
         .filter((item) => dueInTimeWindow(item, options?.from, options?.to))
@@ -85,6 +87,29 @@ function dueInTimeWindow(item: KnowledgeItem, from?: Date, to?: Date): boolean {
     }
 
     return true;
+}
+
+/**
+ * One row per SMS id, first group wins (analysis list, then IGL inbox scan).
+ *
+ * @param groups - Due candidate lists
+ */
+function mergeDueSources(...groups: DueAnalysisSource[][]): DueAnalysisSource[] {
+    const seen = new Set<number>();
+    const merged: DueAnalysisSource[] = [];
+
+    for (const group of groups) {
+        for (const row of group) {
+            if (seen.has(row.smsId)) {
+                continue;
+            }
+
+            seen.add(row.smsId);
+            merged.push(row);
+        }
+    }
+
+    return merged;
 }
 
 function preferredClassifier(): { name: string; version: string } {
