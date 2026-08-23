@@ -20,6 +20,7 @@
     summary: document.getElementById("attention-summary"),
     clock: document.getElementById("clock"),
     refresh: document.getElementById("refresh"),
+    sendDigest: document.getElementById("send-digest"),
     importStatus: document.getElementById("import-status"),
     live: document.getElementById("live-status"),
     services: document.getElementById("services"),
@@ -737,6 +738,36 @@
   els.refresh?.addEventListener("click", () => {
     void load();
   });
+
+  els.sendDigest?.addEventListener("click", () => {
+    void sendDigest();
+  });
+
+  async function sendDigest() {
+    if (!(els.sendDigest instanceof HTMLButtonElement)) {
+      return;
+    }
+    els.sendDigest.disabled = true;
+    setText(els.summary, "Sending Telegram digest…");
+    try {
+      const res = await fetch("/attention/digest", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.sent) {
+        throw new Error(body.reason || "Could not send digest");
+      }
+      setText(els.summary, `Digest sent (${body.day || "today"})`);
+    } catch (error) {
+      setText(
+        els.summary,
+        error instanceof Error ? error.message : "Could not send digest"
+      );
+    } finally {
+      els.sendDigest.disabled = false;
+    }
+  }
 
   els.dues?.addEventListener("click", (event) => {
     const target = event.target;

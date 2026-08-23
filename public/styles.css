@@ -100,6 +100,13 @@ h1 {
   justify-items: end;
 }
 
+.top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
 .summary {
   color: var(--text);
   font-weight: 600;

@@ -47,7 +47,7 @@ GET /imports?limit=1
 GET /health
 ```
 
-Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). The query string on `/` is kept in sync (`/?since=6&status=overdue`).
+Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). **Send digest** posts `POST /attention/digest` (same Telegram daily attention as 08:00 IST, on demand). The query string on `/` is kept in sync (`/?since=6&status=overdue`).
 
 ---
 
@@ -212,6 +212,22 @@ Filters:
 | `from` / `to` | ISO datetime. Dues use **due date** (SMS time if due date missing). Exceptions use event time. |
 | `sort` | `dueDate` / `amount` / `bank` / `occurredAt` / `status` |
 | `order` | `asc` (default) or `desc` |
+
+```text
+POST /attention/digest
+```
+
+Sends today's daily Telegram attention now (dues + Dhan month + spend). Works before 08:00 IST and if the scheduled send already ran. Success records the IST day so the 08:00 catch-up does not send a second copy.
+
+```bash
+curl -X POST "http://192.168.1.32:4000/attention/digest"
+```
+
+```json
+{ "sent": true, "day": "2026-08-23" }
+```
+
+Missing Telegram env → `503`. Telegram API failure → `502`.
 
 ```bash
 curl "http://192.168.1.32:4000/knowledge?kind=investment"
