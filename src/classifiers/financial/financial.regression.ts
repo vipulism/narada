@@ -439,6 +439,18 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "igl-pending-bp-due",
+        address: "JM-IGLMKT-S",
+        body: "Payment of Rs 2676.78 is pending against the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid. IGL",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 2676.78,
+            merchant: "IGL",
+        },
+    },
+    {
         id: "12268-icici-indraprastha-gas-igl",
         address: "AD-ICICIT",
         body: "ICICI Bank Acct XX412 debited for Rs 1310.78 on 26-Aug-24; Indraprastha Ga credited. UPI:423954294410. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
@@ -2382,6 +2394,43 @@ function runDueFeedRegression(): void {
         "REMINDER: Bill of Rs. 589.00 for Airtel Fixedline account no. 01142311413 dated 06-JUL-26 is due today. To pay via Airtel Thanks App, click i.airtel.in/BBpayBills. Please ignore if paid.";
     const airtelWifiAug =
         "REMINDER: Bill of Rs. 589.00 for Airtel Wi-Fi account no. 01142311413 dated 06-AUG-26 is due today. To pay via Airtel Thanks App, click i.airtel.in/BBpayBills. Please ignore if paid.";
+
+    const iglPending =
+        "Payment of Rs 2676.78 is pending against the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid. IGL";
+    const iglPaid =
+        "Online Payment Confirmation \nDear Customer, Payment of Rs. 1116.99 received against BP No. 7000368084 On 19.12.2025. Posting of payment is subject to realization. IGL \n";
+
+    if (parseDueAmounts(iglPending).totalDue !== 2676.78) {
+        failures.push(`IGL pending amount ${parseDueAmounts(iglPending).totalDue} != 2676.78`);
+    }
+
+    if (!isDueKnowledgeRow("bill", "NEUTRAL", iglPending)) {
+        failures.push("IGL pending BP should be a due card");
+    }
+
+    if (isDueKnowledgeRow("bill", "NEUTRAL", iglPaid)) {
+        failures.push("IGL payment confirmation must not be a due card");
+    }
+
+    const iglFirst = {
+        smsId: 1,
+        occurredAt: new Date("2026-08-20T10:00:00+05:30"),
+        dueDate: null as string | null,
+        accountLast4: null as string | null,
+        merchant: "IGL",
+        body: iglPending,
+        amount: 2676.78,
+    };
+    const iglAgain = { ...iglFirst, smsId: 2, occurredAt: new Date("2026-08-22T10:00:00+05:30") };
+    const iglCycle = keepLatestDueReminders([iglFirst, iglAgain]);
+
+    if (iglCycle.length !== 1 || iglCycle[0]?.smsId !== 2) {
+        failures.push("same-month IGL pending reminders should collapse to one due");
+    }
+
+    if (dueBillerAlias("IGL", iglPending) !== "igl") {
+        failures.push("IGL pending should alias to igl");
+    }
 
     if (dueBillerAlias(null, airtelWifiJul) !== "airtel-broadband") {
         failures.push("Airtel Wi-Fi should alias to airtel-broadband");

@@ -101,6 +101,7 @@ export function parseDueAmounts(body: string): DueAmounts {
 const TOTAL_DUE_PATTERNS = [
     /total\s+payment\s+due[\s\S]{0,80}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
     /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+due\b/i,
+    /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+pending\b/i,
     /\bof\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)\s+has\s+been\s+generated\b/i,
     /total(?:\s+(?:amt|amount))?(?:\s+due)?(?:\s+is)?[^\d]{0,16}(?:INR|Rs\.?|₹)?\s*([\d,]+(?:\.\d+)?)/i,
 ];
@@ -287,6 +288,10 @@ export function dueBillerAlias(
             text.includes("FIXED LINE") ||
             text.includes("BROADBAND") ||
             text.includes("XSTREAM"));
+
+    if (/\bIGL\b/.test(text) || text.includes("INDRAPRASTHA GA")) {
+        return "igl";
+    }
 
     return isAirtelBroadband ? "airtel-broadband" : null;
 }

@@ -572,6 +572,8 @@ export function isDueReminder(body: string): boolean {
         body.includes("BILL DUE") ||
         body.includes("PAYMENT DUE") ||
         (body.includes("PAYMENT OF") && /\bIS DUE\b/.test(body)) ||
+        body.includes("IS PENDING AGAINST") ||
+        (body.includes("PAYMENT OF") && body.includes("PENDING AGAINST")) ||
         ((body.includes("AMOUNT DUE") || body.includes("AMT DUE")) &&
             (body.includes("CREDIT CARD") || body.includes("CARD"))) ||
         ((body.includes("TOTAL DUE") || body.includes("MIN DUE")) &&

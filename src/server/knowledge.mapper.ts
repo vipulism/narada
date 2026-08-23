@@ -148,12 +148,24 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
             accountLast4: asOptionalString(data.accountLast4),
             accountName: asOptionalString(data.accountName),
             bank: asOptionalString(data.bank),
-            merchant: merchant ?? (dueParty === "airtel-broadband" ? "Airtel" : null),
+            merchant: merchant ?? duePartyDisplay(dueParty),
             dueParty,
             classifier: source.classifier,
             classifierVersion: source.classifierVersion,
         },
     };
+}
+
+function duePartyDisplay(dueParty: string | null): string | null {
+    if (dueParty === "airtel-broadband") {
+        return "Airtel";
+    }
+
+    if (dueParty === "igl") {
+        return "IGL";
+    }
+
+    return null;
 }
 
 /**
