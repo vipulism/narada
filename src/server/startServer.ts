@@ -2,6 +2,7 @@ import express from "express";
 import { mountAttentionDashboard } from "./publicDashboard";
 import { createEventsRouter } from "./routes/events.route";
 import { createImportsRouter } from "./routes/imports.route";
+import { createAttentionRouter } from "./routes/attention.route";
 import { createKnowledgeRouter } from "./routes/knowledge.route";
 import { createMerchantsRouter } from "./routes/merchants.route";
 import { createServiceRoutes } from "./routes/services.route";
@@ -22,6 +23,7 @@ export function startServer() {
     app.use(createServiceRoutes());
     app.use(createImportsRouter());
     app.use(createSmsRouter());
+    app.use(createAttentionRouter());
     app.use(createKnowledgeRouter());
     app.use(createMerchantsRouter());
     app.use(createTimelineRouter());
