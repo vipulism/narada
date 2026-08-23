@@ -1,4 +1,4 @@
-import cron, { type ScheduleOptions } from "node-cron";
+import cron from "node-cron";
 import { FolderConnector } from "../connectors/folder/folder.connector";
 import { SmsImportService } from "../importers/sms/smsImport.service";
 import { maybeRunDailyAttentionDigest, runAttentionAlerts } from "../notifiers/attention.alerts";
@@ -39,7 +39,7 @@ export async function startImportScheduler(): Promise<void> {
             name: "daily-attention-digest",
             timezone: "Asia/Kolkata",
             missedExecutionTolerance: 15 * 60_000,
-        } as ScheduleOptions
+        } as Parameters<typeof cron.schedule>[2]
     );
 
     console.info("📂 Import Scheduler started (every 10 minutes; daily digest 08:00 IST, catch-up after)");
