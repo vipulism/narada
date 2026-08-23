@@ -1,4 +1,9 @@
-import { isCreditCardPaymentAck, isDueReminder, isPaidBillReceipt } from "./financial.kind";
+import {
+    isCreditCardPaymentAck,
+    isDueReminder,
+    isIglPendingReminder,
+    isPaidBillReceipt,
+} from "./financial.kind";
 import { DUE_DATE_REGEX, DUE_ON_ORDINAL_REGEX, PAYMENT_DUE_DATE_REGEX } from "./financial.regex";
 
 /**
@@ -59,11 +64,13 @@ export interface CardPaymentAck {
  * @param subcategory - sms_analysis.subcategory
  * @param cashFlow - extracted cashFlow
  * @param body - SMS body
+ * @param address - Optional sender
  */
 export function isDueKnowledgeRow(
     subcategory: string | null | undefined,
     cashFlow: string | undefined,
-    body: string
+    body: string,
+    address?: string | null
 ): boolean {
     const upper = body.toUpperCase();
 
@@ -71,7 +78,7 @@ export function isDueKnowledgeRow(
         return false;
     }
 
-    if (dueBillerAlias(null, upper) === "igl" && isDueReminder(upper)) {
+    if (isIglPendingReminder(body, address)) {
         return true;
     }
 
@@ -325,7 +332,7 @@ export function dueBillerAlias(
             text.includes("BROADBAND") ||
             text.includes("XSTREAM"));
 
-    if (/\bIGL\b/.test(text) || text.includes("INDRAPRASTHA GA")) {
+    if (/\bIGL\b/.test(text) || text.includes("INDRAPRASTHA GA") || text.includes("IGLMKT")) {
         return "igl";
     }
 

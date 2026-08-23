@@ -1,5 +1,6 @@
 import { RowDataPacket } from "mysql2";
 import { getDb } from "../../db/mariaConnection";
+import { isIglPendingReminder } from "../../classifiers/financial/financial.kind";
 import {
     isCardPaymentAckRow,
     isDueKnowledgeRow,
@@ -125,7 +126,7 @@ export class SmsDueRepository {
                 ? source.extractedData.cashFlow
                 : undefined;
 
-        if (!isDueKnowledgeRow(asOptionalString(row.subcategory), cashFlow, source.body)) {
+        if (!isDueKnowledgeRow(asOptionalString(row.subcategory), cashFlow, source.body, source.address)) {
             return null;
         }
 
@@ -228,6 +229,57 @@ export class SmsDueRepository {
             return [source];
         });
     }
+
+    /**
+     * Finds IGL pending-BP SMS on `sms_messages` even when analysis is
+     * UNKNOWN, an old classifier version, or missing cashFlow.
+     *
+     * @param options - Cap
+     */
+    async listIglPendingDues(options: { limit: number }): Promise<DueAnalysisSource[]> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT
+                s.id AS sms_id,
+                s.received_at,
+                s.body,
+                s.address,
+                a.subcategory,
+                a.classifier,
+                a.classifier_version,
+                a.extracted_data
+            FROM sms_messages s
+            LEFT JOIN sms_analysis a
+                ON a.sms_id = s.id
+            WHERE UPPER(s.body) NOT LIKE '%RECEIVED AGAINST%'
+              AND UPPER(s.body) LIKE '%PENDING%'
+              AND (
+                    UPPER(s.address) LIKE '%IGLMKT%'
+                    OR UPPER(s.body) LIKE '%IGLMKT%'
+                    OR UPPER(s.body) LIKE '%BP NO%'
+                    OR UPPER(s.body) LIKE '% IGL%'
+                    OR UPPER(s.body) REGEXP 'PENDING[[:space:]]+AGAINST'
+              )
+            ORDER BY s.received_at DESC, s.id DESC
+            LIMIT ?
+            `,
+            [options.limit]
+        );
+
+        const seen = new Set<number>();
+
+        return rows.flatMap((row) => {
+            const source = rowToSource(row);
+
+            if (seen.has(source.smsId) || !isIglPendingReminder(source.body, source.address)) {
+                return [];
+            }
+
+            seen.add(source.smsId);
+            return [source];
+        });
+    }
 }
 
 function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[] } {
@@ -261,8 +313,19 @@ function dueWhere(options: ListDueOptions): { whereSql: string; params: unknown[
                 )
             )
             OR (
-                UPPER(s.body) LIKE '%PENDING AGAINST%'
-                AND UPPER(s.body) NOT LIKE '%RECEIVED AGAINST%'
+                UPPER(s.body) NOT LIKE '%RECEIVED AGAINST%'
+                AND (
+                    UPPER(s.body) REGEXP 'PENDING[[:space:]]+AGAINST'
+                    OR (
+                        UPPER(s.body) LIKE '%PENDING%'
+                        AND (
+                            UPPER(s.address) LIKE '%IGLMKT%'
+                            OR UPPER(s.body) LIKE '%IGLMKT%'
+                            OR UPPER(s.body) LIKE '%BP NO%'
+                            OR UPPER(s.body) LIKE '% IGL%'
+                        )
+                    )
+                )
             )
         )`,
         "UPPER(s.body) NOT LIKE '%RECEIVED TOWARDS YOUR CREDIT CARD%'",
@@ -372,7 +435,7 @@ function dueSourceIfReminder(row: RowDataPacket): DueAnalysisSource[] {
             ? source.extractedData.cashFlow
             : undefined;
 
-    if (!isDueKnowledgeRow("bill", cashFlow, source.body)) {
+    if (!isDueKnowledgeRow("bill", cashFlow, source.body, source.address)) {
         return [];
     }
 

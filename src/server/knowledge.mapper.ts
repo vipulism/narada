@@ -210,7 +210,7 @@ export function settleDueKnowledgeItems(
                 ? source.extractedData.cashFlow
                 : undefined;
 
-        if (!isDueKnowledgeRow("bill", cashFlow, source.body)) {
+        if (!isDueKnowledgeRow("bill", cashFlow, source.body, source.address)) {
             return [];
         }
 
