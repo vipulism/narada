@@ -47,7 +47,7 @@ GET /imports?limit=1
 GET /health
 ```
 
-Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). **Send digest** posts `POST /attention/digest` (same Telegram daily attention as 08:00 IST, on demand). The query string on `/` is kept in sync (`/?since=6&status=overdue`).
+Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). **Send digest** posts `POST /attention/digest` (same Telegram daily attention as 08:00 IST, on demand). The query string on `/` is kept in sync (`/?since=6&status=overdue`). Services and Dues headings collapse the box; the choice stays in the browser.
 
 ---
 

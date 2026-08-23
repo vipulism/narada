@@ -51,11 +51,14 @@
       </section>
 
       <section class="panel" aria-labelledby="services-heading">
-        <div class="section-head">
-          <h2 id="services-heading">Services</h2>
-          <p id="services-meta" class="muted"></p>
-        </div>
-        <div id="services" class="chips" role="list"></div>
+        <details class="panel-fold" data-fold="services" open>
+          <summary class="section-head">
+            <span class="fold-mark" aria-hidden="true"></span>
+            <h2 id="services-heading">Services</h2>
+            <p id="services-meta" class="muted"></p>
+          </summary>
+          <div id="services" class="chips" role="list"></div>
+        </details>
       </section>
 
       <section class="panel" aria-labelledby="tools-heading">
@@ -115,11 +118,14 @@
 
       <div class="columns">
         <section class="panel" aria-labelledby="dues-heading">
-          <div class="section-head">
-            <h2 id="dues-heading">Dues</h2>
-            <p id="dues-meta" class="muted"></p>
-          </div>
-          <div id="dues" class="cards"></div>
+          <details class="panel-fold" data-fold="dues" open>
+            <summary class="section-head">
+              <span class="fold-mark" aria-hidden="true"></span>
+              <h2 id="dues-heading">Dues</h2>
+              <p id="dues-meta" class="muted"></p>
+            </summary>
+            <div id="dues" class="cards"></div>
+          </details>
         </section>
 
         <section class="panel" aria-labelledby="blocked-heading">

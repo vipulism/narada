@@ -854,6 +854,60 @@
     void load();
   });
 
+  const FOLD_STORAGE_KEY = "narada.attention.fold";
+
+  /**
+   * Saved open/closed state for Attention panels.
+   *
+   * @returns {Record<string, string>}
+   */
+  function readFoldState() {
+    try {
+      const raw = window.localStorage.getItem(FOLD_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Restores Services/Dues collapse and remembers the next toggle.
+   */
+  function bindPanelFolds() {
+    const saved = readFoldState();
+
+    for (const fold of document.querySelectorAll("details[data-fold]")) {
+      if (!(fold instanceof HTMLDetailsElement)) {
+        continue;
+      }
+
+      const id = fold.dataset.fold;
+      if (!id) {
+        continue;
+      }
+
+      if (saved[id] === "closed") {
+        fold.open = false;
+      } else if (saved[id] === "open") {
+        fold.open = true;
+      }
+
+      fold.addEventListener("toggle", () => {
+        const next = readFoldState();
+        next[id] = fold.open ? "open" : "closed";
+        try {
+          window.localStorage.setItem(FOLD_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // Private mode or quota — collapse still works for this visit.
+        }
+      });
+    }
+  }
+
+  bindPanelFolds();
   readViewFromUrl();
   syncForm();
   void load();
