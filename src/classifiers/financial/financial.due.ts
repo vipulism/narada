@@ -54,6 +54,7 @@ export interface CardPaymentAck {
 /**
  * True when an analysis row is a due reminder that never posts to the ledger.
  * Credit-card payment received/credited SMS stay out of the due list.
+ * IGL `pending against` is a due even when stored cashFlow is not NEUTRAL.
  *
  * @param subcategory - sms_analysis.subcategory
  * @param cashFlow - extracted cashFlow
