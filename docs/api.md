@@ -47,7 +47,7 @@ GET /imports?limit=1
 GET /health
 ```
 
-Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). The query string on `/` is kept in sync (`/?since=6&status=overdue`).
+Home has search, a **past 6 months** since filter (3 / 12 / all time), due status (unpaid / overdue / upcoming / paid / all), sort, and **Mark paid** on unpaid dues. Those map to `q`, `from`, `status`, `sort`, and `order`. Manual paid is `POST /knowledge/:id/paid` (cleared with `DELETE`). **Send digest** posts `POST /attention/digest` (same Telegram daily attention as 08:00 IST, on demand). The query string on `/` is kept in sync (`/?since=6&status=overdue`). Services and Dues headings collapse the box; the choice stays in the browser. A **Light / Dark** button in the header switches the theme on Attention and Merchants (saved in the browser; first visit follows the OS).
 
 ---
 
@@ -129,7 +129,7 @@ GET /services/stream
 
 ## Imports
 
-XML import runs from `sms_imports`. Empty until a backup is ingested **after** this API shipped (same file + mtime is skipped).
+XML import runs from `sms_imports`. Empty until a backup is ingested **after** this API shipped. Same path + mtime + **byte size** is skipped; a grown XML with a frozen mtime (Syncthing) is re-parsed. Items include `fileSize` after migration `017`.
 
 ```text
 GET /imports
@@ -150,6 +150,7 @@ Item:
   "id": 1,
   "sourceFile": "/imports/sms/sms-2026.xml",
   "fileMtime": 1755400000000,
+  "fileSize": 4821193,
   "attempted": 18384,
   "imported": 12,
   "skipped": 18372,
@@ -192,7 +193,7 @@ curl "http://192.168.1.32:4000/sms/18897"
 
 Posted `financial_events` by default. `id` is the SMS id (stable across event rebuilds), not `financial_events.id`.
 
-Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS (if the due date is missing, last4+amount still collapse **within the SMS calendar month**). Utility SMS without a card last4 (Airtel WiFi and Airtel Fixedline) collapse on biller + amount + month, so the same ₹589 in July and August stay two cycles. A later **received / credited to that last4** SMS (HDFC `received towards`, HSBC `we have received a payment of`, CRED `was received for your … credit card`) marks the cycle `paid` (hidden by default) and does **not** appear as its own due card. Statement SMS with **₹0** outstanding are omitted. You can also **mark paid** in Narada (`POST /knowledge/:id/paid`) when the issuer SMS is missing. Overdue is only when the due date has passed **and** there is no payment-ack and no manual mark. `GET /knowledge/:id` still returns that individual SMS.
+Due reminders (`bill` + `NEUTRAL`) never enter `financial_events`. Query them with `kind=due` (alias `type=due`). Repeated reminder SMS for the same last4, due date, and amount collapse to the newest SMS (if the due date is missing, last4+amount still collapse **within the SMS calendar month**). Utility SMS without a card last4 (Airtel WiFi and Airtel Fixedline) collapse on biller + amount + month, so the same ₹589 in July and August stay two cycles. IGL `Payment of Rs … is pending against` BP reminders are dues (same-month IGL amount collapses). A later **received / credited to that last4** SMS (HDFC `received towards`, HSBC `we have received a payment of`, CRED `was received for your … credit card`) marks the cycle `paid` (hidden by default) and does **not** appear as its own due card. IGL `Online Payment Confirmation` / `received against BP No` and an expense SMS at IGL / Indraprastha Gas mark the matching IGL cycle paid (same amount window as card acks) and stay expenses, not dues. Statement SMS with **₹0** outstanding are omitted. You can also **mark paid** in Narada (`POST /knowledge/:id/paid`) when the issuer SMS is missing. Overdue is only when the due date has passed **and** there is no payment-ack and no manual mark. `GET /knowledge/:id` still returns that individual SMS.
 
 ```text
 GET /knowledge
@@ -207,11 +208,27 @@ Filters:
 | `last4` | source or counterparty last4 (dues: extracted account last4) |
 | `bank` | e.g. `YES Bank` |
 | `pushed` | `true` / `false` — Dhan journal id (ignored when `kind=due` or `kind=exception`) |
-| `status` | `blocked` / `skipped` with `kind=exception`. For `kind=due`: `open` / `overdue` / `paid` / `unpaid` / `all`. Default dues omit **paid** (a received/credited SMS on the same last4, or Home **mark paid**). Telegram daily digest and ingest “new due” pings use that same unpaid set (open + overdue only). |
+| `status` | `blocked` / `skipped` with `kind=exception`. For `kind=due`: `open` / `overdue` / `paid` / `unpaid` / `all`. Default dues omit **paid** (a received/credited SMS on the same last4, an IGL confirmation / IGL spend, or Home **mark paid**). Telegram daily digest and ingest “new due” pings use that same unpaid set (open + overdue only). |
 | `q` | Case-insensitive search of last4, bank, merchant, amounts, status, SMS body (dues), and reason (exceptions) |
 | `from` / `to` | ISO datetime. Dues use **due date** (SMS time if due date missing). Exceptions use event time. |
 | `sort` | `dueDate` / `amount` / `bank` / `occurredAt` / `status` |
 | `order` | `asc` (default) or `desc` |
+
+```text
+POST /attention/digest
+```
+
+Sends today's daily Telegram attention now (dues + Dhan month + spend). Works before 08:00 IST and if the scheduled send already ran. Success records the IST day so the 08:00 catch-up does not send a second copy.
+
+```bash
+curl -X POST "http://192.168.1.32:4000/attention/digest"
+```
+
+```json
+{ "sent": true, "day": "2026-08-23" }
+```
+
+Missing Telegram env → `503`. Telegram API failure → `502`.
 
 ```bash
 curl "http://192.168.1.32:4000/knowledge?kind=investment"

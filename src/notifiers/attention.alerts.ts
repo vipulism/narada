@@ -11,10 +11,12 @@ import { SmsSpendOverrideRepository } from "../db/repositories/smsSpendOverride.
 import { MerchantAliasRepository } from "../db/repositories/merchantAlias.repository";
 import { SpendBucketRepository } from "../db/repositories/spendBucket.repository";
 import { loadSettledDueKnowledge } from "../server/due.feed";
+import { AttentionDigestRepository } from "../db/repositories/attentionDigest.repository";
 import {
     formatBlockedDigest,
     formatDailyAttentionDigest,
     formatDueDigest,
+    isDailyDigestDue,
     istComparableMonthRanges,
     istInclusiveBounds,
     type DhanMonthStats,
@@ -24,6 +26,7 @@ import { AttentionAlertState, BlockedAlert, DueAlert } from "./attention.state";
 import { TelegramNotifier } from "./telegram.notifier";
 
 const state = new AttentionAlertState();
+const digestDays = new AttentionDigestRepository();
 const events = new FinancialEventRepository();
 const merchantCategories = new MerchantCategoryRepository();
 const smsSpendOverrides = new SmsSpendOverrideRepository();
@@ -69,17 +72,57 @@ export async function runAttentionAlerts(): Promise<void> {
     }
 }
 
+/** Outcome of a scheduled or on-demand daily digest send. */
+export interface DailyDigestSendResult {
+    sent: boolean;
+    day: string;
+    reason?: string;
+}
+
 /**
  * Sends today's unpaid dues (open + overdue), Dhan income/expense, and SMS spend buckets.
  * Home mark-paid and payment-ack cycles are omitted.
- * Runs at 08:00 IST. Does not replace the new-due / blocked delta pings.
+ *
+ * @param options - `force` skips the 08:00 window and already-sent check
  */
-export async function runDailyAttentionDigest(): Promise<void> {
+export async function sendDailyAttentionDigest(options?: {
+    force?: boolean;
+    now?: Date;
+}): Promise<DailyDigestSendResult> {
+    const now = options?.now ?? new Date();
+    const day = todayIstDate(now);
+
     if (!process.env.TELEGRAM_BOT_TOKEN?.trim() || !process.env.TELEGRAM_CHAT_ID?.trim()) {
         console.info("Skip daily attention digest: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing");
-        return;
+        return { sent: false, day, reason: "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing" };
     }
 
+    if (!options?.force) {
+        if (!isDailyDigestDue(now)) {
+            return { sent: false, day, reason: "before 08:00 IST" };
+        }
+
+        if (await digestDays.hasSentOn(day)) {
+            return { sent: false, day, reason: "already sent today" };
+        }
+    }
+
+    const posted = await runDailyAttentionDigest();
+
+    if (!posted) {
+        return { sent: false, day, reason: "Telegram send failed" };
+    }
+
+    await digestDays.markSent(day);
+    return { sent: true, day };
+}
+
+/**
+ * Posts the digest HTML to Telegram.
+ *
+ * @returns True after a successful send
+ */
+export async function runDailyAttentionDigest(): Promise<boolean> {
     try {
         const today = todayIstDate();
         const [dues, dhan, spend] = await Promise.all([
@@ -91,9 +134,21 @@ export async function runDailyAttentionDigest(): Promise<void> {
         console.info(
             `daily attention digest sent: dues=${dues.length} dhan=${dhan.error ? "down" : "ok"} spend=${spend.buckets.length}`
         );
+        return true;
     } catch (error) {
         console.error("Daily attention digest failed", error);
+        return false;
     }
+}
+
+/**
+ * Sends today's digest once the IST clock is 08:00+, if it has not already gone out.
+ * Used after ingest and on the 08:00 cron so a late timer or deploy still delivers.
+ *
+ * @param now - Instant to compare to 08:00 IST
+ */
+export async function maybeRunDailyAttentionDigest(now = new Date()): Promise<void> {
+    await sendDailyAttentionDigest({ now });
 }
 
 async function loadDues(): Promise<DueAlert[]> {

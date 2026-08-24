@@ -55,6 +55,7 @@ export class SmsImportRepository {
                     failed = ?,
                     status = ?,
                     error_message = ?,
+                    file_size = ?,
                     started_at = ?,
                     completed_at = CURRENT_TIMESTAMP
                 WHERE id = ?
@@ -66,6 +67,7 @@ export class SmsImportRepository {
                     record.failed,
                     record.status,
                     record.errorMessage ?? null,
+                    record.fileSize ?? null,
                     record.startedAt,
                     existing.id,
                 ]
@@ -78,6 +80,7 @@ export class SmsImportRepository {
             INSERT INTO sms_imports (
                 source_file,
                 file_mtime,
+                file_size,
                 attempted,
                 imported,
                 skipped,
@@ -86,11 +89,12 @@ export class SmsImportRepository {
                 error_message,
                 started_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
             [
                 record.sourceFile,
                 record.fileMtime,
+                record.fileSize ?? null,
                 record.attempted,
                 record.imported,
                 record.skipped,
@@ -176,6 +180,7 @@ function rowToImport(row: RowDataPacket): SmsImportRecord {
         id: Number(row.id),
         sourceFile: String(row.source_file),
         fileMtime: Number(row.file_mtime),
+        fileSize: row.file_size == null ? null : Number(row.file_size),
         attempted: Number(row.attempted),
         imported: Number(row.imported),
         skipped: Number(row.skipped),

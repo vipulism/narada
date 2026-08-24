@@ -12,11 +12,13 @@ import { FireflyOpenings, dhanApplyUnpushedReason } from "../../connectors/firef
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
+import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
+import { isIglPendingReminder } from "./financial.kind";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
-import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
-import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, type KnowledgeItem } from "../../server/knowledge.mapper";
+import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
+import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
+import { isCompletedUnchangedBackup } from "../../importers/sms/smsImport.model";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -435,6 +437,55 @@ const CASES: RegressionCase[] = [
             subcategory: "expense",
             cashFlow: "OUTFLOW",
             amount: 1116.99,
+            merchant: "IGL",
+        },
+    },
+    {
+        id: "igl-paid-1427-expense",
+        address: "JM-IGLMKT-S",
+        body: "Online Payment Confirmation \nDear Customer, Payment of Rs. 1427.02 received against BP No. 7000368084 On 28.02.2026. Posting of payment is subject to realization. IGL \n",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 1427.02,
+            merchant: "IGL",
+        },
+    },
+    {
+        id: "igl-hdfc-0170-card-spend",
+        address: "JM-HDFCBK",
+        body: "Spent Rs.1427.02 On HDFC Bank Card 0170 At IGL On 2026-02-28:12:00:00.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "expense",
+            cashFlow: "OUTFLOW",
+            amount: 1427.02,
+            accountLast4: "0170",
+            merchant: "IGL",
+        },
+    },
+    {
+        id: "igl-pending-bp-due",
+        address: "JM-IGLMKT-S",
+        body: "Payment of Rs 2676.78 is pending against the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid. IGL",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 2676.78,
+            merchant: "IGL",
+        },
+    },
+    {
+        id: "igl-pending-bp-wrapped",
+        address: "JM-IGLMKT-S",
+        body: "Payment of Rs 2676.78 is pending\nagainst the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 2676.78,
             merchant: "IGL",
         },
     },
@@ -2383,6 +2434,246 @@ function runDueFeedRegression(): void {
     const airtelWifiAug =
         "REMINDER: Bill of Rs. 589.00 for Airtel Wi-Fi account no. 01142311413 dated 06-AUG-26 is due today. To pay via Airtel Thanks App, click i.airtel.in/BBpayBills. Please ignore if paid.";
 
+    const iglPending =
+        "Payment of Rs 2676.78 is pending against the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid. IGL";
+    const iglPaid =
+        "Online Payment Confirmation \nDear Customer, Payment of Rs. 1116.99 received against BP No. 7000368084 On 19.12.2025. Posting of payment is subject to realization. IGL \n";
+
+    if (parseDueAmounts(iglPending).totalDue !== 2676.78) {
+        failures.push(`IGL pending amount ${parseDueAmounts(iglPending).totalDue} != 2676.78`);
+    }
+
+    if (!isDueKnowledgeRow("bill", "NEUTRAL", iglPending)) {
+        failures.push("IGL pending BP should be a due card");
+    }
+
+    if (!isDueKnowledgeRow("expense", "OUTFLOW", iglPending)) {
+        failures.push("IGL pending BP should still be a due when analysis cashFlow is wrong");
+    }
+
+    if (isDueKnowledgeRow("bill", "NEUTRAL", iglPaid)) {
+        failures.push("IGL payment confirmation must not be a due card");
+    }
+
+    const iglWrapped =
+        "Payment of Rs 2676.78 is pending\nagainst the BP No 7000368084. Pay online from https://rml.fm/IGLMKT/j81S9p Pls Ignore if already paid.";
+
+    if (!isIglPendingReminder(iglWrapped, "JM-IGLMKT-S")) {
+        failures.push("newline IGL pending should still count as a reminder");
+    }
+
+    if (!isDueKnowledgeRow("UNKNOWN", undefined, iglWrapped, "JM-IGLMKT-S")) {
+        failures.push("IGLMKT pending without analysis facts should be a due");
+    }
+
+    const iglFromInbox = settleDueKnowledgeItems(
+        [
+            {
+                smsId: 42,
+                occurredAt: new Date("2026-08-20T10:00:00+05:30"),
+                body: iglWrapped,
+                address: "JM-IGLMKT-S",
+                classifier: "regex-financial",
+                classifierVersion: "1.3.25",
+                extractedData: {},
+                subcategory: "UNKNOWN",
+            },
+        ],
+        [],
+        "2026-08-23"
+    );
+    const iglInboxDue = iglFromInbox.find((item) => item.type === "due" && item.id === 42);
+
+    if (
+        iglInboxDue?.type !== "due" ||
+        iglInboxDue.payload.status !== "open" ||
+        iglInboxDue.payload.amount !== 2676.78 ||
+        iglInboxDue.payload.merchant !== "IGL"
+    ) {
+        failures.push("IGL pending SMS should become an open IGL due from the inbox scan");
+    }
+
+    const iglFirst = {
+        smsId: 1,
+        occurredAt: new Date("2026-08-20T10:00:00+05:30"),
+        dueDate: null as string | null,
+        accountLast4: null as string | null,
+        merchant: "IGL",
+        body: iglPending,
+        amount: 2676.78,
+    };
+    const iglAgain = { ...iglFirst, smsId: 2, occurredAt: new Date("2026-08-22T10:00:00+05:30") };
+    const iglCycle = keepLatestDueReminders([iglFirst, iglAgain]);
+
+    if (iglCycle.length !== 1 || iglCycle[0]?.smsId !== 2) {
+        failures.push("same-month IGL pending reminders should collapse to one due");
+    }
+
+    if (dueBillerAlias("IGL", iglPending) !== "igl") {
+        failures.push("IGL pending should alias to igl");
+    }
+
+    const iglPaid1427 =
+        "Online Payment Confirmation \nDear Customer, Payment of Rs. 1427.02 received against BP No. 7000368084 On 28.02.2026. Posting of payment is subject to realization. IGL \n";
+    const iglCardSpend =
+        "Spent Rs.1427.02 On HDFC Bank Card 0170 At IGL On 2026-02-28:12:00:00.Not You? To Block+Reissue Call 18002586161/SMS BLOCK CC 0170 to 7308080808";
+
+    if (isUtilityDuePaymentRow("bill", iglPending, "IGL")) {
+        failures.push("IGL pending reminder must not settle dues as a payment");
+    }
+
+    if (!isUtilityDuePaymentRow("expense", iglPaid1427, "IGL")) {
+        failures.push("IGL payment confirmation should settle IGL dues");
+    }
+
+    if (!isUtilityDuePaymentRow("expense", iglCardSpend, "IGL")) {
+        failures.push("IGL card spend should settle IGL dues");
+    }
+
+    const iglDue1427 = {
+        smsId: 10,
+        occurredAt: new Date("2026-02-20T10:00:00+05:30"),
+        dueDate: null as string | null,
+        accountLast4: null as string | null,
+        merchant: "IGL",
+        dueParty: "igl",
+        body: "Payment of Rs 1427.02 is pending against the BP No 7000368084. IGL",
+        amount: 1427.02,
+    };
+    const iglDue2676 = {
+        ...iglFirst,
+        smsId: 20,
+        occurredAt: new Date("2026-08-20T10:00:00+05:30"),
+        dueParty: "igl",
+    };
+    const iglDue1116 = {
+        smsId: 8,
+        occurredAt: new Date("2025-12-10T10:00:00+05:30"),
+        dueDate: null as string | null,
+        accountLast4: null as string | null,
+        merchant: "IGL",
+        dueParty: "igl",
+        body: iglPaid,
+        amount: 1116.99,
+    };
+    const iglConfirmPay = {
+        smsId: 11,
+        occurredAt: new Date("2026-02-28T12:00:00+05:30"),
+        accountLast4: null as string | null,
+        amount: 1427.02,
+        dueParty: "igl",
+    };
+    const iglCardPay = {
+        smsId: 12,
+        occurredAt: new Date("2026-02-28T11:00:00+05:30"),
+        accountLast4: "0170",
+        amount: 1427.02,
+        dueParty: "igl",
+    };
+    const cardDue0170 = {
+        smsId: 30,
+        occurredAt: new Date("2026-02-10T10:00:00+05:30"),
+        dueDate: "2026-03-05",
+        accountLast4: "0170",
+        amount: 1427.02,
+    };
+
+    const iglPaidByConfirm = settleDueStatuses([iglDue1427], [iglConfirmPay], "2026-03-01");
+
+    if (iglPaidByConfirm.get(10) !== "paid") {
+        failures.push(`IGL confirmation should pay the matching IGL due, got ${iglPaidByConfirm.get(10)}`);
+    }
+
+    const iglPaidByCard = settleDueStatuses([iglDue1427], [iglCardPay], "2026-03-01");
+
+    if (iglPaidByCard.get(10) !== "paid") {
+        failures.push(`IGL card spend should pay the matching IGL due, got ${iglPaidByCard.get(10)}`);
+    }
+
+    const iglAmountPick = settleDueStatuses(
+        [iglDue1116, iglDue1427],
+        [iglConfirmPay],
+        "2026-03-01"
+    );
+
+    if (iglAmountPick.get(10) !== "paid") {
+        failures.push(`₹1427 IGL confirmation should pay the ₹1427 due, got ${iglAmountPick.get(10)}`);
+    }
+
+    if (iglAmountPick.get(8) === "paid") {
+        failures.push("older ₹1116 IGL due must not steal the ₹1427 confirmation");
+    }
+
+    const iglWrongMonth = settleDueStatuses([iglDue2676], [iglConfirmPay], "2026-08-23");
+
+    if (iglWrongMonth.get(20) === "paid") {
+        failures.push("Feb IGL confirmation must not pay the August IGL pending");
+    }
+
+    const iglNearbyOtherPay = {
+        smsId: 21,
+        occurredAt: new Date("2026-08-22T11:00:00+05:30"),
+        accountLast4: "1412",
+        amount: 1427.02,
+        dueParty: "igl",
+    };
+    const iglNearby = settleDueStatuses([iglDue2676], [iglNearbyOtherPay], "2026-08-23");
+
+    if (iglNearby.get(20) === "paid") {
+        failures.push("different-amount IGL spend in-window must not hide the pending due");
+    }
+
+    if (iglNearby.get(20) !== "open") {
+        failures.push(`August IGL pending should stay open, got ${iglNearby.get(20)}`);
+    }
+
+    const iglNotCardBill = settleDueStatuses(
+        [cardDue0170, iglDue1427],
+        [iglCardPay],
+        "2026-03-01"
+    );
+
+    if (iglNotCardBill.get(10) !== "paid") {
+        failures.push("IGL card spend should still pay the IGL due");
+    }
+
+    if (iglNotCardBill.get(30) === "paid") {
+        failures.push("IGL card spend must not mark the credit-card due paid");
+    }
+
+    const iglMapped = settleDueKnowledgeItems(
+        [
+            {
+                smsId: 40,
+                occurredAt: new Date("2026-02-20T10:00:00+05:30"),
+                body: "Payment of Rs 1427.02 is pending against the BP No 7000368084. IGL",
+                address: "JM-IGLMKT-S",
+                classifier: "regex-financial",
+                classifierVersion: "1",
+                extractedData: { cashFlow: "NEUTRAL", amount: 1427.02, merchant: "IGL" },
+                subcategory: "bill",
+            },
+        ],
+        [
+            {
+                smsId: 41,
+                occurredAt: new Date("2026-02-28T12:00:00+05:30"),
+                body: iglPaid1427,
+                address: "JM-IGLMKT-S",
+                classifier: "regex-financial",
+                classifierVersion: "1",
+                extractedData: { cashFlow: "OUTFLOW", amount: 1427.02, merchant: "IGL" },
+                subcategory: "expense",
+            },
+        ],
+        "2026-03-01"
+    );
+    const iglMappedDue = iglMapped.find((item) => item.type === "due" && item.id === 40);
+
+    if (iglMappedDue?.type !== "due" || iglMappedDue.payload.status !== "paid") {
+        failures.push("IGL confirmation analysis row should mark the IGL due paid");
+    }
+
     if (dueBillerAlias(null, airtelWifiJul) !== "airtel-broadband") {
         failures.push("Airtel Wi-Fi should alias to airtel-broadband");
     }
@@ -2551,8 +2842,51 @@ console.log("attention digest regression ok");
 runDockerSnapshotRegression();
 console.log("docker snapshot regression ok");
 
+runSmsImportSkipRegression();
+console.log("sms import skip regression ok");
+
+/**
+ * Locked skip cases: frozen mtime + grown size must re-parse.
+ */
+function runSmsImportSkipRegression(): void {
+    const failures: string[] = [];
+    const completed = { status: "completed" as const, fileSize: 1_000 };
+
+    if (!isCompletedUnchangedBackup(completed, 1_000)) {
+        failures.push("same size should skip");
+    }
+    if (isCompletedUnchangedBackup(completed, 1_200)) {
+        failures.push("grown file should re-parse");
+    }
+    if (isCompletedUnchangedBackup({ status: "completed", fileSize: null }, 1_000)) {
+        failures.push("legacy null size should re-parse");
+    }
+    if (isCompletedUnchangedBackup({ status: "completed" }, 1_000)) {
+        failures.push("legacy missing size should re-parse");
+    }
+    if (isCompletedUnchangedBackup({ status: "failed", fileSize: 1_000 }, 1_000)) {
+        failures.push("failed import should retry");
+    }
+    if (isCompletedUnchangedBackup(null, 1_000)) {
+        failures.push("missing row should parse");
+    }
+
+    if (failures.length > 0) {
+        throw new Error(`sms import skip regression failed:\n${failures.join("\n")}`);
+    }
+}
+
 function runAttentionDigestRegression(): void {
     const failures: string[] = [];
+
+    if (isDailyDigestDue(new Date("2026-08-23T02:29:00.000Z"))) {
+        failures.push("07:59 IST should be before the daily digest window");
+    }
+
+    if (!isDailyDigestDue(new Date("2026-08-23T02:30:00.000Z"))) {
+        failures.push("08:00 IST should open the daily digest window");
+    }
+
     const airtel = {
         smsId: 18850,
         occurredAt: new Date("2026-08-16T07:21:00+05:30"),

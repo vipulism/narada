@@ -1,0 +1,4 @@
+CREATE TABLE attention_digest_days (
+    sent_on CHAR(10) NOT NULL PRIMARY KEY,
+    sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

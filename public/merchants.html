@@ -8,6 +8,20 @@
       name="description"
       content="Assign spend categories to SMS merchants. New merchants appear here; Dhan uses the category on new withdrawals."
     />
+    <script>
+      (function () {
+        var theme = "dark";
+        try {
+          var saved = localStorage.getItem("narada.theme");
+          if (saved === "light" || saved === "dark") {
+            theme = saved;
+          } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+            theme = "light";
+          }
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
     <link rel="stylesheet" href="/styles.css" />
     <link
       rel="icon"
@@ -33,7 +47,10 @@
       </div>
       <div class="top-meta">
         <p id="merchant-summary" class="summary" aria-live="polite">Loading…</p>
-        <button type="button" id="refresh" class="btn">Refresh</button>
+        <p class="top-actions">
+          <button type="button" id="theme-toggle" class="btn">Light</button>
+          <button type="button" id="refresh" class="btn">Refresh</button>
+        </p>
       </div>
     </header>
 
@@ -172,6 +189,7 @@
     <noscript>
       <p class="noscript">Enable JavaScript to load and assign merchant categories.</p>
     </noscript>
+    <script src="/theme.js" defer></script>
     <script src="/merchants.js" defer></script>
   </body>
 </html>

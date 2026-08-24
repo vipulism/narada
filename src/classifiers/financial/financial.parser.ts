@@ -551,7 +551,7 @@ export class FinancialParser {
             return "Indian Clearing";
         }
 
-        if (/\bindraprastha\s+ga/i.test(body) || /\bigl\b/i.test(body)) {
+        if (/\bindraprastha\s+ga/i.test(body) || /\bigl\b/i.test(body) || /iglmkt/i.test(body)) {
             return "IGL";
         }
 

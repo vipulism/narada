@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { SmsImportResult } from "./sms.model";
+import { isCompletedUnchangedBackup } from "./smsImport.model";
 import { SmsRepository } from "./sms.repository";
 import { SmsImportRepository } from "./smsImport.repository";
 import { loadSmsXml } from "./smsXmlParser";
@@ -15,7 +16,10 @@ export class SmsImportService {
 
     /**
      * Parses and persists new messages from an XML backup.
-     * Skips parse when a completed import already exists for this file mtime.
+     * Skips parse only when a completed import exists for this file mtime
+     * and the byte size is unchanged. Syncthing can keep mtime frozen while
+     * SMS Backup grows the XML; that must be re-parsed. Rows imported before
+     * `file_size` existed re-parse once so the size is stored.
      *
      * @param filePath - Absolute path to the SMS Backup XML
      */
@@ -23,14 +27,16 @@ export class SmsImportService {
         const startedMs = Date.now();
         const startedAt = new Date();
         let fileMtime = 0;
+        let fileSize = 0;
 
         try {
             const fileStat = await stat(filePath);
             fileMtime = fileStat.mtime.getTime();
+            fileSize = fileStat.size;
 
             const existing = await this.imports.findByFileMtime(filePath, fileMtime);
-            if (existing?.status === "completed") {
-                console.info(`⏭️ Unchanged ${filePath}, skip parse`);
+            if (isCompletedUnchangedBackup(existing, fileSize)) {
+                console.info(`⏭️ Unchanged ${filePath} (${fileSize} bytes), skip parse`);
                 return {
                     imported: 0,
                     attempted: 0,
@@ -38,6 +44,11 @@ export class SmsImportService {
                     sourceFile: filePath,
                     durationMs: Date.now() - startedMs,
                 };
+            }
+            if (existing?.status === "completed") {
+                console.info(
+                    `📥 Re-parse ${filePath} (mtime unchanged, size ${existing.fileSize ?? "unknown"} → ${fileSize})`
+                );
             }
 
             const parsedBackup = await loadSmsXml(filePath);
@@ -52,6 +63,7 @@ export class SmsImportService {
             await this.imports.save({
                 sourceFile: filePath,
                 fileMtime,
+                fileSize,
                 attempted,
                 imported,
                 skipped: existingHashes.size,
@@ -80,6 +92,7 @@ export class SmsImportService {
                 await this.imports.save({
                     sourceFile: filePath,
                     fileMtime,
+                    fileSize,
                     attempted: 0,
                     imported: 0,
                     skipped: 0,

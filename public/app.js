@@ -20,6 +20,7 @@
     summary: document.getElementById("attention-summary"),
     clock: document.getElementById("clock"),
     refresh: document.getElementById("refresh"),
+    sendDigest: document.getElementById("send-digest"),
     importStatus: document.getElementById("import-status"),
     live: document.getElementById("live-status"),
     services: document.getElementById("services"),
@@ -450,11 +451,18 @@
   }
 
   /**
-   * @param {object} record
+   * @param {object | null} record
+   * @param {object | null} latestSms
    */
-  function renderImport(record) {
+  function renderImport(record, latestSms) {
+    const newest = latestSms?.receivedAt
+      ? ` · newest SMS ${formatRelative(latestSms.receivedAt)}`
+      : "";
     if (!record) {
-      setText(els.importStatus, "No SMS import recorded yet.");
+      setText(
+        els.importStatus,
+        newest ? `No SMS import recorded yet${newest}.` : "No SMS import recorded yet."
+      );
       return;
     }
     const when = formatRelative(record.completedAt || record.startedAt);
@@ -462,11 +470,11 @@
     if (record.status === "failed") {
       setText(
         els.importStatus,
-        `Failed ${when}${record.errorMessage ? ` — ${record.errorMessage}` : ""}`
+        `Failed ${when}${record.errorMessage ? ` — ${record.errorMessage}` : ""}${newest}`
       );
       return;
     }
-    setText(els.importStatus, `Completed ${when} · ${counts}`);
+    setText(els.importStatus, `Completed ${when} · ${counts}${newest}`);
   }
 
   /**
@@ -606,11 +614,12 @@
       setText(els.live, "Down");
     }
 
-    const [dueRes, exceptionRes, importRes, serviceRes] = await Promise.allSettled([
+    const [dueRes, exceptionRes, importRes, serviceRes, smsRes] = await Promise.allSettled([
       api(dueQuery()),
       api(blockedQuery()),
       api("/imports?limit=1"),
       api("/services"),
+      api("/sms?limit=1"),
     ]);
 
     if (serviceRes.status === "fulfilled" && serviceRes.value.ok) {
@@ -623,7 +632,12 @@
 
     if (importRes.status === "fulfilled" && importRes.value.ok) {
       const body = await importRes.value.json();
-      renderImport(Array.isArray(body.items) ? body.items[0] : null);
+      let latestSms = null;
+      if (smsRes.status === "fulfilled" && smsRes.value.ok) {
+        const smsBody = await smsRes.value.json();
+        latestSms = Array.isArray(smsBody.items) ? smsBody.items[0] : null;
+      }
+      renderImport(Array.isArray(body.items) ? body.items[0] : null, latestSms);
     } else {
       setText(els.importStatus, "Could not load import status.");
     }
@@ -738,6 +752,36 @@
     void load();
   });
 
+  els.sendDigest?.addEventListener("click", () => {
+    void sendDigest();
+  });
+
+  async function sendDigest() {
+    if (!(els.sendDigest instanceof HTMLButtonElement)) {
+      return;
+    }
+    els.sendDigest.disabled = true;
+    setText(els.summary, "Sending Telegram digest…");
+    try {
+      const res = await fetch("/attention/digest", {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.sent) {
+        throw new Error(body.reason || "Could not send digest");
+      }
+      setText(els.summary, `Digest sent (${body.day || "today"})`);
+    } catch (error) {
+      setText(
+        els.summary,
+        error instanceof Error ? error.message : "Could not send digest"
+      );
+    } finally {
+      els.sendDigest.disabled = false;
+    }
+  }
+
   els.dues?.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
@@ -823,6 +867,60 @@
     void load();
   });
 
+  const FOLD_STORAGE_KEY = "narada.attention.fold";
+
+  /**
+   * Saved open/closed state for Attention panels.
+   *
+   * @returns {Record<string, string>}
+   */
+  function readFoldState() {
+    try {
+      const raw = window.localStorage.getItem(FOLD_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Restores Services/Dues collapse and remembers the next toggle.
+   */
+  function bindPanelFolds() {
+    const saved = readFoldState();
+
+    for (const fold of document.querySelectorAll("details[data-fold]")) {
+      if (!(fold instanceof HTMLDetailsElement)) {
+        continue;
+      }
+
+      const id = fold.dataset.fold;
+      if (!id) {
+        continue;
+      }
+
+      if (saved[id] === "closed") {
+        fold.open = false;
+      } else if (saved[id] === "open") {
+        fold.open = true;
+      }
+
+      fold.addEventListener("toggle", () => {
+        const next = readFoldState();
+        next[id] = fold.open ? "open" : "closed";
+        try {
+          window.localStorage.setItem(FOLD_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // Private mode or quota — collapse still works for this visit.
+        }
+      });
+    }
+  }
+
+  bindPanelFolds();
   readViewFromUrl();
   syncForm();
   void load();

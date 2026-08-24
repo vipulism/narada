@@ -553,6 +553,37 @@ export function isWalletTopUp(body: string): boolean {
 }
 
 /**
+ * IGL PNG bill still unpaid (`Payment of Rs … is pending` / `pending against` BP).
+ * Newlines between words are fine. Paid `received against` confirmations are excluded.
+ *
+ * @param body - SMS body (any case)
+ * @param address - Optional sender (`IGLMKT`)
+ */
+export function isIglPendingReminder(body: string, address?: string | null): boolean {
+    const text = `${address ?? ""} ${body}`.toUpperCase();
+
+    if (isPaidBillReceipt(text) || text.includes("RECEIVED AGAINST")) {
+        return false;
+    }
+
+    if (/PENDING\s+AGAINST/.test(text)) {
+        return true;
+    }
+
+    const compact = text.replace(/\s+/g, " ");
+    const isIgl =
+        compact.includes("IGLMKT") ||
+        compact.includes("INDRAPRASTHA GA") ||
+        /\bIGL\b/.test(compact);
+
+    return (
+        isIgl &&
+        compact.includes("PENDING") &&
+        (compact.includes("PAYMENT OF") || compact.includes("BP NO") || compact.includes("PAY ONLINE"))
+    );
+}
+
+/**
  * Statement / due reminder, not a posted spend.
  *
  * @param body - Uppercased SMS body
@@ -560,6 +591,10 @@ export function isWalletTopUp(body: string): boolean {
 export function isDueReminder(body: string): boolean {
     if (isPostedSpend(body) || (body.includes("REFUND") && body.includes("CREDITED"))) {
         return false;
+    }
+
+    if (isIglPendingReminder(body)) {
+        return true;
     }
 
     if (
