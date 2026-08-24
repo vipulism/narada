@@ -451,11 +451,18 @@
   }
 
   /**
-   * @param {object} record
+   * @param {object | null} record
+   * @param {object | null} latestSms
    */
-  function renderImport(record) {
+  function renderImport(record, latestSms) {
+    const newest = latestSms?.receivedAt
+      ? ` · newest SMS ${formatRelative(latestSms.receivedAt)}`
+      : "";
     if (!record) {
-      setText(els.importStatus, "No SMS import recorded yet.");
+      setText(
+        els.importStatus,
+        newest ? `No SMS import recorded yet${newest}.` : "No SMS import recorded yet."
+      );
       return;
     }
     const when = formatRelative(record.completedAt || record.startedAt);
@@ -463,11 +470,11 @@
     if (record.status === "failed") {
       setText(
         els.importStatus,
-        `Failed ${when}${record.errorMessage ? ` — ${record.errorMessage}` : ""}`
+        `Failed ${when}${record.errorMessage ? ` — ${record.errorMessage}` : ""}${newest}`
       );
       return;
     }
-    setText(els.importStatus, `Completed ${when} · ${counts}`);
+    setText(els.importStatus, `Completed ${when} · ${counts}${newest}`);
   }
 
   /**
@@ -607,11 +614,12 @@
       setText(els.live, "Down");
     }
 
-    const [dueRes, exceptionRes, importRes, serviceRes] = await Promise.allSettled([
+    const [dueRes, exceptionRes, importRes, serviceRes, smsRes] = await Promise.allSettled([
       api(dueQuery()),
       api(blockedQuery()),
       api("/imports?limit=1"),
       api("/services"),
+      api("/sms?limit=1"),
     ]);
 
     if (serviceRes.status === "fulfilled" && serviceRes.value.ok) {
@@ -624,7 +632,12 @@
 
     if (importRes.status === "fulfilled" && importRes.value.ok) {
       const body = await importRes.value.json();
-      renderImport(Array.isArray(body.items) ? body.items[0] : null);
+      let latestSms = null;
+      if (smsRes.status === "fulfilled" && smsRes.value.ok) {
+        const smsBody = await smsRes.value.json();
+        latestSms = Array.isArray(smsBody.items) ? smsBody.items[0] : null;
+      }
+      renderImport(Array.isArray(body.items) ? body.items[0] : null, latestSms);
     } else {
       setText(els.importStatus, "Could not load import status.");
     }

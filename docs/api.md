@@ -129,7 +129,7 @@ GET /services/stream
 
 ## Imports
 
-XML import runs from `sms_imports`. Empty until a backup is ingested **after** this API shipped (same file + mtime is skipped).
+XML import runs from `sms_imports`. Empty until a backup is ingested **after** this API shipped. Same path + mtime + **byte size** is skipped; a grown XML with a frozen mtime (Syncthing) is re-parsed. Items include `fileSize` after migration `017`.
 
 ```text
 GET /imports
@@ -150,6 +150,7 @@ Item:
   "id": 1,
   "sourceFile": "/imports/sms/sms-2026.xml",
   "fileMtime": 1755400000000,
+  "fileSize": 4821193,
   "attempted": 18384,
   "imported": 12,
   "skipped": 18372,

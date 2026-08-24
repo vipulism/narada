@@ -18,6 +18,7 @@ import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerch
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
+import { isCompletedUnchangedBackup } from "../../importers/sms/smsImport.model";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -2840,6 +2841,40 @@ console.log("attention digest regression ok");
 
 runDockerSnapshotRegression();
 console.log("docker snapshot regression ok");
+
+runSmsImportSkipRegression();
+console.log("sms import skip regression ok");
+
+/**
+ * Locked skip cases: frozen mtime + grown size must re-parse.
+ */
+function runSmsImportSkipRegression(): void {
+    const failures: string[] = [];
+    const completed = { status: "completed" as const, fileSize: 1_000 };
+
+    if (!isCompletedUnchangedBackup(completed, 1_000)) {
+        failures.push("same size should skip");
+    }
+    if (isCompletedUnchangedBackup(completed, 1_200)) {
+        failures.push("grown file should re-parse");
+    }
+    if (isCompletedUnchangedBackup({ status: "completed", fileSize: null }, 1_000)) {
+        failures.push("legacy null size should re-parse");
+    }
+    if (isCompletedUnchangedBackup({ status: "completed" }, 1_000)) {
+        failures.push("legacy missing size should re-parse");
+    }
+    if (isCompletedUnchangedBackup({ status: "failed", fileSize: 1_000 }, 1_000)) {
+        failures.push("failed import should retry");
+    }
+    if (isCompletedUnchangedBackup(null, 1_000)) {
+        failures.push("missing row should parse");
+    }
+
+    if (failures.length > 0) {
+        throw new Error(`sms import skip regression failed:\n${failures.join("\n")}`);
+    }
+}
 
 function runAttentionDigestRegression(): void {
     const failures: string[] = [];
