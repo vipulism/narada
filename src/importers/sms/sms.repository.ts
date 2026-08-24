@@ -21,26 +21,38 @@ export class SmsRepository {
   // Safe default batch limit to prevent hitting max_allowed_packet limits
   private readonly BATCH_SIZE = 1000;
 
+  /**
+   * Returns hashes already stored in `sms_messages`.
+   * Queries in batches so a full SMS Backup re-parse does not blow `max_allowed_packet`.
+   *
+   * @param hashes - Candidate message hashes from the XML
+   */
   async findExistingHashes(hashes: string[]): Promise<Set<string>> {
-
     const db = getDb();
+    const found = new Set<string>();
 
     if (hashes.length === 0) {
-      return new Set();
+      return found;
     }
 
-    const placeholders = hashes.map(() => "?").join(",");
+    for (let i = 0; i < hashes.length; i += this.BATCH_SIZE) {
+      const chunk = hashes.slice(i, i + this.BATCH_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+      const [rows] = await db.query<HashRow[]>(
+        `
+          SELECT hash
+          FROM sms_messages
+          WHERE hash IN (${placeholders})
+        `,
+        chunk
+      );
 
-    const [rows] = await db.query<HashRow[]>(
-      `
-        SELECT hash
-        FROM sms_messages
-        WHERE hash IN (${placeholders})
-      `,
-      hashes
-    );
+      for (const row of rows) {
+        found.add(row.hash);
+      }
+    }
 
-    return new Set(rows.map((row) => row.hash));
+    return found;
   }
 
   async insertMany(messages: SmsMessage[]): Promise<number> {
