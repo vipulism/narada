@@ -3,7 +3,7 @@ import { SmsImportResult } from "./sms.model";
 import { isCompletedUnchangedBackup } from "./smsImport.model";
 import { SmsRepository } from "./sms.repository";
 import { SmsImportRepository } from "./smsImport.repository";
-import { loadSmsXml } from "./smsXmlParser";
+import { loadSmsXml, peekSmsXmlHeader } from "./smsXmlParser";
 
 /**
  * Imports SMS Backup XML into sms_messages and records sms_imports.
@@ -16,10 +16,9 @@ export class SmsImportService {
 
     /**
      * Parses and persists new messages from an XML backup.
-     * Skips parse only when a completed import exists for this file mtime
-     * and the byte size is unchanged. Syncthing can keep mtime frozen while
-     * SMS Backup grows the XML; that must be re-parsed. Rows imported before
-     * `file_size` existed re-parse once so the size is stored.
+     * Skips parse only when a completed import matches file size **and**
+     * SMS Backup `count` / `backup_date`. Size-only skip misses a rolling
+     * backup window (new days at nearly the same byte size, frozen mtime).
      *
      * @param filePath - Absolute path to the SMS Backup XML
      */
@@ -28,15 +27,28 @@ export class SmsImportService {
         const startedAt = new Date();
         let fileMtime = 0;
         let fileSize = 0;
+        let xmlCount: number | undefined;
+        let xmlBackupDate: number | undefined;
 
         try {
             const fileStat = await stat(filePath);
             fileMtime = fileStat.mtime.getTime();
             fileSize = fileStat.size;
+            const header = await peekSmsXmlHeader(filePath);
+            xmlCount = header.xmlCount;
+            xmlBackupDate = header.xmlBackupDate;
 
             const existing = await this.imports.findByFileMtime(filePath, fileMtime);
-            if (isCompletedUnchangedBackup(existing, fileSize)) {
-                console.info(`⏭️ Unchanged ${filePath} (${fileSize} bytes), skip parse`);
+            if (
+                isCompletedUnchangedBackup(existing, {
+                    fileSize,
+                    xmlCount,
+                    xmlBackupDate,
+                })
+            ) {
+                console.info(
+                    `⏭️ Unchanged ${filePath} (${fileSize} bytes, xml count=${xmlCount ?? "?"}), skip parse`
+                );
                 return {
                     imported: 0,
                     attempted: 0,
@@ -47,7 +59,7 @@ export class SmsImportService {
             }
             if (existing?.status === "completed") {
                 console.info(
-                    `📥 Re-parse ${filePath} (mtime unchanged, size ${existing.fileSize ?? "unknown"} → ${fileSize})`
+                    `📥 Re-parse ${filePath} (size ${existing.fileSize ?? "unknown"} → ${fileSize}, xml ${existing.xmlCount ?? "?"} → ${xmlCount ?? "?"}, backup_date ${existing.xmlBackupDate ?? "?"} → ${xmlBackupDate ?? "?"})`
                 );
             }
 
@@ -64,6 +76,8 @@ export class SmsImportService {
                 sourceFile: filePath,
                 fileMtime,
                 fileSize,
+                xmlCount,
+                xmlBackupDate,
                 attempted,
                 imported,
                 skipped: existingHashes.size,
@@ -72,8 +86,9 @@ export class SmsImportService {
                 startedAt,
             });
 
+            const newest = newestReceivedAt(newMessages) ?? newestReceivedAt(parsedBackup.messages);
             console.info(
-                `📥 Imported ${imported}/${attempted} SMS (${existingHashes.size} skipped)`
+                `📥 Imported ${imported}/${attempted} SMS (${existingHashes.size} skipped)${newest ? `; newest ${newest.toISOString()}` : ""}`
             );
 
             return {
@@ -93,6 +108,8 @@ export class SmsImportService {
                     sourceFile: filePath,
                     fileMtime,
                     fileSize,
+                    xmlCount,
+                    xmlBackupDate,
                     attempted: 0,
                     imported: 0,
                     skipped: 0,
@@ -108,4 +125,16 @@ export class SmsImportService {
             throw error;
         }
     }
+}
+
+function newestReceivedAt(messages: { receivedAt: Date }[]): Date | undefined {
+    let newest: Date | undefined;
+
+    for (const message of messages) {
+        if (!newest || message.receivedAt > newest) {
+            newest = message.receivedAt;
+        }
+    }
+
+    return newest;
 }
