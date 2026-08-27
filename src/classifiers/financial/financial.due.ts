@@ -28,6 +28,9 @@ export interface DueReminderIdentity {
     merchant?: string | null;
     body?: string | null;
     amount: number | null;
+    /** Statement total when the SMS also names a min due. */
+    totalDue?: number | null;
+    minDue?: number | null;
 }
 
 /** Attention state after matching card payment-ack SMS. */
@@ -297,6 +300,7 @@ export function cardLast4FromBody(body: string): string | null {
     const upper = body.toUpperCase();
     const match =
         upper.match(/ENDING(?:\s+WITH)?\s+(?:X{2,4}-)?(\d{4})\b/) ??
+        upper.match(/(?:CARD|CC)\s+(?:NO\.?\s+)?(?:X{2,}-)?(\d{4})\b/) ??
         upper.match(/\bXXXX-(\d{4})\b/) ??
         upper.match(/\bXX(\d{4})\b/);
 
@@ -340,9 +344,10 @@ export function dueBillerAlias(
 }
 
 /**
- * One bill cycle: last4 or utility biller, plus due date or SMS month, plus amount.
- * Airtel WiFi and Fixedline collapse. July ₹589 and August ₹589 stay two cycles.
- * Missing last4/biller or amount stay unique by SMS id.
+ * One bill cycle.
+ * Credit cards: one Attention row per last4 (statement + later reminders).
+ * Utilities: biller + SMS/due month + amount (July ₹589 and August ₹589 stay two).
+ * Missing last4/biller stay unique by SMS id.
  *
  * @param row - Due reminder identity
  */
@@ -366,21 +371,28 @@ export function dueReminderKey(
     const biller = dueBillerAlias(row.merchant, row.body) ?? row.dueParty?.trim() ?? "";
     const last4 = row.accountLast4?.trim() ?? "";
     const party = biller || last4;
-    const cycle = dueCycleBucket(row);
 
-    if (!party || !amount) {
+    if (!party) {
         return `sms:${row.smsId}`;
     }
 
-    return `due:${party}|${cycle}|${amount}`;
+    if (biller) {
+        if (!amount) {
+            return `sms:${row.smsId}`;
+        }
+
+        return `due:${biller}|${dueCycleBucket(row)}|${amount}`;
+    }
+
+    return `due:${last4}`;
 }
 
 function dueCycleBucket(
     row: Pick<DueReminderIdentity, "dueDate" | "occurredAt">
 ): string {
-    const due = row.dueDate?.trim().slice(0, 10);
+    const due = isoDueDay(row.dueDate);
     if (due) {
-        return due;
+        return due.slice(0, 7);
     }
 
     if (row.occurredAt) {
@@ -392,8 +404,15 @@ function dueCycleBucket(
     return "*";
 }
 
+function isoDueDay(dueDate: string | null | undefined): string | null {
+    const day = dueDate?.trim().slice(0, 10);
+    return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
 /**
  * Keeps the newest SMS for each due reminder key (latest `occurredAt`, then highest id).
+ * Fills due date / statement total from the dropped reminder so a later min-due
+ * SMS does not hide the payable-by date or total from the statement.
  *
  * @param rows - Due reminders, possibly several SMS per bill
  */
@@ -407,17 +426,48 @@ export function keepLatestDueReminders<T extends DueReminderIdentity>(rows: T[])
             Math.min(firstRemindedMs(row), prior ? firstRemindedMs(prior) : Number.POSITIVE_INFINITY)
         );
 
-        if (!prior || isNewerDue(row, prior)) {
+        if (!prior) {
             best.set(key, { ...row, firstRemindedAt });
-        } else {
-            best.set(key, { ...prior, firstRemindedAt });
+            continue;
         }
+
+        const winner = isNewerDue(row, prior) ? row : prior;
+        const other = winner === row ? prior : row;
+        best.set(key, {
+            ...winner,
+            firstRemindedAt,
+            dueDate: isoDueDay(winner.dueDate) ?? isoDueDay(other.dueDate),
+            amount: mergedDueAmount(winner, other),
+            totalDue: winner.totalDue ?? other.totalDue ?? null,
+            minDue: winner.minDue ?? other.minDue ?? null,
+            accountLast4: winner.accountLast4 || other.accountLast4,
+        });
     }
 
     return [...best.values()].sort((left, right) => {
         const byTime = occurredAtMs(right) - occurredAtMs(left);
         return byTime !== 0 ? byTime : right.smsId - left.smsId;
     });
+}
+
+function mergedDueAmount(
+    newer: DueReminderIdentity,
+    older: DueReminderIdentity
+): number | null {
+    const total = newer.totalDue ?? older.totalDue;
+    if (typeof total === "number" && Number.isFinite(total)) {
+        return total;
+    }
+
+    if (typeof newer.amount === "number" && Number.isFinite(newer.amount)) {
+        return newer.amount;
+    }
+
+    if (typeof older.amount === "number" && Number.isFinite(older.amount)) {
+        return older.amount;
+    }
+
+    return null;
 }
 
 function isNewerDue(row: DueReminderIdentity, prior: DueReminderIdentity): boolean {

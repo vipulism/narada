@@ -132,6 +132,8 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
     const minDue = amounts.minDue ?? null;
     const merchant = asOptionalString(data.merchant);
     const dueParty = dueBillerAlias(merchant, source.body);
+    const dueDate =
+        isoDueDate(asOptionalString(data.dueDate)) ?? parseDueDate(source.body, source.occurredAt);
 
     return {
         type: "due",
@@ -139,14 +141,15 @@ export function toDueKnowledgeItem(source: DueAnalysisSource): KnowledgeItem {
         occurredAt: source.occurredAt,
         payload: {
             kind: "due",
-            dueDate: asOptionalString(data.dueDate) ?? parseDueDate(source.body, source.occurredAt),
+            dueDate,
             minDue,
             totalDue,
             amount: totalDue ?? minDue ?? extractedAmount,
             currency:
                 asOptionalString(data.currency) ??
                 (totalDue || minDue || extractedAmount ? "INR" : null),
-            accountLast4: asOptionalString(data.accountLast4),
+            accountLast4:
+                asOptionalString(data.accountLast4) ?? cardLast4FromBody(source.body),
             accountName: asOptionalString(data.accountName),
             bank: asOptionalString(data.bank),
             merchant: merchant ?? duePartyDisplay(dueParty),
@@ -219,6 +222,7 @@ export function settleDueKnowledgeItems(
         if (item.type === "due" && !hasPayableDueAmount(item.payload)) {
             return [];
         }
+
         return [
             {
                 ...dueReminderRow(item, source.body),
@@ -228,7 +232,10 @@ export function settleDueKnowledgeItems(
             },
         ];
     });
-    const unique = keepLatestDueReminders(dues);
+    const unique = keepLatestDueReminders(dues).map((row) => ({
+        ...row,
+        item: withMergedDuePayload(row),
+    }));
     const payments: CardPaymentAck[] = paymentSources.flatMap((source) => {
         const cashFlow =
             typeof source.extractedData.cashFlow === "string"
@@ -418,6 +425,8 @@ interface DueReminderRow {
     dueDate: string | null;
     accountLast4: string | null;
     amount: number | null;
+    totalDue?: number | null;
+    minDue?: number | null;
     dueParty?: string | null;
     merchant?: string | null;
     body?: string | null;
@@ -433,11 +442,42 @@ function dueReminderRow(item: KnowledgeItem, body?: string | null): DueReminderR
         dueDate: payload?.dueDate ?? null,
         accountLast4: payload?.accountLast4 ?? null,
         amount: payload?.amount ?? null,
+        totalDue: payload?.totalDue ?? null,
+        minDue: payload?.minDue ?? null,
         dueParty: payload?.dueParty,
         merchant: payload?.merchant,
         body: body ?? null,
         item,
     };
+}
+
+/**
+ * Copies statement due date / total onto the newest reminder card.
+ *
+ * @param row - Collapsed due row
+ */
+function withMergedDuePayload(row: DueReminderRow): KnowledgeItem {
+    const item = row.item;
+
+    if (item.type !== "due") {
+        return item;
+    }
+
+    return {
+        ...item,
+        payload: {
+            ...item.payload,
+            dueDate: row.dueDate ?? item.payload.dueDate,
+            amount: row.amount ?? item.payload.amount,
+            totalDue: row.totalDue ?? item.payload.totalDue,
+            minDue: row.minDue ?? item.payload.minDue,
+            accountLast4: row.accountLast4 ?? item.payload.accountLast4,
+        },
+    };
+}
+
+function isoDueDate(value: string | null): string | null {
+    return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
 /**

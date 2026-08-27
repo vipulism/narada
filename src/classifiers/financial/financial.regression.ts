@@ -2422,6 +2422,43 @@ function runDueFeedRegression(): void {
         failures.push("3 Aug + 18 Aug same last4/amount should be one due card");
     }
 
+    const statement18215 = {
+        smsId: 18215,
+        occurredAt: new Date("2026-08-07T10:00:00+05:30"),
+        dueDate: "2026-08-27",
+        accountLast4: "8561",
+        amount: 6040,
+        totalDue: 6040,
+    };
+    const reminder18943 = {
+        smsId: 18943,
+        occurredAt: new Date("2026-08-20T11:00:00+05:30"),
+        dueDate: null as string | null,
+        accountLast4: "8561",
+        amount: 200,
+        minDue: 200,
+    };
+    const sameCard = keepLatestDueReminders([statement18215, reminder18943]);
+
+    if (sameCard.length !== 1 || sameCard[0].smsId !== 18943) {
+        failures.push("same card statement + reminder must be one Attention due");
+    }
+
+    if (sameCard[0]?.dueDate !== "2026-08-27") {
+        failures.push(`collapsed card should keep payable-by ${sameCard[0]?.dueDate}`);
+    }
+
+    if (sameCard[0]?.amount !== 6040) {
+        failures.push(`collapsed card should keep statement total ${sameCard[0]?.amount}`);
+    }
+
+    if (
+        dueReminderKey(statement18215) !== dueReminderKey(reminder18943) ||
+        dueReminderKey(statement18215) !== "due:8561"
+    ) {
+        failures.push("card dues must key by last4 only");
+    }
+
     const paidFrom3Aug = settleDueStatuses([bill3Aug], [paid18Aug], "2026-08-21");
 
     if (paidFrom3Aug.get(18761) !== "paid") {
