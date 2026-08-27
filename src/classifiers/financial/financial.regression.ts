@@ -2454,9 +2454,47 @@ function runDueFeedRegression(): void {
 
     if (
         dueReminderKey(statement18215) !== dueReminderKey(reminder18943) ||
-        dueReminderKey(statement18215) !== "due:8561"
+        dueReminderKey(statement18215) !== "due:8561|2026-08"
     ) {
-        failures.push("card dues must key by last4 only");
+        failures.push("same-cycle card dues must key by last4 and due month");
+    }
+
+    const iciciNov = {
+        smsId: 2209,
+        occurredAt: new Date("2024-11-10T10:00:00+05:30"),
+        dueDate: "2024-11-30",
+        accountLast4: "0004",
+        amount: 6447,
+        totalDue: 6447,
+    };
+    const iciciJun = {
+        smsId: 14833,
+        occurredAt: new Date("2025-06-10T10:00:00+05:30"),
+        dueDate: "2025-06-30",
+        accountLast4: "0004",
+        amount: 2296.92,
+        totalDue: 2296.92,
+    };
+    const iciciCycles = keepLatestDueReminders([iciciNov, iciciJun]);
+
+    if (iciciCycles.length !== 2) {
+        failures.push(`ICICI 0004 Nov vs Jun must stay two dues, got ${iciciCycles.length}`);
+    }
+
+    const iciciNovPay = {
+        smsId: 7936,
+        occurredAt: new Date("2024-11-20T12:00:00+05:30"),
+        accountLast4: "0004",
+        amount: 6447,
+    };
+    const iciciPaid = settleDueStatuses(iciciCycles, [iciciNovPay], "2026-08-27");
+
+    if (iciciPaid.get(2209) !== "paid") {
+        failures.push(`Nov ICICI 0004 payment should pay Nov, got ${iciciPaid.get(2209)}`);
+    }
+
+    if (iciciPaid.get(14833) === "paid") {
+        failures.push("old ICICI 0004 payment must not hide the later Jun due");
     }
 
     const paidFrom3Aug = settleDueStatuses([bill3Aug], [paid18Aug], "2026-08-21");

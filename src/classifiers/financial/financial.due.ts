@@ -345,8 +345,10 @@ export function dueBillerAlias(
 
 /**
  * One bill cycle.
- * Credit cards: one Attention row per last4 (statement + later reminders).
- * Utilities: biller + SMS/due month + amount (July ₹589 and August ₹589 stay two).
+ * Credit cards: last4 + due/SMS month (statement + same-cycle reminders collapse;
+ * Nov ₹6447 and Jun ₹2296 on ICICI 0004 stay two). An undated reminder joins a
+ * dated sibling in the same or adjacent month.
+ * Utilities: biller + month + amount (July ₹589 and August ₹589 stay two).
  * Missing last4/biller stay unique by SMS id.
  *
  * @param row - Due reminder identity
@@ -384,7 +386,7 @@ export function dueReminderKey(
         return `due:${biller}|${dueCycleBucket(row)}|${amount}`;
     }
 
-    return `due:${last4}`;
+    return `due:${last4}|${dueCycleBucket(row)}`;
 }
 
 function dueCycleBucket(
@@ -419,7 +421,7 @@ function isoDueDay(dueDate: string | null | undefined): string | null {
 export function keepLatestDueReminders<T extends DueReminderIdentity>(rows: T[]): T[] {
     const best = new Map<string, T>();
 
-    for (const row of rows) {
+    for (const row of alignUndatedCardCycles(rows)) {
         const key = dueReminderKey(row);
         const prior = best.get(key);
         const firstRemindedAt = new Date(
@@ -448,6 +450,60 @@ export function keepLatestDueReminders<T extends DueReminderIdentity>(rows: T[])
         const byTime = occurredAtMs(right) - occurredAtMs(left);
         return byTime !== 0 ? byTime : right.smsId - left.smsId;
     });
+}
+
+/**
+ * Undated card reminders join a dated statement in the same or next/prev month
+ * so "due 27 Aug" and an August follow-up share a cycle without folding every
+ * historical last4 bill into one (which hid ICICI 0004 after an old payment).
+ *
+ * @param rows - Due reminders
+ */
+function alignUndatedCardCycles<T extends DueReminderIdentity>(rows: T[]): T[] {
+    return rows.map((row) => {
+        if (utilityDueParty(row) || !row.accountLast4?.trim() || isoDueDay(row.dueDate)) {
+            return row;
+        }
+
+        const last4 = row.accountLast4.trim();
+        const smsMonth = dueCycleBucket(row);
+        const dated = rows.find((other) => {
+            if (other.smsId === row.smsId) {
+                return false;
+            }
+
+            if (utilityDueParty(other) || other.accountLast4?.trim() !== last4) {
+                return false;
+            }
+
+            const dueMonth = isoDueDay(other.dueDate)?.slice(0, 7);
+            return Boolean(dueMonth && monthsAdjacentOrEqual(smsMonth, dueMonth));
+        });
+        const dueDate = dated ? isoDueDay(dated.dueDate) : null;
+
+        return dueDate ? { ...row, dueDate } : row;
+    });
+}
+
+function utilityDueParty(
+    row: Pick<DueReminderIdentity, "merchant" | "body" | "dueParty">
+): string {
+    return dueBillerAlias(row.merchant, row.body) ?? row.dueParty?.trim() ?? "";
+}
+
+function monthsAdjacentOrEqual(left: string, right: string): boolean {
+    const a = yearMonthIndex(left);
+    const b = yearMonthIndex(right);
+    return a != null && b != null && Math.abs(a - b) <= 1;
+}
+
+function yearMonthIndex(yearMonth: string): number | null {
+    const match = yearMonth.match(/^(\d{4})-(\d{2})$/);
+    if (!match) {
+        return null;
+    }
+
+    return Number(match[1]) * 12 + Number(match[2]);
 }
 
 function mergedDueAmount(
