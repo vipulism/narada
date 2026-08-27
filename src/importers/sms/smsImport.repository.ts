@@ -56,6 +56,8 @@ export class SmsImportRepository {
                     status = ?,
                     error_message = ?,
                     file_size = ?,
+                    xml_count = ?,
+                    xml_backup_date = ?,
                     started_at = ?,
                     completed_at = CURRENT_TIMESTAMP
                 WHERE id = ?
@@ -68,6 +70,8 @@ export class SmsImportRepository {
                     record.status,
                     record.errorMessage ?? null,
                     record.fileSize ?? null,
+                    record.xmlCount ?? null,
+                    record.xmlBackupDate ?? null,
                     record.startedAt,
                     existing.id,
                 ]
@@ -81,6 +85,8 @@ export class SmsImportRepository {
                 source_file,
                 file_mtime,
                 file_size,
+                xml_count,
+                xml_backup_date,
                 attempted,
                 imported,
                 skipped,
@@ -89,12 +95,14 @@ export class SmsImportRepository {
                 error_message,
                 started_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
             [
                 record.sourceFile,
                 record.fileMtime,
                 record.fileSize ?? null,
+                record.xmlCount ?? null,
+                record.xmlBackupDate ?? null,
                 record.attempted,
                 record.imported,
                 record.skipped,
@@ -181,6 +189,8 @@ function rowToImport(row: RowDataPacket): SmsImportRecord {
         sourceFile: String(row.source_file),
         fileMtime: Number(row.file_mtime),
         fileSize: row.file_size == null ? null : Number(row.file_size),
+        xmlCount: row.xml_count == null ? null : Number(row.xml_count),
+        xmlBackupDate: row.xml_backup_date == null ? null : Number(row.xml_backup_date),
         attempted: Number(row.attempted),
         imported: Number(row.imported),
         skipped: Number(row.skipped),

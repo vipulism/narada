@@ -3,6 +3,14 @@ import { XMLParser } from "fast-xml-parser";
 import { PartialHashSms, SmsBackup, SmsMessage } from "./sms.model";
 import { smsHash } from "./smsHash";
 
+/** Root attributes from the first bytes of an SMS Backup XML. */
+export interface SmsXmlHeader {
+    xmlCount?: number;
+    xmlBackupDate?: number;
+}
+
+const HEADER_BYTES = 8192;
+
 export interface SmsXmlNode {
   protocol?: string;
   address?: string;
@@ -22,6 +30,56 @@ export interface SmsXmlNode {
   contact_name?: string;
 }
 
+/**
+ * Reads `count` and `backup_date` from `<smses>` without parsing every message.
+ *
+ * @param filePath - Absolute path to the SMS Backup XML
+ */
+export async function peekSmsXmlHeader(filePath: string): Promise<SmsXmlHeader> {
+    const handle = await fs.open(filePath, "r");
+
+    try {
+        const buf = Buffer.alloc(HEADER_BYTES);
+        const { bytesRead } = await handle.read(buf, 0, HEADER_BYTES, 0);
+
+        return parseSmsXmlHeader(decodeXmlHead(buf.subarray(0, bytesRead)));
+    } finally {
+        await handle.close();
+    }
+}
+
+/**
+ * Parses SMS Backup `<smses count backup_date>` from a file prefix.
+ *
+ * @param head - First kilobytes of the XML (UTF-8 or UTF-16 decoded)
+ */
+export function parseSmsXmlHeader(head: string): SmsXmlHeader {
+    const smses = head.match(/<smses\b[^>]*>/i)?.[0];
+
+    if (!smses) {
+        return {};
+    }
+
+    const count = smses.match(/\bcount=["'](\d+)["']/i);
+    const backupDate = smses.match(/\bbackup_date=["'](\d+)["']/i);
+    const header: SmsXmlHeader = {};
+
+    if (count) {
+        header.xmlCount = Number(count[1]);
+    }
+
+    if (backupDate) {
+        header.xmlBackupDate = Number(backupDate[1]);
+    }
+
+    return header;
+}
+
+/**
+ * Parses SMS Backup & Restore XML into domain messages.
+ *
+ * @param filePath - Absolute path to the SMS Backup XML
+ */
 export async function loadSmsXml(filePath: string): Promise<SmsBackup> {
   const xml = await fs.readFile(filePath, "utf8");
 
@@ -61,18 +119,18 @@ export async function loadSmsXml(filePath: string): Promise<SmsBackup> {
   const messages: SmsMessage[] = rawSmsList
     .filter((sms: SmsXmlNode) => {
       try {
-        // Validate absolute structural requirements here
         if (!sms || typeof sms !== "object") return false;
-        if (!sms.address || typeof sms.address !== "string") return false;
-        if (!sms.body || typeof sms.body !== "string") return false;
-        if (!sms.type || Number.isNaN(Number(sms.type))) return false;
-        
-        // Validate date schemas
-        if (!isValidTimestamp(sms.date) && !isValidDate(sms.date)) return false;
 
-        return true; // Node is healthy and valid
+        const address = asAttr(sms.address);
+        const body = asAttr(sms.body);
+        const type = asAttr(sms.type);
+        const date = asAttr(sms.date);
+
+        if (!address || !body || !type || Number.isNaN(Number(type))) return false;
+        if (!isValidTimestamp(date) && !isValidDate(date)) return false;
+
+        return true;
       } catch (e) {
-        // Fallback catch to safely skip unexpected item mutations
         return false;
       }
     })
@@ -113,28 +171,59 @@ function createEmptyBackup(): SmsBackup {
   };
 }
 
+function decodeXmlHead(buf: Buffer): string {
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+    return buf.subarray(2).toString("utf16le");
+  }
+
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
+    return buf.subarray(3).toString("utf8");
+  }
+
+  return buf.toString("utf8");
+}
+
+function asAttr(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+
+  return String(value).trim();
+}
+
 function parseXmlNode(sms: SmsXmlNode, filePath: string): SmsMessage {
-  // Safe default evaluations using nullish coalescing
+  const date = asAttr(sms.date);
+  const receivedAt = isFiniteTimestamp(date) ? new Date(Number(date)) : new Date(date);
+  const contactName = asAttr(sms.contact_name);
   const smsData: PartialHashSms = {
-    address: (sms.address ?? "").trim(),
-    body: (sms.body ?? "").trim(),
-    smsType: Number(sms.type),
-    receivedAt: new Date(Number(sms.date)),
+    address: asAttr(sms.address),
+    body: asAttr(sms.body),
+    smsType: Number(asAttr(sms.type)),
+    receivedAt,
     sourceFile: filePath,
-    contactName: sms.contact_name === "(Unknown)" ? undefined : sms.contact_name,
+    contactName: !contactName || contactName === "(Unknown)" ? undefined : contactName,
     rawAttributes: {
-      protocol: sms.protocol ?? "",
-      toa: sms.toa ?? "",
-      sc_toa: sms.sc_toa ?? "",
-      service_center: sms.service_center ?? "",
-      read: sms.read ?? "",
-      status: sms.status ?? "",
-      locked: sms.locked ?? "",
-      date_sent: sms.date_sent ?? "",
-      sub_id: sms.sub_id ?? "",
+      protocol: asAttr(sms.protocol),
+      toa: asAttr(sms.toa),
+      sc_toa: asAttr(sms.sc_toa),
+      service_center: asAttr(sms.service_center),
+      read: asAttr(sms.read),
+      status: asAttr(sms.status),
+      locked: asAttr(sms.locked),
+      date_sent: asAttr(sms.date_sent),
+      sub_id: asAttr(sms.sub_id),
     },
   };
 
   smsData.hash = smsHash(smsData);
   return smsData as SmsMessage;
+}
+
+function isFiniteTimestamp(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && !Number.isNaN(numeric);
 }

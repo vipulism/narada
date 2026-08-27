@@ -467,6 +467,8 @@
     }
     const when = formatRelative(record.completedAt || record.startedAt);
     const counts = `${record.imported ?? 0} imported · ${record.skipped ?? 0} skipped`;
+    const xml =
+      record.xmlCount != null ? ` · XML ${record.xmlCount}` : "";
     if (record.status === "failed") {
       setText(
         els.importStatus,
@@ -474,7 +476,7 @@
       );
       return;
     }
-    setText(els.importStatus, `Completed ${when} · ${counts}${newest}`);
+    setText(els.importStatus, `Completed ${when} · ${counts}${xml}${newest}`);
   }
 
   /**

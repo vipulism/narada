@@ -8,7 +8,7 @@ Completed:
 ✅ Telegram Notifications
 ✅ Event APIs
 ✅ SSE
-✅ SMS XML Importer (skip only when path + mtime + size match; grown Syncthing backup is re-parsed)
+✅ SMS XML Importer (skip only when path + mtime + size + SMS Backup count/backup_date match; rolling windows and grown Syncthing backups are re-parsed)
 ✅ Folder connector + import scheduler (SMS Backup XML)
 ✅ SMS financial detection (`regex-financial@1.3.25`)
 ✅ Skip templates: data quota, UPI PIN, limit-increase, overlimit promo, pending CRED cashback, closed HDFC loan EMI, login/IPIN/password, KYC, UPI link, schedule of charges, OTP awareness, CC bill-payment acks

@@ -19,6 +19,7 @@ import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, form
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
 import { isCompletedUnchangedBackup } from "../../importers/sms/smsImport.model";
+import { parseSmsXmlHeader } from "../../importers/sms/smsXmlParser";
 
 interface ExpectedFacts {
     category: SmsCategory;
@@ -2846,29 +2847,69 @@ runSmsImportSkipRegression();
 console.log("sms import skip regression ok");
 
 /**
- * Locked skip cases: frozen mtime + grown size must re-parse.
+ * Locked skip cases: frozen mtime + grown size, or a new SMS Backup header,
+ * must re-parse (rolling windows can keep byte size almost unchanged).
  */
 function runSmsImportSkipRegression(): void {
     const failures: string[] = [];
-    const completed = { status: "completed" as const, fileSize: 1_000 };
+    const completed = {
+        status: "completed" as const,
+        fileSize: 1_000,
+        xmlCount: 18_000,
+        xmlBackupDate: 1_755_400_000_000,
+    };
+    const same = {
+        fileSize: 1_000,
+        xmlCount: 18_000,
+        xmlBackupDate: 1_755_400_000_000,
+    };
 
-    if (!isCompletedUnchangedBackup(completed, 1_000)) {
-        failures.push("same size should skip");
+    if (!isCompletedUnchangedBackup(completed, same)) {
+        failures.push("same size and XML header should skip");
     }
-    if (isCompletedUnchangedBackup(completed, 1_200)) {
+    if (isCompletedUnchangedBackup(completed, { ...same, fileSize: 1_200 })) {
         failures.push("grown file should re-parse");
     }
-    if (isCompletedUnchangedBackup({ status: "completed", fileSize: null }, 1_000)) {
+    if (isCompletedUnchangedBackup(completed, { ...same, xmlCount: 18_040 })) {
+        failures.push("higher XML count should re-parse");
+    }
+    if (isCompletedUnchangedBackup(completed, { ...same, xmlBackupDate: 1_755_500_000_000 })) {
+        failures.push("newer backup_date should re-parse");
+    }
+    if (
+        isCompletedUnchangedBackup(
+            { status: "completed", fileSize: 1_000 },
+            { fileSize: 1_000, xmlCount: 18_000, xmlBackupDate: 1_755_400_000_000 }
+        )
+    ) {
+        failures.push("legacy row without XML header should re-parse");
+    }
+    if (isCompletedUnchangedBackup({ status: "completed", fileSize: null }, same)) {
         failures.push("legacy null size should re-parse");
     }
-    if (isCompletedUnchangedBackup({ status: "completed" }, 1_000)) {
+    if (isCompletedUnchangedBackup({ status: "completed" }, same)) {
         failures.push("legacy missing size should re-parse");
     }
-    if (isCompletedUnchangedBackup({ status: "failed", fileSize: 1_000 }, 1_000)) {
+    if (isCompletedUnchangedBackup({ status: "failed", fileSize: 1_000, xmlCount: 18_000, xmlBackupDate: 1_755_400_000_000 }, same)) {
         failures.push("failed import should retry");
     }
-    if (isCompletedUnchangedBackup(null, 1_000)) {
+    if (isCompletedUnchangedBackup(null, same)) {
         failures.push("missing row should parse");
+    }
+
+    const header = parseSmsXmlHeader(
+        `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<!--File Created By SMS Backup & Restore v10.24.002 on 24/08/2026 13:30:00-->
+<smses count="18420" backup_set="abc" backup_date="1756020000000" type="full">
+`
+    );
+
+    if (header.xmlCount !== 18420 || header.xmlBackupDate !== 1_756_020_000_000) {
+        failures.push(`xml header ${JSON.stringify(header)}`);
+    }
+
+    if (parseSmsXmlHeader("<root/>").xmlCount != null) {
+        failures.push("header without smses should be empty");
     }
 
     if (failures.length > 0) {
