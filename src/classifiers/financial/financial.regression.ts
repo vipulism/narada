@@ -12,11 +12,11 @@ import { FireflyOpenings, dhanApplyUnpushedReason } from "../../connectors/firef
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
+import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency } from "./financial.due";
 import { isIglPendingReminder } from "./financial.kind";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
-import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
-import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
+import { dhanLastMonthComparable, formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
+import { applyManualDueMarks, filterDueKnowledgeItems, keepCurrentCardDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
 import { isCompletedUnchangedBackup } from "../../importers/sms/smsImport.model";
 import { parseSmsXmlHeader } from "../../importers/sms/smsXmlParser";
@@ -2192,6 +2192,34 @@ function airtelDueRow(smsId: number, occurredAt: string, body: string) {
     };
 }
 
+function iciciDueItem(
+    id: number,
+    dueDate: string,
+    status: "open" | "overdue" | "paid",
+    occurredAt: string
+): KnowledgeItem {
+    return {
+        type: "due",
+        id,
+        occurredAt: new Date(occurredAt),
+        payload: {
+            kind: "due",
+            dueDate,
+            minDue: 330,
+            totalDue: 6447,
+            amount: 6447,
+            currency: "INR",
+            accountLast4: "0004",
+            accountName: null,
+            bank: "ICICI Bank",
+            merchant: null,
+            classifier: "regex-financial",
+            classifierVersion: "1",
+            status,
+        },
+    };
+}
+
 function runDueFeedRegression(): void {
     const failures: string[] = [];
     const yesDue =
@@ -2497,6 +2525,24 @@ function runDueFeedRegression(): void {
         failures.push("old ICICI 0004 payment must not hide the later Jun due");
     }
 
+    const iciciCurrent = keepCurrentCardCycles(iciciCycles);
+
+    if (iciciCurrent.length !== 1 || iciciCurrent[0].smsId !== 14833) {
+        failures.push("Attention should list only the later ICICI 0004 cycle");
+    }
+
+    const iciciDisplay = filterDueKnowledgeItems(
+        keepCurrentCardDueKnowledgeItems([
+            iciciDueItem(2209, "2024-11-30", "overdue", "2024-11-10T10:00:00+05:30"),
+            iciciDueItem(14833, "2025-06-30", "paid", "2025-06-10T10:00:00+05:30"),
+        ]),
+        "unpaid"
+    );
+
+    if (iciciDisplay.length !== 0) {
+        failures.push("older unpaid ICICI 0004 must stay hidden when a newer cycle exists");
+    }
+
     const paidFrom3Aug = settleDueStatuses([bill3Aug], [paid18Aug], "2026-08-21");
 
     if (paidFrom3Aug.get(18761) !== "paid") {
@@ -2786,6 +2832,10 @@ function runDueFeedRegression(): void {
         failures.push(`July + August Airtel ₹589 should be two dues, got ${bothMonths.length}`);
     }
 
+    if (keepCurrentCardCycles(bothMonths).length !== 2) {
+        failures.push("Airtel Jul+Aug must still list two after current-card collapse");
+    }
+
     const undatedMonths = keepLatestDueReminders([
         { ...julWifi, dueDate: null },
         { ...julFixed, dueDate: null },
@@ -3044,9 +3094,14 @@ function runAttentionDigestRegression(): void {
         failures.push(`13% less phrase ${monthOverMonthPhrase("expenses", 45000, 52000)}`);
     }
 
+    if (dhanLastMonthComparable("2026-07-28") || !dhanLastMonthComparable("2026-08-21")) {
+        failures.push("July Dhan window is before ledger opening; August is not");
+    }
+
+    const septRanges = istComparableMonthRanges("2026-09-21");
     const dhanOk = formatDhanMonthStats({
         configured: true,
-        ...ranges,
+        ...septRanges,
         thisIncome: 80000,
         thisExpense: 45000,
         lastIncome: 70000,
@@ -3054,14 +3109,32 @@ function runAttentionDigestRegression(): void {
     });
 
     if (
-        !dhanOk.includes("Aug 1–21") ||
+        !dhanOk.includes("Sep 1–21") ||
         !dhanOk.includes("in ₹80,000") ||
         !dhanOk.includes("out ₹45,000") ||
-        !dhanOk.includes("Jul 1–21") ||
+        !dhanOk.includes("Aug 1–21") ||
         !dhanOk.includes("income 14% more than last month") ||
         !dhanOk.includes("expenses 13% less than last month")
     ) {
         failures.push(`dhan month stats ${dhanOk}`);
+    }
+
+    const dhanBeforeLedger = formatDhanMonthStats({
+        configured: true,
+        ...ranges,
+        thisIncome: 6070,
+        thisExpense: 374627,
+        lastIncome: 0,
+        lastExpense: 0,
+    });
+
+    if (
+        dhanBeforeLedger.includes("Jul 1–21") ||
+        dhanBeforeLedger.includes("₹0 last month") ||
+        !dhanBeforeLedger.includes("ledger from 16 Aug 2026") ||
+        !dhanBeforeLedger.includes("Aug 1–21")
+    ) {
+        failures.push(`pre-ledger Dhan month stats ${dhanBeforeLedger}`);
     }
 
     const dhanDown = formatDhanMonthStats({
@@ -3123,6 +3196,64 @@ function runAttentionDigestRegression(): void {
         !mixedDigest.includes("(1)")
     ) {
         failures.push(`Telegram due digest must hide paid, got ${mixedDigest}`);
+    }
+
+    const ancientAxis = {
+        smsId: 1,
+        occurredAt: new Date("2024-01-10T10:00:00+05:30"),
+        dueDate: "2024-01-30",
+        amount: 337,
+        minDue: 100,
+        totalDue: 337,
+        bank: "Axis Bank",
+        accountLast4: "6147",
+        merchant: null,
+        status: "overdue" as const,
+    };
+    const currentIcici = {
+        smsId: 2,
+        occurredAt: new Date("2026-06-10T10:00:00+05:30"),
+        dueDate: "2026-06-15",
+        amount: 2296.92,
+        minDue: 100,
+        totalDue: 2296.92,
+        bank: "ICICI Bank",
+        accountLast4: "0004",
+        merchant: null,
+        status: "overdue" as const,
+    };
+    const upcomingHsbc = {
+        smsId: 3,
+        occurredAt: new Date("2026-08-20T10:00:00+05:30"),
+        dueDate: "2026-08-30",
+        amount: 500,
+        minDue: 100,
+        totalDue: 500,
+        bank: "HSBC",
+        accountLast4: "4433",
+        merchant: null,
+        status: "open" as const,
+    };
+
+    if (compareDueUrgency(upcomingHsbc, currentIcici, "2026-08-28") >= 0) {
+        failures.push("upcoming due should sort before recently overdue");
+    }
+
+    if (compareDueUrgency(currentIcici, ancientAxis, "2026-08-28") >= 0) {
+        failures.push("recent overdue should sort before 2024 overdue");
+    }
+
+    const urgencyDigest = formatDueDigest(
+        "Dues",
+        [ancientAxis, currentIcici, upcomingHsbc],
+        "2026-08-28"
+    );
+    const hsbcAt = urgencyDigest?.indexOf("HSBC") ?? -1;
+    const iciciAt = urgencyDigest?.indexOf("ICICI") ?? -1;
+    const axisAt = urgencyDigest?.indexOf("Axis Bank") ?? -1;
+
+    if (hsbcAt < 0 || iciciAt < 0 || axisAt < 0 || !(hsbcAt < iciciAt && iciciAt < axisAt)) {
+        failures.push(`digest urgency order ${urgencyDigest}`);
     }
 
     const paidOnlyDaily = formatDailyAttentionDigest(
