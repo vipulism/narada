@@ -197,7 +197,8 @@ export function dedupeDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[]
 
 /**
  * Dedupes due SMS, then marks paid / overdue / open from card payment-ack
- * SMS and IGL confirmation / IGL merchant spend SMS.
+ * SMS, CRED/CheQ/SBI Cards/Axis bill-pay from savings, and IGL confirmation /
+ * IGL merchant spend SMS.
  *
  * @param dueSources - Due reminder analysis rows
  * @param paymentSources - Candidate received/credited or utility payment rows
