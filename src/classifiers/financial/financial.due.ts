@@ -1,4 +1,6 @@
 import {
+    cardBillPayNamedBank,
+    isCardBillPayMessage,
     isCreditCardPaymentAck,
     isDueReminder,
     isIglPendingReminder,
@@ -27,6 +29,8 @@ export interface DueReminderIdentity {
     dueParty?: string | null;
     merchant?: string | null;
     body?: string | null;
+    /** Issuer bank on the due SMS, used to scope CRED/CheQ vs SBI Cards / Axis. */
+    bank?: string | null;
     amount: number | null;
     /** Statement total when the SMS also names a min due. */
     totalDue?: number | null;
@@ -47,8 +51,8 @@ export function isUnpaidDueAttention(status?: DueAttentionStatus | string | null
 }
 
 /**
- * SMS that can settle a due: card received/credited ack, or a utility
- * payment (IGL confirmation / spend at that biller).
+ * SMS that can settle a due: card received/credited ack, CRED/CheQ/SBI/Axis
+ * bill-pay from savings, or a utility payment (IGL).
  */
 export interface CardPaymentAck {
     smsId: number;
@@ -57,6 +61,13 @@ export interface CardPaymentAck {
     amount: number | null;
     /** Canonical biller when matching utility dues that have no card last4. */
     dueParty?: string | null;
+    /**
+     * CRED / CheQ / named-bank UPI from savings: match card dues by amount,
+     * never by the savings last4 (XX412 is 1412, not ICICI 0004).
+     */
+    matchCardDuesByAmount?: boolean;
+    /** When the payee names a card bank (`SBI CARDS`, `Axis`), restrict to that bank. */
+    cardPayBank?: string | null;
 }
 
 /**
@@ -89,7 +100,8 @@ export function isDueKnowledgeRow(
 }
 
 /**
- * True when an analysis row is a card payment received/credited ack (not a due).
+ * True when an analysis row is a card payment received/credited ack, or a
+ * CRED/CheQ/SBI Cards/Axis bill-pay from savings (not a due).
  *
  * @param subcategory - sms_analysis.subcategory
  * @param cashFlow - extracted cashFlow
@@ -100,6 +112,10 @@ export function isCardPaymentAckRow(
     cashFlow: string | undefined,
     body: string
 ): boolean {
+    if (isCardBillPayMessage(body) && (subcategory === "bill" || subcategory === "expense")) {
+        return true;
+    }
+
     const upper = body.toUpperCase();
     return subcategory === "bill" && cashFlow === "NEUTRAL" && isCreditCardPaymentAck(upper);
 }
@@ -618,7 +634,9 @@ export function formatRemainingDays(days: number | null | undefined): string | n
 
 /**
  * Marks each due paid when a matching payment hits the same last4 (card)
- * or the same utility biller (IGL) in that bill cycle. Prefer the due whose
+ * or the same utility biller (IGL) in that bill cycle. CRED/CheQ/SBI Cards/Axis
+ * UPI from savings settle a card due only when the amount matches (±₹1) and
+ * the payee does not name a different bank. Prefer the due whose
  * amount matches, then the closest reminder time, so an older open cycle
  * does not steal a later payment. IGL card-spend SMS settle the IGL due only,
  * not the credit-card statement.
@@ -665,6 +683,10 @@ export function settleDueStatuses(
             continue;
         }
 
+        if (payment.matchCardDuesByAmount) {
+            continue;
+        }
+
         if (!last4) {
             continue;
         }
@@ -674,6 +696,7 @@ export function settleDueStatuses(
 
     matchPaymentsToDues(duesByLast4, paysByLast4, status, today);
     matchPaymentsToDues(duesByParty, paysByParty, status, today);
+    matchCardBillPays(dues, payments, status, today);
 
     return status;
 }
@@ -729,6 +752,76 @@ function matchPaymentsToDues(
             }
         }
     }
+}
+
+function matchCardBillPays(
+    dues: DueReminderIdentity[],
+    payments: CardPaymentAck[],
+    status: Map<number, DueAttentionStatus>,
+    today: string
+): void {
+    const billPays = payments
+        .filter((payment) => payment.matchCardDuesByAmount)
+        .sort((left, right) => occurredAtMs(left) - occurredAtMs(right));
+
+    if (billPays.length === 0) {
+        return;
+    }
+
+    const cardDues = dues.filter((due) => due.accountLast4?.trim() && !dueSettleParty(due));
+
+    for (const payment of billPays) {
+        const candidates = cardDues.filter((due) => {
+            if (status.get(due.smsId) === "paid") {
+                return false;
+            }
+
+            if (!dueMatchesCardPayBank(due, payment.cardPayBank)) {
+                return false;
+            }
+
+            if (amountDistance(payment, due) > 1) {
+                return false;
+            }
+
+            return paymentFitsDue(due, payment, [due]);
+        });
+        const last4s = new Set(candidates.map((due) => due.accountLast4?.trim() ?? ""));
+
+        if (last4s.size !== 1) {
+            continue;
+        }
+
+        candidates.sort((left, right) => comparePaymentFit(payment, left, right));
+        status.set(candidates[0].smsId, "paid");
+    }
+
+    for (const due of cardDues) {
+        if (!status.has(due.smsId)) {
+            status.set(due.smsId, statusFromDueDate(due.dueDate, today));
+        }
+    }
+}
+
+function dueMatchesCardPayBank(due: DueReminderIdentity, bank: string | null | undefined): boolean {
+    if (!bank) {
+        return true;
+    }
+
+    const hay = [due.bank, due.merchant, due.body]
+        .filter((value): value is string => Boolean(value && value.trim()))
+        .join(" ")
+        .toUpperCase();
+
+    if (bank === "State Bank of India") {
+        return hay.includes("SBI") || hay.includes("STATE BANK");
+    }
+
+    if (bank === "Axis Bank") {
+        return /\bAXIS\b/.test(hay);
+    }
+
+    return hay.includes(bank.toUpperCase());
 }
 
 function dueDay(dueDate: string | null | undefined): string {

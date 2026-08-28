@@ -13,7 +13,7 @@ import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
 import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays } from "./financial.due";
-import { isIglPendingReminder } from "./financial.kind";
+import { cardBillPayNamedBank, isCardBillPayMessage, isIglPendingReminder } from "./financial.kind";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
@@ -1249,6 +1249,19 @@ const CASES: RegressionCase[] = [
             subcategory: "bill",
             cashFlow: "OUTFLOW",
             amount: 13205,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "icici-cred-club-0004-bill-pay",
+        address: "AD-ICICIT-S",
+        body: "ICICI Bank Acct XX412 debited for Rs 11079.79 on 27-Aug-26; CRED Club credited. UPI:660504435794. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 11079.79,
             accountLast4: "1412",
             transactionType: "UPI",
         },
@@ -2501,6 +2514,82 @@ function runDueFeedRegression(): void {
 
     if (paidFrom3Aug.get(18761) !== "paid") {
         failures.push(`18 Aug HSBC credit should pay the 3 Aug bill, got ${paidFrom3Aug.get(18761)}`);
+    }
+
+    const credClub0004Body =
+        "ICICI Bank Acct XX412 debited for Rs 11079.79 on 27-Aug-26; CRED Club credited. UPI:660504435794. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+
+    if (!isCardBillPayMessage(credClub0004Body) || cardBillPayNamedBank(credClub0004Body) != null) {
+        failures.push("CRED Club debit should be an unscoped card bill-pay");
+    }
+
+    if (!isCardPaymentAckRow("bill", "OUTFLOW", credClub0004Body)) {
+        failures.push("CRED Club bill+OUTFLOW should load as a due payment");
+    }
+
+    const iciciCurrentDue = {
+        smsId: 19001,
+        occurredAt: new Date("2026-08-05T10:00:00+05:30"),
+        dueDate: "2026-08-30",
+        accountLast4: "0004",
+        bank: "ICICI Bank",
+        amount: 11079.79,
+    };
+    const credClubPay = {
+        smsId: 19050,
+        occurredAt: new Date("2026-08-27T12:00:00+05:30"),
+        accountLast4: "1412",
+        amount: 11079.79,
+        matchCardDuesByAmount: true,
+        cardPayBank: null as string | null,
+    };
+    const credPaid = settleDueStatuses([iciciCurrentDue, iciciJun], [credClubPay], "2026-08-28");
+
+    if (credPaid.get(19001) !== "paid") {
+        failures.push(`CRED Club ₹11079.79 should pay ICICI 0004, got ${credPaid.get(19001)}`);
+    }
+
+    if (credPaid.get(14833) === "paid") {
+        failures.push("CRED Club must not pay a different ICICI 0004 cycle amount");
+    }
+
+    const credWrongTotal = settleDueStatuses(
+        [{ ...iciciCurrentDue, amount: 11008 }],
+        [credClubPay],
+        "2026-08-28"
+    );
+
+    if (credWrongTotal.get(19001) === "paid") {
+        failures.push("CRED Club ₹11079.79 must not pay a ₹11008 due");
+    }
+
+    const yesSameAmount = {
+        smsId: 19002,
+        occurredAt: new Date("2026-08-06T10:00:00+05:30"),
+        dueDate: "2026-08-31",
+        accountLast4: "4472",
+        bank: "YES Bank",
+        amount: 11079.79,
+    };
+    const credAmbiguous = settleDueStatuses(
+        [iciciCurrentDue, yesSameAmount],
+        [credClubPay],
+        "2026-08-28"
+    );
+
+    if (credAmbiguous.get(19001) === "paid" || credAmbiguous.get(19002) === "paid") {
+        failures.push("CRED Club must not guess when two cards share the amount");
+    }
+
+    const axisBillPay = {
+        ...credClubPay,
+        smsId: 19051,
+        cardPayBank: "Axis Bank",
+    };
+    const axisScoped = settleDueStatuses([iciciCurrentDue], [axisBillPay], "2026-08-28");
+
+    if (axisScoped.get(19001) === "paid") {
+        failures.push("Axis credited UPI must not pay an ICICI due");
     }
 
     const airtelWifiJul =
