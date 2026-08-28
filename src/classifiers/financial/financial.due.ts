@@ -453,6 +453,117 @@ export function keepLatestDueReminders<T extends DueReminderIdentity>(rows: T[])
 }
 
 /**
+ * Latest billing cycle per credit-card last4. Older months stay in the DB
+ * for payment matching but are omitted from Attention and Telegram.
+ * Utilities (Airtel, IGL) are left unchanged so July and August both list.
+ *
+ * @param rows - Settled due reminders (paid and unpaid)
+ */
+export function keepCurrentCardCycles<T extends DueReminderIdentity>(rows: T[]): T[] {
+    const rest: T[] = [];
+    const byLast4 = new Map<string, T[]>();
+
+    for (const row of rows) {
+        const last4 = row.accountLast4?.trim();
+
+        if (!last4 || utilityDueParty(row)) {
+            rest.push(row);
+            continue;
+        }
+
+        const group = byLast4.get(last4) ?? [];
+        group.push(row);
+        byLast4.set(last4, group);
+    }
+
+    const current: T[] = [];
+
+    for (const group of byLast4.values()) {
+        group.sort(compareCurrentCardCycle);
+        current.push(group[0]);
+    }
+
+    return [...rest, ...current];
+}
+
+/**
+ * Attention order: unpaid first, then due soon, then recently overdue.
+ * Ancient overdue (2024 statements) sort after current bills.
+ *
+ * @param left - Due row
+ * @param right - Due row
+ * @param today - `YYYY-MM-DD` IST
+ */
+export function compareDueUrgency(
+    left: { dueDate?: string | null; status?: string | null; smsId?: number },
+    right: { dueDate?: string | null; status?: string | null; smsId?: number },
+    today: string = todayIstDate()
+): number {
+    const leftPaid = left.status === "paid" ? 1 : 0;
+    const rightPaid = right.status === "paid" ? 1 : 0;
+
+    if (leftPaid !== rightPaid) {
+        return leftPaid - rightPaid;
+    }
+
+    const byDate = compareUnpaidDueDates(left.dueDate, right.dueDate, today);
+
+    if (byDate !== 0) {
+        return byDate;
+    }
+
+    return (right.smsId ?? 0) - (left.smsId ?? 0);
+}
+
+function compareCurrentCardCycle(
+    left: DueReminderIdentity,
+    right: DueReminderIdentity
+): number {
+    const leftDay = isoDueDay(left.dueDate) ?? "";
+    const rightDay = isoDueDay(right.dueDate) ?? "";
+
+    if (leftDay !== rightDay) {
+        return rightDay.localeCompare(leftDay);
+    }
+
+    return isNewerDue(left, right) ? -1 : 1;
+}
+
+function compareUnpaidDueDates(
+    leftDue: string | null | undefined,
+    rightDue: string | null | undefined,
+    today: string
+): number {
+    const leftDays = leftDue ? daysUntilDue(leftDue, today) : null;
+    const rightDays = rightDue ? daysUntilDue(rightDue, today) : null;
+
+    if (leftDays == null && rightDays == null) {
+        return 0;
+    }
+
+    if (leftDays == null) {
+        return 1;
+    }
+
+    if (rightDays == null) {
+        return -1;
+    }
+
+    const leftOverdue = leftDays < 0;
+    const rightOverdue = rightDays < 0;
+
+    if (leftOverdue !== rightOverdue) {
+        return leftOverdue ? 1 : -1;
+    }
+
+    if (!leftOverdue) {
+        return leftDays - rightDays;
+    }
+
+    return rightDays - leftDays;
+}
+
+/**
  * Undated card reminders join a dated statement in the same or next/prev month
  * so "due 27 Aug" and an August follow-up share a cycle without folding every
  * historical last4 bill into one (which hid ICICI 0004 after an old payment).

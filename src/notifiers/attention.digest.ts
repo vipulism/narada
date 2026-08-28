@@ -1,9 +1,11 @@
 import {
+    compareDueUrgency,
     daysUntilDue,
     formatRemainingDays,
     isUnpaidDueAttention,
 } from "../classifiers/financial/financial.due";
 import type { SpendMonthStats } from "../classifiers/financial/financial.spend";
+import { DHAN_LEDGER_START } from "../connectors/firefly/firefly.openings";
 import { BlockedAlert, DueAlert } from "./attention.state";
 
 const DIGEST_CAP = 8;
@@ -117,7 +119,13 @@ export function formatDueDigest(
     rows: DueAlert[],
     today?: string
 ): string | undefined {
-    const unpaid = unpaidDueAlerts(rows);
+    const unpaid = unpaidDueAlerts(rows).sort((left, right) =>
+        compareDueUrgency(
+            { dueDate: left.dueDate, status: left.status, smsId: left.smsId },
+            { dueDate: right.dueDate, status: right.status, smsId: right.smsId },
+            today
+        )
+    );
 
     if (unpaid.length === 0) {
         return undefined;
@@ -234,9 +242,16 @@ export function formatDhanMonthStats(stats: DhanMonthStats): string {
         return `📒 <b>Dhan</b>\n• unavailable${detail}`;
     }
 
+    const thisLine = `• ${stats.thisLabel}: in ${formatInr(stats.thisIncome)} · out ${formatInr(stats.thisExpense)}`;
+
+    if (!dhanLastMonthComparable(stats.lastEnd)) {
+        return `📒 <b>Dhan</b>\n${escapeHtml(thisLine)}\n${escapeHtml(
+            `• ledger from ${formatIstDayLabel(DHAN_LEDGER_START)}`
+        )}`;
+    }
+
     const lastIncome = stats.lastIncome ?? 0;
     const lastExpense = stats.lastExpense ?? 0;
-    const thisLine = `• ${stats.thisLabel}: in ${formatInr(stats.thisIncome)} · out ${formatInr(stats.thisExpense)}`;
     const lastLine = `• ${stats.lastLabel}: in ${formatInr(lastIncome)} · out ${formatInr(lastExpense)}`;
     const incomeLine = `• ${monthOverMonthPhrase("income", stats.thisIncome, lastIncome)}`;
     const expenseLine = `• ${monthOverMonthPhrase("expenses", stats.thisExpense, lastExpense)}`;
@@ -244,6 +259,19 @@ export function formatDhanMonthStats(stats: DhanMonthStats): string {
     return `📒 <b>Dhan</b>\n${escapeHtml(thisLine)}\n${escapeHtml(lastLine)}\n${escapeHtml(incomeLine)}\n${escapeHtml(
         expenseLine
     )}`;
+}
+
+/**
+ * Last-month Dhan totals are comparable only when that window reaches the ledger opening.
+ *
+ * @param lastEnd - Inclusive last day of the prior-month window (`YYYY-MM-DD`)
+ * @param ledgerStart - Dhan opening day
+ */
+export function dhanLastMonthComparable(
+    lastEnd: string,
+    ledgerStart: string = DHAN_LEDGER_START
+): boolean {
+    return lastEnd >= ledgerStart;
 }
 
 /**
@@ -320,6 +348,16 @@ function formatDueLine(row: DueAlert, today?: string): string {
 
 function formatInr(amount: number): string {
     return `₹${Math.round(amount).toLocaleString("en-IN")}`;
+}
+
+function formatIstDayLabel(iso: string): string {
+    const match = iso.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (!match) {
+        return iso;
+    }
+
+    return `${Number(match[3])} ${MONTH_LABELS[Number(match[2]) - 1]} ${match[1]}`;
 }
 
 function parseIsoDay(value: string): { year: number; month: number; day: number } | null {

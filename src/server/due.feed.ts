@@ -4,7 +4,9 @@ import { DueMarkRepository } from "../db/repositories/dueMark.repository";
 import { SmsDueRepository, type DueAnalysisSource } from "../importers/sms/smsDue.repository";
 import {
     applyManualDueMarks,
+    compareDueAttention,
     filterDueKnowledgeItems,
+    keepCurrentCardDueKnowledgeItems,
     knowledgeDueReminderKey,
     settleDueKnowledgeItems,
     type KnowledgeItem,
@@ -18,7 +20,7 @@ const marks = new DueMarkRepository();
 /**
  * Unique due bills with paid/overdue/open from received/credited card SMS,
  * IGL confirmation / IGL merchant spend, and Home `POST /knowledge/:id/paid`.
- * Default status omits paid (Telegram too).
+ * Default status omits paid (Telegram too) and lists one unpaid cycle per card.
  *
  * @param options - Optional last4, bank, from/to, status, and search
  */
@@ -60,10 +62,15 @@ export async function loadSettledDueKnowledge(options?: {
         await marks.listKeys()
     );
     const bodies = new Map(dueSources.map((row) => [row.smsId, row.body]));
+    const forDisplay =
+        options?.status === "all" || options?.status === "paid"
+            ? settled
+            : keepCurrentCardDueKnowledgeItems(settled);
 
-    return filterDueKnowledgeItems(settled, options?.status)
+    return filterDueKnowledgeItems(forDisplay, options?.status)
         .filter((item) => dueInTimeWindow(item, options?.from, options?.to))
-        .filter((item) => matchesKnowledgeQuery(item, options?.q, bodies.get(item.id)));
+        .filter((item) => matchesKnowledgeQuery(item, options?.q, bodies.get(item.id)))
+        .sort(compareDueAttention);
 }
 
 function dueInTimeWindow(item: KnowledgeItem, from?: Date, to?: Date): boolean {
