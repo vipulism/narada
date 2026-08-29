@@ -150,7 +150,8 @@ export function isUtilityDuePaymentRow(
 /**
  * Reads min due and total due labels.
  * Covers `Total Due INR 6447`, HSBC `Total amount is 361` / `total payment due … is INR 1131`,
- * Axis `Payment of INR 280 … is due`, and Axis `Credit Card XX6147 of INR 409 has been generated`.
+ * Axis `Payment of INR 280 … is due`, Axis `Credit Card XX6147 of INR 409 has been generated`,
+ * and IndusInd `Total Amount Due on your … Card XXXX2988 is INR 2407`.
  *
  * @param body - Raw SMS body
  */
@@ -163,7 +164,7 @@ export function parseDueAmounts(body: string): DueAmounts {
 
 /**
  * Min due for Home/Telegram only when it is not the same as the total.
- * YES/IndusInd `min ₹172 · total ₹172` is noise; IDFC `min ₹100 · total ₹3290` stays.
+ * YES `min ₹172 · total ₹172` is noise; IDFC `min ₹100 · total ₹3290` stays.
  *
  * @param minDue - Parsed minimum
  * @param totalDue - Statement total or payable amount
@@ -185,6 +186,7 @@ export function distinctMinDue(
 
 const TOTAL_DUE_PATTERNS = [
     /total\s+payment\s+due[\s\S]{0,80}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
+    /total\s+(?:amt|amount)\s+due[\s\S]{0,80}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
     /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+due\b/i,
     /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+pending\b/i,
     /\bof\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)\s+has\s+been\s+generated\b/i,
