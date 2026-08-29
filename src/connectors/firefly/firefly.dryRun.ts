@@ -41,7 +41,7 @@ export function planFireflyTransaction(
         return blocked(event, skipReason, true);
     }
 
-    if (event.kind === "transfer" || event.kind === "investment") {
+    if (event.kind === "transfer" || event.kind === "investment" || event.kind === "bill") {
         return planTransfer(event, sourceLast4, firefly);
     }
 
@@ -98,7 +98,12 @@ function planTransfer(
     }
 
     if (!destLast4) {
-        return blocked(event, "transfer missing counterparty_last4");
+        return blocked(
+            event,
+            event.kind === "bill"
+                ? "card bill-pay missing destination last4"
+                : "transfer missing counterparty_last4"
+        );
     }
 
     const source = resolveLeg(sourceLast4, firefly, "source");
@@ -191,6 +196,20 @@ function basePlan(
     }
 
     return plan;
+}
+
+/**
+ * True when a posted card bill-pay already sits in Dhan as a withdrawal and
+ * should become a savings→card transfer.
+ *
+ * @param event - Row from financial_events
+ * @param fireflyType - Current Firefly split type
+ */
+export function shouldRewritePostedBillPay(
+    event: Pick<FinancialEvent, "kind" | "counterpartyLast4">,
+    fireflyType: string | undefined
+): boolean {
+    return event.kind === "bill" && Boolean(event.counterpartyLast4) && fireflyType === "withdrawal";
 }
 
 function blocked(
