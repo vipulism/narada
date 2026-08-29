@@ -62,8 +62,8 @@ export interface CardPaymentAck {
     /** Canonical biller when matching utility dues that have no card last4. */
     dueParty?: string | null;
     /**
-     * CRED / CheQ / named-bank UPI from savings: match card dues by amount,
-     * never by the savings last4 (XX412 is 1412, not ICICI 0004).
+     * CRED / CheQ / named-bank UPI from savings: match card dues by amount
+     * (exact or CRED-reward band), never by the savings last4 (XX412 is 1412, not ICICI 0004).
      */
     matchCardDuesByAmount?: boolean;
     /** When the payee names a card bank (`SBI CARDS`, `Axis`), restrict to that bank. */
@@ -706,6 +706,8 @@ function firstRemindedMs(row: DueReminderIdentity): number {
 
 const MS_DAY = 86_400_000;
 const PAID_GRACE_DAYS = 25;
+/** CRED/CheQ bill-pay vs statement total: coins, discount, or a small fee. */
+const CARD_BILL_PAY_REWARD_RATIO = 0.1;
 
 /**
  * Calendar date in India (`YYYY-MM-DD`) for overdue vs open.
@@ -768,7 +770,8 @@ export function formatRemainingDays(days: number | null | undefined): string | n
 /**
  * Marks each due paid when a matching payment hits the same last4 (card)
  * or the same utility biller (IGL) in that bill cycle. CRED/CheQ/SBI Cards/Axis
- * UPI from savings settle a card due only when the amount matches (±₹1) and
+ * UPI from savings settle a card due when the amount matches (±₹1) or sits
+ * within a 10% CRED-reward band of that total (discount or small fee), and
  * the payee does not name a different bank. Prefer the due whose
  * amount matches, then the closest reminder time, so an older open cycle
  * does not steal a later payment. IGL card-spend SMS settle the IGL due only,
@@ -904,7 +907,7 @@ function matchCardBillPays(
     const cardDues = dues.filter((due) => due.accountLast4?.trim() && !dueSettleParty(due));
 
     for (const payment of billPays) {
-        const candidates = cardDues.filter((due) => {
+        const inWindow = cardDues.filter((due) => {
             if (status.get(due.smsId) === "paid") {
                 return false;
             }
@@ -913,12 +916,11 @@ function matchCardBillPays(
                 return false;
             }
 
-            if (amountDistance(payment, due) > 1) {
-                return false;
-            }
-
-            return paymentFitsDue(due, payment, [due]);
+            return paymentInCycleWindow(due, payment);
         });
+        const exact = inWindow.filter((due) => amountDistance(payment, due) <= 1);
+        const candidates =
+            exact.length > 0 ? exact : inWindow.filter((due) => cardBillPayAmountFits(payment, due));
         const last4s = new Set(candidates.map((due) => due.accountLast4?.trim() ?? ""));
 
         if (last4s.size !== 1) {
@@ -955,6 +957,42 @@ function dueMatchesCardPayBank(due: DueReminderIdentity, bank: string | null | u
     }
 
     return hay.includes(bank.toUpperCase());
+}
+
+function paymentInCycleWindow(due: DueReminderIdentity, payment: CardPaymentAck): boolean {
+    const payAt = occurredAtMs(payment);
+    const windowStart = firstRemindedMs(due) - 2 * MS_DAY;
+    return payAt >= windowStart && payAt <= dueCycleEndMs(due);
+}
+
+/**
+ * Exact rupee match, or CRED/CheQ debit within 10% of the statement total
+ * (rewards discount or a small extra). A min-due-only debit is not a reward.
+ */
+function cardBillPayAmountFits(payment: CardPaymentAck, due: DueReminderIdentity): boolean {
+    if (amountDistance(payment, due) <= 1) {
+        return true;
+    }
+
+    const dueAmt = due.amount ?? due.totalDue;
+    const pay = payment.amount;
+
+    if (pay == null || dueAmt == null || !(dueAmt > 0) || !Number.isFinite(pay)) {
+        return false;
+    }
+
+    const minDue = due.minDue;
+
+    if (
+        minDue != null &&
+        Number.isFinite(minDue) &&
+        Math.abs(pay - minDue) <= 1 &&
+        Math.abs(dueAmt - minDue) > 1
+    ) {
+        return false;
+    }
+
+    return Math.abs(pay - dueAmt) / dueAmt <= CARD_BILL_PAY_REWARD_RATIO;
 }
 
 function dueDay(dueDate: string | null | undefined): string {

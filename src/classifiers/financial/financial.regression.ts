@@ -2599,14 +2599,34 @@ function runDueFeedRegression(): void {
         failures.push("CRED Club must not pay a different ICICI 0004 cycle amount");
     }
 
-    const credWrongTotal = settleDueStatuses(
-        [{ ...iciciCurrentDue, amount: 11008 }],
+    const credRewardDue = settleDueStatuses(
+        [{ ...iciciCurrentDue, amount: 11008, minDue: 560, totalDue: 11008 }],
         [credClubPay],
         "2026-08-28"
     );
 
-    if (credWrongTotal.get(19001) === "paid") {
-        failures.push("CRED Club ₹11079.79 must not pay a ₹11008 due");
+    if (credRewardDue.get(19001) !== "paid") {
+        failures.push("CRED Club ₹11079.79 should pay ICICI 0004 ₹11008 after rewards/fee");
+    }
+
+    const credMinOnly = settleDueStatuses(
+        [{ ...iciciCurrentDue, amount: 3290.7, minDue: 100, totalDue: 3290.7 }],
+        [{ ...credClubPay, amount: 100 }],
+        "2026-08-28"
+    );
+
+    if (credMinOnly.get(19001) === "paid") {
+        failures.push("CRED min-due ₹100 must not clear a ₹3290 statement");
+    }
+
+    const credFarAmount = settleDueStatuses(
+        [{ ...iciciCurrentDue, amount: 11008, totalDue: 11008 }],
+        [{ ...credClubPay, amount: 5000 }],
+        "2026-08-28"
+    );
+
+    if (credFarAmount.get(19001) === "paid") {
+        failures.push("CRED Club ₹5000 must not pay a ₹11008 due");
     }
 
     const yesSameAmount = {
