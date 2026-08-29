@@ -2605,8 +2605,8 @@ function runDueFeedRegression(): void {
         "2026-08-28"
     );
 
-    if (credRewardDue.get(19001) !== "paid") {
-        failures.push("CRED Club ₹11079.79 should pay ICICI 0004 ₹11008 after rewards/fee");
+    if (credRewardDue.get(19001) === "paid") {
+        failures.push("CRED Club amount mismatch must stay unpaid for manual mark-paid");
     }
 
     const credMinOnly = settleDueStatuses(
