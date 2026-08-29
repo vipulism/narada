@@ -343,6 +343,19 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "indusind-stmt-total-due",
+        address: "VM-INDUSB",
+        body: "22/08/26 Stmt Alert: Total Amount Due on your IndusInd Bank Credit Card XXXX2988 is INR 2407.00 and Minimum Amount Due is INR 100.00, payable by 11/09/26. Payment to be made immediately if previous statement dues are unpaid or Card account is overlimit. Click https://pay.billdesk.com/cardnet-instapay/induscard to pay now - IndusInd Bank",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 2407,
+            accountLast4: "2988",
+            dueDate: "2026-09-11",
+        },
+    },
+    {
         id: "10790-axis-e-statement-bill",
         address: "CP-AxisBk",
         body: "E-statement of your Axis Bank Credit Card no. XX6147 has been generated. Total Amount Due INR  Dr. 1554.6, Minimum Amount Due INR Dr. 100, Due date 01-MAR-24. Click https://cc.axisbank.co.in/pUO7H-uFX to view/download.",
@@ -2277,6 +2290,24 @@ function runDueFeedRegression(): void {
 
     if (parseDueDate(hsbcPayable) !== "2025-08-20") {
         failures.push(`HSBC payable by ${parseDueDate(hsbcPayable)} != 2025-08-20`);
+    }
+
+    const indusindStmt =
+        "22/08/26 Stmt Alert: Total Amount Due on your IndusInd Bank Credit Card XXXX2988 is INR 2407.00 and Minimum Amount Due is INR 100.00, payable by 11/09/26. Payment to be made immediately if previous statement dues are unpaid or Card account is overlimit. Click https://pay.billdesk.com/cardnet-instapay/induscard to pay now - IndusInd Bank";
+    const indusindAmounts = parseDueAmounts(indusindStmt);
+
+    if (indusindAmounts.totalDue !== 2407 || indusindAmounts.minDue !== 100) {
+        failures.push(
+            `IndusInd stmt amounts ${indusindAmounts.minDue}/${indusindAmounts.totalDue} != 100/2407`
+        );
+    }
+
+    if (parseDueDate(indusindStmt) !== "2026-09-11") {
+        failures.push(`IndusInd payable by ${parseDueDate(indusindStmt)} != 2026-09-11`);
+    }
+
+    if (!isDueKnowledgeRow("bill", "NEUTRAL", indusindStmt)) {
+        failures.push("IndusInd stmt alert should be a due card");
     }
 
     if (!isDueKnowledgeRow("bill", "NEUTRAL", hsbcPayable)) {
