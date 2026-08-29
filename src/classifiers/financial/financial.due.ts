@@ -160,6 +160,28 @@ export function parseDueAmounts(body: string): DueAmounts {
     };
 }
 
+/**
+ * Min due for Home/Telegram only when it is not the same as the total.
+ * YES/IndusInd `min ₹172 · total ₹172` is noise; IDFC `min ₹100 · total ₹3290` stays.
+ *
+ * @param minDue - Parsed minimum
+ * @param totalDue - Statement total or payable amount
+ */
+export function distinctMinDue(
+    minDue: number | null | undefined,
+    totalDue: number | null | undefined
+): number | undefined {
+    if (minDue == null || !Number.isFinite(minDue)) {
+        return undefined;
+    }
+
+    if (totalDue == null || !Number.isFinite(totalDue)) {
+        return minDue;
+    }
+
+    return Math.abs(minDue - totalDue) > 1 ? minDue : undefined;
+}
+
 const TOTAL_DUE_PATTERNS = [
     /total\s+payment\s+due[\s\S]{0,80}?\bis\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)/i,
     /payment\s+of\s+(?:INR|Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)[\s\S]{0,80}?\bis\s+due\b/i,
@@ -466,6 +488,117 @@ export function keepLatestDueReminders<T extends DueReminderIdentity>(rows: T[])
         const byTime = occurredAtMs(right) - occurredAtMs(left);
         return byTime !== 0 ? byTime : right.smsId - left.smsId;
     });
+}
+
+/**
+ * Latest billing cycle per credit-card last4. Older months stay in the DB
+ * for payment matching but are omitted from Attention and Telegram.
+ * Utilities (Airtel, IGL) are left unchanged so July and August both list.
+ *
+ * @param rows - Settled due reminders (paid and unpaid)
+ */
+export function keepCurrentCardCycles<T extends DueReminderIdentity>(rows: T[]): T[] {
+    const rest: T[] = [];
+    const byLast4 = new Map<string, T[]>();
+
+    for (const row of rows) {
+        const last4 = row.accountLast4?.trim();
+
+        if (!last4 || utilityDueParty(row)) {
+            rest.push(row);
+            continue;
+        }
+
+        const group = byLast4.get(last4) ?? [];
+        group.push(row);
+        byLast4.set(last4, group);
+    }
+
+    const current: T[] = [];
+
+    for (const group of byLast4.values()) {
+        group.sort(compareCurrentCardCycle);
+        current.push(group[0]);
+    }
+
+    return [...rest, ...current];
+}
+
+/**
+ * Attention order: unpaid first, then due soon, then recently overdue.
+ * Ancient overdue (2024 statements) sort after current bills.
+ *
+ * @param left - Due row
+ * @param right - Due row
+ * @param today - `YYYY-MM-DD` IST
+ */
+export function compareDueUrgency(
+    left: { dueDate?: string | null; status?: string | null; smsId?: number },
+    right: { dueDate?: string | null; status?: string | null; smsId?: number },
+    today: string = todayIstDate()
+): number {
+    const leftPaid = left.status === "paid" ? 1 : 0;
+    const rightPaid = right.status === "paid" ? 1 : 0;
+
+    if (leftPaid !== rightPaid) {
+        return leftPaid - rightPaid;
+    }
+
+    const byDate = compareUnpaidDueDates(left.dueDate, right.dueDate, today);
+
+    if (byDate !== 0) {
+        return byDate;
+    }
+
+    return (right.smsId ?? 0) - (left.smsId ?? 0);
+}
+
+function compareCurrentCardCycle(
+    left: DueReminderIdentity,
+    right: DueReminderIdentity
+): number {
+    const leftDay = isoDueDay(left.dueDate) ?? "";
+    const rightDay = isoDueDay(right.dueDate) ?? "";
+
+    if (leftDay !== rightDay) {
+        return rightDay.localeCompare(leftDay);
+    }
+
+    return isNewerDue(left, right) ? -1 : 1;
+}
+
+function compareUnpaidDueDates(
+    leftDue: string | null | undefined,
+    rightDue: string | null | undefined,
+    today: string
+): number {
+    const leftDays = leftDue ? daysUntilDue(leftDue, today) : null;
+    const rightDays = rightDue ? daysUntilDue(rightDue, today) : null;
+
+    if (leftDays == null && rightDays == null) {
+        return 0;
+    }
+
+    if (leftDays == null) {
+        return 1;
+    }
+
+    if (rightDays == null) {
+        return -1;
+    }
+
+    const leftOverdue = leftDays < 0;
+    const rightOverdue = rightDays < 0;
+
+    if (leftOverdue !== rightOverdue) {
+        return leftOverdue ? 1 : -1;
+    }
+
+    if (!leftOverdue) {
+        return leftDays - rightDays;
+    }
+
+    return rightDays - leftDays;
 }
 
 /**

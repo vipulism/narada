@@ -2,7 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FinancialEvent } from "../../classifiers/financial/financial.model";
 
-const LEDGER_START = "2026-08-16";
+/** First IST day Narada posts SMS into Dhan (Firefly). Earlier months have no ledger. */
+export const DHAN_LEDGER_START = "2026-08-16";
+
+const LEDGER_START = DHAN_LEDGER_START;
 const MONTHS = [
     "Jan",
     "Feb",

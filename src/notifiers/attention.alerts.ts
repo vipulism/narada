@@ -13,6 +13,7 @@ import { SpendBucketRepository } from "../db/repositories/spendBucket.repository
 import { loadSettledDueKnowledge } from "../server/due.feed";
 import { AttentionDigestRepository } from "../db/repositories/attentionDigest.repository";
 import {
+    dhanLastMonthComparable,
     formatBlockedDigest,
     formatDailyAttentionDigest,
     formatDueDigest,
@@ -216,11 +217,16 @@ async function loadDhanMonthStats(today: string): Promise<DhanMonthStats> {
 
     try {
         const client = loadFireflyClient();
+        const includeLastMonth = dhanLastMonthComparable(ranges.lastEnd);
         const [thisIncome, thisExpense, lastIncome, lastExpense] = await Promise.all([
             client.insightTotal("income", ranges.thisStart, ranges.thisEnd),
             client.insightTotal("expense", ranges.thisStart, ranges.thisEnd),
-            client.insightTotal("income", ranges.lastStart, ranges.lastEnd),
-            client.insightTotal("expense", ranges.lastStart, ranges.lastEnd),
+            includeLastMonth
+                ? client.insightTotal("income", ranges.lastStart, ranges.lastEnd)
+                : Promise.resolve(undefined),
+            includeLastMonth
+                ? client.insightTotal("expense", ranges.lastStart, ranges.lastEnd)
+                : Promise.resolve(undefined),
         ]);
 
         return {

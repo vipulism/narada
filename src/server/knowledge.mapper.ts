@@ -7,11 +7,13 @@ import {
     isDueKnowledgeRow,
     isUtilityDuePaymentRow,
     isUnpaidDueAttention,
+    keepCurrentCardCycles,
     keepLatestDueReminders,
     parseDueAmounts,
     parseDueDate,
     settleDueStatuses,
     todayIstDate,
+    compareDueUrgency,
     type CardPaymentAck,
     type DueAttentionStatus,
 } from "../classifiers/financial/financial.due";
@@ -290,7 +292,29 @@ export function settleDueKnowledgeItems(
 
     return unique
         .map((row) => withDueStatus(row.item, statuses.get(row.smsId) ?? "open"))
-        .sort(compareDueAttention);
+        .sort((left, right) => compareDueAttention(left, right, today));
+}
+
+/**
+ * Attention / Telegram list the latest cycle per card last4. Payment matching
+ * still uses one reminder per billing month (`keepLatestDueReminders`).
+ *
+ * @param items - Settled due envelopes (paid and unpaid)
+ */
+export function keepCurrentCardDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[] {
+    const rest: KnowledgeItem[] = [];
+    const dues: DueReminderRow[] = [];
+
+    for (const item of items) {
+        if (item.type !== "due") {
+            rest.push(item);
+            continue;
+        }
+
+        dues.push(dueReminderRow(item));
+    }
+
+    return [...keepCurrentCardCycles(dues).map((row) => row.item), ...rest];
 }
 
 /**
@@ -399,39 +423,26 @@ export function filterDueKnowledgeItems(
     );
 }
 
-function compareDueAttention(left: KnowledgeItem, right: KnowledgeItem): number {
-    const leftRank = dueStatusRank(left);
-    const rightRank = dueStatusRank(right);
+/**
+ * Home and Telegram default order: due soon, then recently overdue, paid last.
+ *
+ * @param left - Knowledge envelope
+ * @param right - Knowledge envelope
+ * @param today - `YYYY-MM-DD` IST
+ */
+export function compareDueAttention(
+    left: KnowledgeItem,
+    right: KnowledgeItem,
+    today?: string
+): number {
+    const leftDue = left.type === "due" ? left.payload : undefined;
+    const rightDue = right.type === "due" ? right.payload : undefined;
 
-    if (leftRank !== rightRank) {
-        return leftRank - rightRank;
-    }
-
-    const leftDay = left.type === "due" ? left.payload.dueDate ?? "9999-99-99" : "9999-99-99";
-    const rightDay = right.type === "due" ? right.payload.dueDate ?? "9999-99-99" : "9999-99-99";
-    const byDay = leftDay.localeCompare(rightDay);
-
-    if (byDay !== 0) {
-        return byDay;
-    }
-
-    return right.id - left.id;
-}
-
-function dueStatusRank(item: KnowledgeItem): number {
-    if (item.type !== "due") {
-        return 9;
-    }
-
-    if (item.payload.status === "overdue") {
-        return 0;
-    }
-
-    if (item.payload.status === "open") {
-        return 1;
-    }
-
-    return 2;
+    return compareDueUrgency(
+        { dueDate: leftDue?.dueDate, status: leftDue?.status, smsId: left.id },
+        { dueDate: rightDue?.dueDate, status: rightDue?.status, smsId: right.id },
+        today
+    );
 }
 
 interface DueReminderRow {

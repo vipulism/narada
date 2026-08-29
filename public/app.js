@@ -210,6 +210,23 @@
   }
 
   /**
+   * Hide min when it is the same as the total (YES/IndusInd ₹172 min+total).
+   *
+   * @param {number | null | undefined} minDue
+   * @param {number | null | undefined} totalDue
+   * @returns {number | null}
+   */
+  function distinctMinDue(minDue, totalDue) {
+    if (minDue == null || !Number.isFinite(minDue)) {
+      return null;
+    }
+    if (totalDue == null || !Number.isFinite(totalDue)) {
+      return minDue;
+    }
+    return Math.abs(minDue - totalDue) > 1 ? minDue : null;
+  }
+
+  /**
    * @param {string} status
    */
   function serviceTone(status) {
@@ -312,8 +329,10 @@
         ? `Received ${receivedAt}`
         : "Due date unknown";
     const badgeClass = overdue ? "overdue" : day ? "due" : "received";
+    const total = payload.totalDue ?? payload.amount;
+    const min = distinctMinDue(payload.minDue, total);
     const amounts = [
-      payload.minDue != null ? `min ${formatMoney(payload.minDue, payload.currency)}` : null,
+      min != null ? `min ${formatMoney(min, payload.currency)}` : null,
       payload.totalDue != null ? `total ${formatMoney(payload.totalDue, payload.currency)}` : null,
     ]
       .filter(Boolean)
