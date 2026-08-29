@@ -1,6 +1,7 @@
 import {
     compareDueUrgency,
     daysUntilDue,
+    distinctMinDue,
     formatRemainingDays,
     isUnpaidDueAttention,
 } from "../classifiers/financial/financial.due";
@@ -333,7 +334,7 @@ function formatDueLine(row: DueAlert, today?: string): string {
         .filter(Boolean)
         .join(" · ");
     const total = row.totalDue ?? row.amount;
-    const min = row.minDue;
+    const min = distinctMinDue(row.minDue, total);
     const money = [
         total != null ? `₹${total}` : undefined,
         min != null ? `min ₹${min}` : undefined,

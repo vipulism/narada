@@ -368,13 +368,14 @@ function paymentAckWhere(options: {
     classifier: string;
     classifierVersion: string;
 }): { whereSql: string; params: unknown[] } {
-    const where = [
-        "a.classifier = ?",
-        "a.classifier_version = ?",
-        "a.category = 'FINANCIAL'",
-        "a.subcategory = 'bill'",
-        "JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.cashFlow')) = 'NEUTRAL'",
-        `(
+    const params: unknown[] = [options.classifier, options.classifierVersion];
+    const issuerLast4 = options.last4
+        ? "AND JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.accountLast4')) = ?"
+        : "";
+    const issuerAck = `
+        a.subcategory = 'bill'
+        AND JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.cashFlow')) = 'NEUTRAL'
+        AND (
             UPPER(s.body) LIKE '%RECEIVED TOWARDS%'
             OR UPPER(s.body) LIKE '%CREDITED TO YOUR CARD%'
             OR UPPER(s.body) LIKE '%CREDITED TO YOUR %CARD%'
@@ -383,18 +384,34 @@ function paymentAckWhere(options: {
             OR UPPER(s.body) LIKE '%CONFIRM RECEIPT%'
             OR UPPER(s.body) LIKE '%RECEIVED A PAYMENT%'
             OR UPPER(s.body) LIKE '%RECEIVED AND CREDITED%'
-        )`,
-        "UPPER(s.body) NOT LIKE '%SPENT%'",
-        "UPPER(s.body) NOT LIKE '%DEBITED%'",
-    ];
-    const params: unknown[] = [options.classifier, options.classifierVersion];
+        )
+        AND UPPER(s.body) NOT LIKE '%SPENT%'
+        AND UPPER(s.body) NOT LIKE '%DEBITED%'
+        ${issuerLast4}
+    `;
+    const billPay = `
+        a.subcategory IN ('bill', 'expense')
+        AND (
+            UPPER(s.body) LIKE '%CRED CLUB CREDITED%'
+            OR UPPER(s.body) LIKE '%CREDCLUB CREDITED%'
+            OR UPPER(s.body) LIKE '% CRED CREDITED%'
+            OR UPPER(s.body) LIKE '%CHEQ CREDITED%'
+            OR UPPER(s.body) LIKE '%SBI CARD%CREDITED%'
+            OR UPPER(s.body) LIKE '%; AXIS CREDITED%'
+            OR UPPER(s.body) LIKE '%& AXIS CREDITED%'
+            OR UPPER(s.body) LIKE '%TO CRED%'
+            OR UPPER(s.body) LIKE '%PAYMENT ON CRED%'
+        )
+    `;
 
     if (options.last4) {
-        where.push("JSON_UNQUOTE(JSON_EXTRACT(a.extracted_data, '$.accountLast4')) = ?");
         params.push(options.last4);
     }
 
-    return { whereSql: `WHERE ${where.join(" AND ")}`, params };
+    return {
+        whereSql: `WHERE a.classifier = ? AND a.classifier_version = ? AND a.category = 'FINANCIAL' AND ((${issuerAck}) OR (${billPay}))`,
+        params,
+    };
 }
 
 function utilityPaymentWhere(options: {

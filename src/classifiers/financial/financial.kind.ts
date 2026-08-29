@@ -385,6 +385,30 @@ export function isCardBillPayMessage(body: string): boolean {
     return /(?:;|&)\s*(?:SBI\s+CARDS?|CHEQ|AXIS)\s+CREDITED/.test(upper);
 }
 
+/**
+ * Card-issuer bank named by a bill-pay SMS, or null when any owned card can match
+ * (CRED Club, CheQ, `To CRED`).
+ *
+ * @param body - SMS body (any case)
+ */
+export function cardBillPayNamedBank(body: string): string | null {
+    if (!isCardBillPayMessage(body)) {
+        return null;
+    }
+
+    const upper = body.toUpperCase();
+
+    if (/(?:;|&)\s*SBI\s+CARDS?\s+CREDITED/.test(upper)) {
+        return "State Bank of India";
+    }
+
+    if (/(?:;|&)\s*AXIS\s+CREDITED/.test(upper)) {
+        return "Axis Bank";
+    }
+
+    return null;
+}
+
 function isCredBillPay(body: string): boolean {
     return isCardBillPayMessage(body);
 }

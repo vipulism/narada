@@ -18,6 +18,7 @@ import {
     type DueAttentionStatus,
 } from "../classifiers/financial/financial.due";
 import { FinancialEvent } from "../classifiers/financial/financial.model";
+import { cardBillPayNamedBank, isCardBillPayMessage } from "../classifiers/financial/financial.kind";
 import type { PushException } from "../connectors/firefly/firefly.exceptions";
 import type { DueAnalysisSource } from "../importers/sms/smsDue.repository";
 
@@ -198,7 +199,8 @@ export function dedupeDueKnowledgeItems(items: KnowledgeItem[]): KnowledgeItem[]
 
 /**
  * Dedupes due SMS, then marks paid / overdue / open from card payment-ack
- * SMS and IGL confirmation / IGL merchant spend SMS.
+ * SMS, CRED/CheQ/SBI Cards/Axis bill-pay from savings, and IGL confirmation /
+ * IGL merchant spend SMS.
  *
  * @param dueSources - Due reminder analysis rows
  * @param paymentSources - Candidate received/credited or utility payment rows
@@ -245,6 +247,19 @@ export function settleDueKnowledgeItems(
                 : undefined;
         const merchant = asOptionalString(source.extractedData.merchant);
         const subcategory = source.subcategory ?? "bill";
+
+        if (isCardBillPayMessage(source.body) && (subcategory === "bill" || subcategory === "expense")) {
+            return [
+                {
+                    smsId: source.smsId,
+                    occurredAt: source.occurredAt,
+                    accountLast4: null,
+                    amount: asFiniteNumber(source.extractedData.amount),
+                    matchCardDuesByAmount: true,
+                    cardPayBank: cardBillPayNamedBank(source.body),
+                },
+            ];
+        }
 
         if (isCardPaymentAckRow(subcategory, cashFlow, source.body)) {
             return [
@@ -439,9 +454,10 @@ interface DueReminderRow {
     totalDue?: number | null;
     minDue?: number | null;
     dueParty?: string | null;
-    merchant?: string | null;
-    body?: string | null;
-    item: KnowledgeItem;
+        merchant?: string | null;
+        body?: string | null;
+        bank?: string | null;
+        item: KnowledgeItem;
 }
 
 function dueReminderRow(item: KnowledgeItem, body?: string | null): DueReminderRow {
@@ -458,6 +474,7 @@ function dueReminderRow(item: KnowledgeItem, body?: string | null): DueReminderR
         dueParty: payload?.dueParty,
         merchant: payload?.merchant,
         body: body ?? null,
+        bank: payload?.bank,
         item,
     };
 }

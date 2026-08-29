@@ -19,7 +19,9 @@ const marks = new DueMarkRepository();
 
 /**
  * Unique due bills with paid/overdue/open from received/credited card SMS,
- * IGL confirmation / IGL merchant spend, and Home `POST /knowledge/:id/paid`.
+ * Unique due bills with paid/overdue/open from received/credited card SMS,
+ * CRED/CheQ/SBI Cards/Axis bill-pay from savings, IGL confirmation / IGL
+ * merchant spend, and Home `POST /knowledge/:id/paid`.
  * Default status omits paid (Telegram too) and lists one unpaid cycle per card.
  *
  * @param options - Optional last4, bank, from/to, status, and search

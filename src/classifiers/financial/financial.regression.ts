@@ -12,8 +12,8 @@ import { FireflyOpenings, dhanApplyUnpushedReason } from "../../connectors/firef
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency } from "./financial.due";
-import { isIglPendingReminder } from "./financial.kind";
+import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency, distinctMinDue } from "./financial.due";
+import { cardBillPayNamedBank, isCardBillPayMessage, isIglPendingReminder } from "./financial.kind";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { dhanLastMonthComparable, formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, keepCurrentCardDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
@@ -1249,6 +1249,19 @@ const CASES: RegressionCase[] = [
             subcategory: "bill",
             cashFlow: "OUTFLOW",
             amount: 13205,
+            accountLast4: "1412",
+            transactionType: "UPI",
+        },
+    },
+    {
+        id: "icici-cred-club-0004-bill-pay",
+        address: "AD-ICICIT-S",
+        body: "ICICI Bank Acct XX412 debited for Rs 11079.79 on 27-Aug-26; CRED Club credited. UPI:660504435794. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "OUTFLOW",
+            amount: 11079.79,
             accountLast4: "1412",
             transactionType: "UPI",
         },
@@ -2549,6 +2562,102 @@ function runDueFeedRegression(): void {
         failures.push(`18 Aug HSBC credit should pay the 3 Aug bill, got ${paidFrom3Aug.get(18761)}`);
     }
 
+    const credClub0004Body =
+        "ICICI Bank Acct XX412 debited for Rs 11079.79 on 27-Aug-26; CRED Club credited. UPI:660504435794. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+
+    if (!isCardBillPayMessage(credClub0004Body) || cardBillPayNamedBank(credClub0004Body) != null) {
+        failures.push("CRED Club debit should be an unscoped card bill-pay");
+    }
+
+    if (!isCardPaymentAckRow("bill", "OUTFLOW", credClub0004Body)) {
+        failures.push("CRED Club bill+OUTFLOW should load as a due payment");
+    }
+
+    const iciciCurrentDue = {
+        smsId: 19001,
+        occurredAt: new Date("2026-08-05T10:00:00+05:30"),
+        dueDate: "2026-08-30",
+        accountLast4: "0004",
+        bank: "ICICI Bank",
+        amount: 11079.79,
+    };
+    const credClubPay = {
+        smsId: 19050,
+        occurredAt: new Date("2026-08-27T12:00:00+05:30"),
+        accountLast4: "1412",
+        amount: 11079.79,
+        matchCardDuesByAmount: true,
+        cardPayBank: null as string | null,
+    };
+    const credPaid = settleDueStatuses([iciciCurrentDue, iciciJun], [credClubPay], "2026-08-28");
+
+    if (credPaid.get(19001) !== "paid") {
+        failures.push(`CRED Club ₹11079.79 should pay ICICI 0004, got ${credPaid.get(19001)}`);
+    }
+
+    if (credPaid.get(14833) === "paid") {
+        failures.push("CRED Club must not pay a different ICICI 0004 cycle amount");
+    }
+
+    const credRewardDue = settleDueStatuses(
+        [{ ...iciciCurrentDue, amount: 11008, minDue: 560, totalDue: 11008 }],
+        [credClubPay],
+        "2026-08-28"
+    );
+
+    if (credRewardDue.get(19001) === "paid") {
+        failures.push("CRED Club amount mismatch must stay unpaid for manual mark-paid");
+    }
+
+    const credMinOnly = settleDueStatuses(
+        [{ ...iciciCurrentDue, amount: 3290.7, minDue: 100, totalDue: 3290.7 }],
+        [{ ...credClubPay, amount: 100 }],
+        "2026-08-28"
+    );
+
+    if (credMinOnly.get(19001) === "paid") {
+        failures.push("CRED min-due ₹100 must not clear a ₹3290 statement");
+    }
+
+    const credFarAmount = settleDueStatuses(
+        [{ ...iciciCurrentDue, amount: 11008, totalDue: 11008 }],
+        [{ ...credClubPay, amount: 5000 }],
+        "2026-08-28"
+    );
+
+    if (credFarAmount.get(19001) === "paid") {
+        failures.push("CRED Club ₹5000 must not pay a ₹11008 due");
+    }
+
+    const yesSameAmount = {
+        smsId: 19002,
+        occurredAt: new Date("2026-08-06T10:00:00+05:30"),
+        dueDate: "2026-08-31",
+        accountLast4: "4472",
+        bank: "YES Bank",
+        amount: 11079.79,
+    };
+    const credAmbiguous = settleDueStatuses(
+        [iciciCurrentDue, yesSameAmount],
+        [credClubPay],
+        "2026-08-28"
+    );
+
+    if (credAmbiguous.get(19001) === "paid" || credAmbiguous.get(19002) === "paid") {
+        failures.push("CRED Club must not guess when two cards share the amount");
+    }
+
+    const axisBillPay = {
+        ...credClubPay,
+        smsId: 19051,
+        cardPayBank: "Axis Bank",
+    };
+    const axisScoped = settleDueStatuses([iciciCurrentDue], [axisBillPay], "2026-08-28");
+
+    if (axisScoped.get(19001) === "paid") {
+        failures.push("Axis credited UPI must not pay an ICICI due");
+    }
+
     const airtelWifiJul =
         "REMINDER: Bill of Rs. 589.00 for Airtel Wi-Fi account no. 01142311413 dated 06-JUL-26 is due today. To pay via Airtel Thanks App, click i.airtel.in/BBpayBills. Please ignore if paid.";
     const airtelFixedJul =
@@ -3254,6 +3363,60 @@ function runAttentionDigestRegression(): void {
 
     if (hsbcAt < 0 || iciciAt < 0 || axisAt < 0 || !(hsbcAt < iciciAt && iciciAt < axisAt)) {
         failures.push(`digest urgency order ${urgencyDigest}`);
+    }
+
+    if (distinctMinDue(172, 172) != null || distinctMinDue(100, 100.4) != null) {
+        failures.push("min equal to total should stay off Attention");
+    }
+
+    if (distinctMinDue(100, 3290.7) !== 100) {
+        failures.push("IDFC min ₹100 vs total should stay visible");
+    }
+
+    const yesEqualMin = formatDueDigest(
+        "Dues",
+        [
+            {
+                smsId: 18899,
+                occurredAt: new Date("2026-08-17T16:02:00+05:30"),
+                dueDate: "2026-09-05",
+                amount: 172,
+                minDue: 172,
+                totalDue: 172,
+                bank: "YES Bank",
+                accountLast4: "4472",
+                merchant: null,
+                status: "open" as const,
+            },
+        ],
+        "2026-08-29"
+    );
+
+    if (!yesEqualMin || yesEqualMin.includes("min ₹") || !yesEqualMin.includes("₹172")) {
+        failures.push(`equal min/total should omit min, got ${yesEqualMin}`);
+    }
+
+    const idfcMinDigest = formatDueDigest(
+        "Dues",
+        [
+            {
+                smsId: 18954,
+                occurredAt: new Date("2026-08-24T13:32:00+05:30"),
+                dueDate: "2026-09-06",
+                amount: 3290.7,
+                minDue: 100,
+                totalDue: 3290.7,
+                bank: "IDFC First Bank",
+                accountLast4: "4346",
+                merchant: null,
+                status: "open" as const,
+            },
+        ],
+        "2026-08-29"
+    );
+
+    if (!idfcMinDigest?.includes("min ₹100") || !idfcMinDigest.includes("₹3290.7")) {
+        failures.push(`IDFC distinct min should remain, got ${idfcMinDigest}`);
     }
 
     const paidOnlyDaily = formatDailyAttentionDigest(
