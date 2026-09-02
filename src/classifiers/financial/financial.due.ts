@@ -908,21 +908,10 @@ function matchCardBillPays(
     const cardDues = dues.filter((due) => due.accountLast4?.trim() && !dueSettleParty(due));
 
     for (const payment of billPays) {
-        const inWindow = cardDues.filter((due) => {
-            if (status.get(due.smsId) === "paid") {
-                return false;
-            }
+        const unpaid = cardDues.filter((due) => status.get(due.smsId) !== "paid");
+        const candidates = cardBillPayAmountMatches(payment, unpaid);
 
-            if (!dueMatchesCardPayBank(due, payment.cardPayBank)) {
-                return false;
-            }
-
-            return paymentInCycleWindow(due, payment);
-        });
-        const candidates = inWindow.filter((due) => amountDistance(payment, due) <= 1);
-        const last4s = new Set(candidates.map((due) => due.accountLast4?.trim() ?? ""));
-
-        if (last4s.size !== 1) {
+        if (!uniqueCardBillPayDestLast4(payment, unpaid)) {
             continue;
         }
 
@@ -935,6 +924,117 @@ function matchCardBillPays(
             status.set(due.smsId, statusFromDueDate(due.dueDate, today));
         }
     }
+}
+
+/**
+ * Card last4 a CRED/CheQ/named-bank bill-pay should transfer to in Dhan, when
+ * exactly one owned card due matches amount (±₹1) in the cycle window.
+ *
+ * @param payment - Savings UPI that paid a card bill
+ * @param dues - Unique card due reminders
+ */
+export function uniqueCardBillPayDestLast4(
+    payment: CardPaymentAck,
+    dues: DueReminderIdentity[]
+): string | undefined {
+    const last4s = new Set(
+        cardBillPayAmountMatches(payment, dues)
+            .map((due) => due.accountLast4?.trim() ?? "")
+            .filter((last4) => last4.length > 0)
+    );
+
+    return last4s.size === 1 ? [...last4s][0] : undefined;
+}
+
+/**
+ * Due reminder identity from an analysis row, or undefined when it is not a
+ * payable bill.
+ *
+ * @param source - sms_analysis joined with the SMS
+ */
+export function dueIdentityFromAnalysis(source: {
+    smsId: number;
+    occurredAt: Date;
+    body: string;
+    subcategory: string | null;
+    extractedData: Record<string, unknown>;
+    address?: string | null;
+}): DueReminderIdentity | undefined {
+    const data = source.extractedData ?? {};
+    const cashFlow = typeof data.cashFlow === "string" ? data.cashFlow : undefined;
+
+    if (!isDueKnowledgeRow(source.subcategory, cashFlow, source.body, source.address)) {
+        return undefined;
+    }
+
+    const amounts = parseDueAmounts(source.body);
+    const extractedAmount = asDueNumber(data.amount);
+    const totalDue = amounts.totalDue ?? null;
+    const minDue = amounts.minDue ?? null;
+
+    if (!hasPayableDueAmount({ amount: extractedAmount, minDue, totalDue })) {
+        return undefined;
+    }
+
+    const merchant = asDueString(data.merchant);
+    const extractedDue = asDueString(data.dueDate);
+
+    return {
+        smsId: source.smsId,
+        occurredAt: source.occurredAt,
+        dueDate: isoDueDay(extractedDue) ?? parseDueDate(source.body, source.occurredAt),
+        accountLast4: asDueString(data.accountLast4) ?? cardLast4FromBody(source.body),
+        bank: asDueString(data.bank),
+        merchant,
+        body: source.body,
+        dueParty: dueBillerAlias(merchant, source.body),
+        amount: totalDue ?? minDue ?? extractedAmount,
+        totalDue: totalDue ?? undefined,
+        minDue: minDue ?? undefined,
+    };
+}
+
+function cardBillPayAmountMatches(
+    payment: CardPaymentAck,
+    dues: DueReminderIdentity[]
+): DueReminderIdentity[] {
+    return dues.filter((due) => {
+        if (!due.accountLast4?.trim() || dueSettleParty(due)) {
+            return false;
+        }
+
+        if (!dueMatchesCardPayBank(due, payment.cardPayBank)) {
+            return false;
+        }
+
+        if (!paymentInCycleWindow(due, payment)) {
+            return false;
+        }
+
+        return amountDistance(payment, due) <= 1;
+    });
+}
+
+function asDueString(value: unknown): string | undefined {
+    if (typeof value !== "string") {
+        return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function asDueNumber(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (typeof value === "string" && value.trim() !== "") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
 }
 
 function dueMatchesCardPayBank(due: DueReminderIdentity, bank: string | null | undefined): boolean {

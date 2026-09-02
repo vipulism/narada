@@ -6,6 +6,8 @@ import {
     inferOwnedAccountTypeFromTxn,
 } from "./financial.accountType";
 import {
+    cardBillPayNamedBank,
+    isCardBillPayMessage,
     isEquityBuyMessage,
     isGrowwFundingMessage,
     isIndianClearingSipMessage,
@@ -14,6 +16,7 @@ import {
     isSgbMessage,
     isZerodhaFundingMessage,
 } from "./financial.kind";
+import { uniqueCardBillPayDestLast4, type DueReminderIdentity } from "./financial.due";
 
 export type DhanMapBucket = "mapped" | "unique-bank" | "unmapped";
 
@@ -102,17 +105,68 @@ export function resolveInvestmentDestination(
 }
 
 /**
+ * Card the bill-pay SMS funded: unique named-bank CC (SBI Cards / Axis), else
+ * the unique last4 whose due matches amount ±₹1. Ambiguous CRED/CheQ stays empty.
+ *
+ * @param event - Posted bill-pay with amount and time
+ * @param body - SMS body
+ * @param accounts - Owned last4 index
+ * @param dues - Unique card due reminders (optional; needed for CRED/CheQ)
+ */
+export function resolveCardBillPayDestination(
+    event: Pick<FinancialEvent, "smsId" | "amount" | "occurredAt">,
+    body: string,
+    accounts: KnownAccountIndex,
+    dues?: DueReminderIdentity[]
+): KnownAccount | undefined {
+    if (!isCardBillPayMessage(body)) {
+        return undefined;
+    }
+
+    const namedBank = cardBillPayNamedBank(body);
+
+    if (namedBank) {
+        const unique = accounts.resolveUniqueByBankAndType(namedBank, "credit_card");
+
+        if (unique) {
+            return unique;
+        }
+    }
+
+    if (!dues?.length) {
+        return undefined;
+    }
+
+    const last4 = uniqueCardBillPayDestLast4(
+        {
+            smsId: event.smsId,
+            occurredAt: event.occurredAt,
+            accountLast4: null,
+            amount: event.amount,
+            matchCardDuesByAmount: true,
+            cardPayBank: namedBank,
+        },
+        dues
+    );
+
+    return last4 ? accounts.resolve(last4) : undefined;
+}
+
+/**
  * Stamps resolved last4/name onto the event when classify left them empty.
  * Investment events also get counterpartyLast4 for the destination bucket.
+ * Card bill-pays get the destination card last4 when it is uniquely known.
  *
  * @param event - Candidate financial event
  * @param accounts - Owned last4 index
  * @param body - SMS body for type inference
+ * @param dues - Unique card due reminders for CRED/CheQ dest last4
  */
 export function stampDhanAccount(
     event: FinancialEvent,
     accounts: KnownAccountIndex,
-    body?: string
+    body?: string,
+    dues?: DueReminderIdentity[]
 ): { event: FinancialEvent; resolution: DhanAccountResolution } {
     const resolution = resolveDhanAccount(event, accounts, body);
 
@@ -129,6 +183,14 @@ export function stampDhanAccount(
 
     if (event.kind === "investment" && !next.counterpartyLast4) {
         const destination = resolveInvestmentDestination(next, body ?? "", accounts);
+
+        if (destination) {
+            next.counterpartyLast4 = destination.last4;
+        }
+    }
+
+    if (event.kind === "bill" && !next.counterpartyLast4) {
+        const destination = resolveCardBillPayDestination(next, body ?? "", accounts, dues);
 
         if (destination) {
             next.counterpartyLast4 = destination.last4;

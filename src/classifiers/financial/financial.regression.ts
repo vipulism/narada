@@ -4,7 +4,7 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
-import { planFireflyTransaction } from "../../connectors/firefly/firefly.dryRun";
+import { planFireflyTransaction, shouldRewritePostedBillPay } from "../../connectors/firefly/firefly.dryRun";
 import { listSmsForMerchantKey, recoverUnknownMerchantTotals, groupExpenseTotals } from "../../server/merchant.catalog";
 import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
@@ -12,7 +12,7 @@ import { FireflyOpenings, dhanApplyUnpushedReason } from "../../connectors/firef
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency, distinctMinDue } from "./financial.due";
+import { dueBillerAlias, dueIdentityFromAnalysis, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency, distinctMinDue, uniqueCardBillPayDestLast4 } from "./financial.due";
 import { cardBillPayNamedBank, isCardBillPayMessage, isIglPendingReminder } from "./financial.kind";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { dhanLastMonthComparable, formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
@@ -1911,6 +1911,61 @@ function runDhanResolveRegression(): void {
         failures.push(`Groww ACH dest ${groww.event.counterpartyLast4} != 3333`);
     }
 
+    const credClubBody =
+        "ICICI Bank Acct XX412 debited for Rs 11079.79 on 27-Aug-26; CRED Club credited. UPI:660504435794. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const credDue = {
+        smsId: 19001,
+        occurredAt: new Date("2026-08-05T10:00:00+05:30"),
+        dueDate: "2026-08-30",
+        accountLast4: "0004",
+        bank: "ICICI Bank",
+        amount: 11079.79,
+    };
+    const credStamped = stampDhanAccount(
+        {
+            ...stubEvent(19050, "bill", 11079.79, "1412", new Date("2026-08-27T12:00:00+05:30")),
+            merchant: "CRED Club",
+            bank: "ICICI Bank",
+        },
+        accounts,
+        credClubBody,
+        [credDue]
+    );
+
+    if (credStamped.event.counterpartyLast4 !== "0004") {
+        failures.push(`CRED Club dest ${credStamped.event.counterpartyLast4} != 0004`);
+    }
+
+    const credNoDue = stampDhanAccount(
+        {
+            ...stubEvent(19050, "bill", 11079.79, "1412", new Date("2026-08-27T12:00:00+05:30")),
+            merchant: "CRED Club",
+            bank: "ICICI Bank",
+        },
+        accounts,
+        credClubBody
+    );
+
+    if (credNoDue.event.counterpartyLast4) {
+        failures.push("CRED Club without a unique due must not guess dest last4");
+    }
+
+    const sbiCardsBody =
+        "ICICI Bank Acct XX412 debited for Rs 1590.23 on 10-Nov-22; SBI CARDS credited. UPI:231490020071. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const sbiCards = stampDhanAccount(
+        {
+            ...stubEvent(792, "bill", 1590.23, "1412", new Date("2026-08-20T12:00:00+05:30")),
+            merchant: "SBI CARDS",
+            bank: "ICICI Bank",
+        },
+        accounts,
+        sbiCardsBody
+    );
+
+    if (sbiCards.event.counterpartyLast4 !== "8561") {
+        failures.push(`SBI CARDS dest ${sbiCards.event.counterpartyLast4} != 8561`);
+    }
+
     if (failures.length > 0) {
         throw new Error(`dhan resolve regression failed:\n${failures.join("\n")}`);
     }
@@ -2107,6 +2162,54 @@ function runFireflyMapRegression(): void {
 
     if (blockedInvest.ok) {
         failures.push("investment without dest last4 must not post as withdrawal");
+    }
+
+    const credBill = stubEvent(
+        19050,
+        "bill",
+        11079.79,
+        "1412",
+        new Date("2026-08-27T12:00:00+05:30")
+    );
+    credBill.counterpartyLast4 = "0004";
+    credBill.merchant = "CRED Club";
+    const credPlan = planFireflyTransaction(credBill, iciciLedger, ownedFixture());
+
+    if (
+        !credPlan.ok ||
+        credPlan.plan.type !== "transfer" ||
+        credPlan.plan.sourceId !== "1412id" ||
+        credPlan.plan.destinationId !== "0004id"
+    ) {
+        failures.push("CRED Club bill-pay should dry-run as savings→0004 transfer");
+    } else if (credPlan.plan.categoryName) {
+        failures.push("CRED Club transfer must not have a spend category");
+    } else if (credPlan.plan.description !== "CRED Club") {
+        failures.push(`CRED Club transfer description ${credPlan.plan.description} != CRED Club`);
+    }
+
+    const credNoDest = stubEvent(
+        19051,
+        "bill",
+        11079.79,
+        "1412",
+        new Date("2026-08-27T12:00:00+05:30")
+    );
+    credNoDest.merchant = "CRED Club";
+    const blockedBill = planFireflyTransaction(credNoDest, iciciLedger, ownedFixture());
+
+    if (blockedBill.ok) {
+        failures.push("CRED Club without dest last4 must not post as withdrawal");
+    } else if (blockedBill.reason !== "card bill-pay missing destination last4") {
+        failures.push(`CRED Club block reason ${blockedBill.reason}`);
+    }
+
+    if (!shouldRewritePostedBillPay(credBill, "withdrawal")) {
+        failures.push("pushed CRED Club withdrawal should rewrite to transfer");
+    }
+
+    if (shouldRewritePostedBillPay(credBill, "transfer")) {
+        failures.push("CRED Club already a transfer must not rewrite");
     }
 
     const blockedEx = toPushException(noDest, blockedInvest);
@@ -2637,7 +2740,44 @@ function runDueFeedRegression(): void {
     );
 
     if (credRewardDue.get(19001) === "paid") {
-        failures.push("CRED Club amount mismatch must stay unpaid for manual mark-paid");
+        failures.push("CRED Club rewards mismatch must stay unpaid for Home mark-paid");
+    }
+
+    if (uniqueCardBillPayDestLast4(credClubPay, [iciciCurrentDue, iciciJun]) !== "0004") {
+        failures.push("CRED Club ₹11079.79 dest last4 should be 0004");
+    }
+
+    if (uniqueCardBillPayDestLast4(credClubPay, [{ ...iciciCurrentDue, amount: 11008 }])) {
+        failures.push("CRED Club rewards mismatch must not stamp a dest last4");
+    }
+
+    const ambiguousDest = uniqueCardBillPayDestLast4(credClubPay, [
+        iciciCurrentDue,
+        { ...iciciCurrentDue, smsId: 19002, accountLast4: "1003" },
+    ]);
+
+    if (ambiguousDest) {
+        failures.push(`two ICICI cards at ₹11079.79 must not guess dest, got ${ambiguousDest}`);
+    }
+
+    const credIdentity = dueIdentityFromAnalysis({
+        smsId: 19001,
+        occurredAt: new Date("2026-08-05T10:00:00+05:30"),
+        body: "ICICI Bank Credit Card XX0004 Statement: Total Due INR 11079.79. Min Due INR 560. Payment due date 30-08-2026.",
+        subcategory: "bill",
+        extractedData: {
+            amount: 11079.79,
+            cashFlow: "NEUTRAL",
+            accountLast4: "0004",
+            bank: "ICICI Bank",
+            dueDate: "2026-08-30",
+        },
+    });
+
+    if (credIdentity?.accountLast4 !== "0004" || credIdentity.amount !== 11079.79) {
+        failures.push(
+            `dueIdentityFromAnalysis ${credIdentity?.accountLast4}:${credIdentity?.amount} != 0004:11079.79`
+        );
     }
 
     const credMinOnly = settleDueStatuses(

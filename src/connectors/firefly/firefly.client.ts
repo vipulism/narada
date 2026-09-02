@@ -181,6 +181,70 @@ export class FireflyClient {
     }
 
     /**
+     * Firefly split type for a stored journal (`withdrawal`, `deposit`, `transfer`).
+     *
+     * @param id - Firefly transaction group id stored on `financial_events`
+     */
+    async getTransactionType(id: string): Promise<string | undefined> {
+        const response = await this.getTransaction(id);
+        const type = response.data?.data?.attributes?.transactions?.[0]?.type?.trim();
+        return type || undefined;
+    }
+
+    /**
+     * Rewrites an existing journal to the planned split (type, legs, description).
+     *
+     * @param id - Firefly transaction group id stored on `financial_events`
+     * @param plan - Dry-run payload after dest last4 is known
+     */
+    async updateTransaction(id: string, plan: PlannedFireflyTransaction): Promise<void> {
+        const journalIds = await this.listTransactionJournalIds(id);
+        const split: Record<string, string | null> = {
+            type: plan.type,
+            date: plan.date,
+            amount: plan.amount,
+            description: plan.description || plan.type,
+            currency_code: "INR",
+        };
+
+        if (journalIds[0]) {
+            split.transaction_journal_id = journalIds[0];
+        }
+
+        if (plan.sourceId) {
+            split.source_id = plan.sourceId;
+        }
+
+        if (plan.destinationId) {
+            split.destination_id = plan.destinationId;
+        }
+
+        if (plan.sourceName) {
+            split.source_name = plan.sourceName;
+        }
+
+        if (plan.destinationName) {
+            split.destination_name = plan.destinationName;
+        }
+
+        if (plan.type === "transfer") {
+            split.category_name = null;
+        } else if (plan.categoryName) {
+            split.category_name = plan.categoryName;
+        }
+
+        try {
+            await this.http.put(`/transactions/${id}`, {
+                apply_rules: false,
+                fire_webhooks: false,
+                transactions: [split],
+            });
+        } catch (error) {
+            throw fireflyHttpError(error, `PUT /transactions/${id}`);
+        }
+    }
+
+    /**
      * Sets `category_name` on an existing journal (creates the category if missing).
      *
      * @param id - Firefly transaction group id stored on `financial_events`
@@ -245,17 +309,30 @@ export class FireflyClient {
     }
 
     private async listTransactionJournalIds(id: string): Promise<string[]> {
-        const response = await this.http.get<{
-            data?: {
-                attributes?: {
-                    transactions?: Array<{ transaction_journal_id?: string | number }>;
-                };
-            };
-        }>(`/transactions/${id}`);
+        const response = await this.getTransaction(id);
 
-        return (response.data.data?.attributes?.transactions ?? [])
+        return (response.data?.data?.attributes?.transactions ?? [])
             .map((split) => String(split.transaction_journal_id ?? "").trim())
             .filter((journalId) => journalId.length > 0);
+    }
+
+    private async getTransaction(id: string): Promise<{
+        data?: {
+            data?: {
+                attributes?: {
+                    transactions?: Array<{
+                        type?: string;
+                        transaction_journal_id?: string | number;
+                    }>;
+                };
+            };
+        };
+    }> {
+        try {
+            return await this.http.get(`/transactions/${id}`);
+        } catch (error) {
+            throw fireflyHttpError(error, `GET /transactions/${id}`);
+        }
     }
 
     private async listAccountsByType(type: "asset" | "liability"): Promise<FireflyAccount[]> {

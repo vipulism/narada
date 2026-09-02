@@ -6,7 +6,7 @@ import { SpendBucketRepository } from "../../db/repositories/spendBucket.reposit
 import { loadKnownAccountIndex } from "../../classifiers/financial/knownAccounts";
 import { FireflyLast4Index } from "./firefly.accountMap";
 import { FireflyClient } from "./firefly.client";
-import { planFireflyTransaction } from "./firefly.dryRun";
+import { planFireflyTransaction, shouldRewritePostedBillPay } from "./firefly.dryRun";
 import { loadFireflyOpenings } from "./firefly.openings";
 
 /**
@@ -15,6 +15,7 @@ import { loadFireflyOpenings } from "./firefly.openings";
 export interface FireflyPushStats {
     posted: number;
     alreadyPushed: number;
+    rewritten: number;
     skippedOpening: number;
     blocked: number;
     failed: number;
@@ -40,17 +41,13 @@ export async function pushReadyFireflyTransactions(
     const stats: FireflyPushStats = {
         posted: 0,
         alreadyPushed: 0,
+        rewritten: 0,
         skippedOpening: 0,
         blocked: 0,
         failed: 0,
     };
 
     for (const event of events) {
-        if (event.fireflyTransactionId) {
-            stats.alreadyPushed += 1;
-            continue;
-        }
-
         const row = planFireflyTransaction(
             event,
             firefly,
@@ -61,6 +58,31 @@ export async function pushReadyFireflyTransactions(
             aliases,
             bucketLabels
         );
+
+        if (event.fireflyTransactionId) {
+            stats.alreadyPushed += 1;
+
+            if (row.ok && event.kind === "bill" && event.counterpartyLast4) {
+                try {
+                    const currentType = await client.getTransactionType(event.fireflyTransactionId);
+
+                    if (shouldRewritePostedBillPay(event, currentType)) {
+                        await client.updateTransaction(event.fireflyTransactionId, row.plan);
+                        stats.rewritten += 1;
+                        console.log(
+                            `rewrote #${event.smsId} withdrawal→transfer ₹${row.plan.amount} ${row.plan.date} firefly=${event.fireflyTransactionId}`
+                        );
+                    }
+                } catch (error) {
+                    stats.failed += 1;
+                    console.error(
+                        `rewrite #${event.smsId}: ${error instanceof Error ? error.message : error}`
+                    );
+                }
+            }
+
+            continue;
+        }
 
         if (!row.ok) {
             if (row.skip) {

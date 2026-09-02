@@ -14,7 +14,7 @@ async function main(): Promise<void> {
     const stats = await pushReadyFireflyTransactions(loadFireflyClient());
 
     console.log(
-        `Firefly push: posted=${stats.posted} already=${stats.alreadyPushed} skipped=${stats.skippedOpening} blocked=${stats.blocked} failed=${stats.failed}`
+        `Firefly push: posted=${stats.posted} already=${stats.alreadyPushed} rewritten=${stats.rewritten} skipped=${stats.skippedOpening} blocked=${stats.blocked} failed=${stats.failed}`
     );
 
     if (stats.failed > 0) {
