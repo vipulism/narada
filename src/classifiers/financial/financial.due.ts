@@ -947,6 +947,77 @@ export function uniqueCardBillPayDestLast4(
 }
 
 /**
+ * Card last4 from an issuer "payment received" SMS when amount (±₹1) and time
+ * uniquely match the savings bill-pay. Used when the due row is missing or the
+ * card is not in the local account list.
+ *
+ * @param payment - Savings UPI that paid a card bill
+ * @param acks - Issuer payment-ack SMS with a card last4
+ */
+export function uniqueIssuerAckDestLast4(
+    payment: Pick<CardPaymentAck, "amount" | "occurredAt">,
+    acks: CardPaymentAck[]
+): string | undefined {
+    const last4s = new Set(
+        acks
+            .filter((ack) => {
+                const last4 = ack.accountLast4?.trim() ?? "";
+
+                if (!last4 || ack.matchCardDuesByAmount) {
+                    return false;
+                }
+
+                if (payment.amount == null || ack.amount == null) {
+                    return false;
+                }
+
+                if (Math.abs(payment.amount - ack.amount) > 1) {
+                    return false;
+                }
+
+                return Math.abs(occurredAtMs(payment) - occurredAtMs(ack)) <= 7 * MS_DAY;
+            })
+            .map((ack) => ack.accountLast4?.trim() ?? "")
+            .filter((last4) => last4.length > 0)
+    );
+
+    return last4s.size === 1 ? [...last4s][0] : undefined;
+}
+
+/**
+ * Issuer payment-ack identity from an analysis row, or undefined when the SMS
+ * is not a card "payment received" with a last4.
+ *
+ * @param source - sms_analysis joined with the SMS
+ */
+export function issuerAckFromAnalysis(source: {
+    smsId: number;
+    occurredAt: Date;
+    body: string;
+    extractedData: Record<string, unknown>;
+}): CardPaymentAck | undefined {
+    const upper = source.body.toUpperCase();
+
+    if (!isCreditCardPaymentAck(upper) || isCardBillPayMessage(source.body)) {
+        return undefined;
+    }
+
+    const data = source.extractedData ?? {};
+    const accountLast4 = asDueString(data.accountLast4) ?? cardLast4FromBody(source.body);
+
+    if (!accountLast4) {
+        return undefined;
+    }
+
+    return {
+        smsId: source.smsId,
+        occurredAt: source.occurredAt,
+        accountLast4,
+        amount: asDueNumber(data.amount),
+    };
+}
+
+/**
  * Due reminder identity from an analysis row, or undefined when it is not a
  * payable bill.
  *
