@@ -4,7 +4,7 @@ import { FinancialClassifier } from "./financial.classifier";
 import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
 import { EventFilterSource, filterPostedEvents } from "./financial.eventFilter";
 import { stampDhanAccount } from "./financial.dhanMap";
-import { dueIdentityFromAnalysis, keepLatestDueReminders } from "./financial.due";
+import { dueIdentityFromAnalysis, issuerAckFromAnalysis, keepLatestDueReminders } from "./financial.due";
 import { loadKnownAccountIndex } from "./knownAccounts";
 import { FinancialEventRepository } from "../../db/repositories/financialEvent.repository";
 
@@ -31,6 +31,11 @@ export class FinancialEventNormalizer {
             })
         );
 
+        const acks = sources.flatMap((source) => {
+            const ack = issuerAckFromAnalysis(source);
+            return ack ? [ack] : [];
+        });
+
         for (const source of sources) {
             const event = toFinancialEvent(source);
 
@@ -38,7 +43,7 @@ export class FinancialEventNormalizer {
                 continue;
             }
 
-            const stamped = stampDhanAccount(event, accounts, source.body, dues);
+            const stamped = stampDhanAccount(event, accounts, source.body, dues, acks);
 
             if (stamped.resolution.bucket !== "unmapped") {
                 owned.push({ event: stamped.event, body: source.body });

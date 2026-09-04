@@ -16,7 +16,7 @@ import {
     isSgbMessage,
     isZerodhaFundingMessage,
 } from "./financial.kind";
-import { uniqueCardBillPayDestLast4, type DueReminderIdentity } from "./financial.due";
+import { uniqueCardBillPayDestLast4, uniqueIssuerAckDestLast4, type CardPaymentAck, type DueReminderIdentity } from "./financial.due";
 
 export type DhanMapBucket = "mapped" | "unique-bank" | "unmapped";
 
@@ -105,20 +105,24 @@ export function resolveInvestmentDestination(
 }
 
 /**
- * Card the bill-pay SMS funded: unique named-bank CC (SBI Cards / Axis), else
- * the unique last4 whose due matches amount ±₹1. Ambiguous CRED/CheQ stays empty.
+ * Card last4 the bill-pay SMS funded: unique named-bank CC (SBI Cards / Axis),
+ * else the unique due or issuer-ack last4 that matches amount ±₹1.
+ * The last4 is returned even when it is not in the local account list so Dhan
+ * can block with "no Firefly account" instead of hiding the dest.
  *
  * @param event - Posted bill-pay with amount and time
  * @param body - SMS body
  * @param accounts - Owned last4 index
  * @param dues - Unique card due reminders (optional; needed for CRED/CheQ)
+ * @param acks - Issuer payment-ack SMS (optional fallback dest)
  */
-export function resolveCardBillPayDestination(
+export function resolveCardBillPayDestLast4(
     event: Pick<FinancialEvent, "smsId" | "amount" | "occurredAt">,
     body: string,
     accounts: KnownAccountIndex,
-    dues?: DueReminderIdentity[]
-): KnownAccount | undefined {
+    dues?: DueReminderIdentity[],
+    acks?: CardPaymentAck[]
+): string | undefined {
     if (!isCardBillPayMessage(body)) {
         return undefined;
     }
@@ -129,27 +133,32 @@ export function resolveCardBillPayDestination(
         const unique = accounts.resolveUniqueByBankAndType(namedBank, "credit_card");
 
         if (unique) {
-            return unique;
+            return unique.last4;
         }
     }
 
-    if (!dues?.length) {
-        return undefined;
+    const payment = {
+        smsId: event.smsId,
+        occurredAt: event.occurredAt,
+        accountLast4: null,
+        amount: event.amount,
+        matchCardDuesByAmount: true,
+        cardPayBank: namedBank,
+    };
+
+    if (dues?.length) {
+        const dueLast4 = uniqueCardBillPayDestLast4(payment, dues);
+
+        if (dueLast4) {
+            return dueLast4;
+        }
     }
 
-    const last4 = uniqueCardBillPayDestLast4(
-        {
-            smsId: event.smsId,
-            occurredAt: event.occurredAt,
-            accountLast4: null,
-            amount: event.amount,
-            matchCardDuesByAmount: true,
-            cardPayBank: namedBank,
-        },
-        dues
-    );
+    if (acks?.length) {
+        return uniqueIssuerAckDestLast4(payment, acks);
+    }
 
-    return last4 ? accounts.resolve(last4) : undefined;
+    return undefined;
 }
 
 /**
@@ -161,12 +170,14 @@ export function resolveCardBillPayDestination(
  * @param accounts - Owned last4 index
  * @param body - SMS body for type inference
  * @param dues - Unique card due reminders for CRED/CheQ dest last4
+ * @param acks - Issuer payment-ack SMS for dest last4 when dues do not match
  */
 export function stampDhanAccount(
     event: FinancialEvent,
     accounts: KnownAccountIndex,
     body?: string,
-    dues?: DueReminderIdentity[]
+    dues?: DueReminderIdentity[],
+    acks?: CardPaymentAck[]
 ): { event: FinancialEvent; resolution: DhanAccountResolution } {
     const resolution = resolveDhanAccount(event, accounts, body);
 
@@ -190,10 +201,10 @@ export function stampDhanAccount(
     }
 
     if (event.kind === "bill" && !next.counterpartyLast4) {
-        const destination = resolveCardBillPayDestination(next, body ?? "", accounts, dues);
+        const destLast4 = resolveCardBillPayDestLast4(next, body ?? "", accounts, dues, acks);
 
-        if (destination) {
-            next.counterpartyLast4 = destination.last4;
+        if (destLast4) {
+            next.counterpartyLast4 = destLast4;
         }
     }
 

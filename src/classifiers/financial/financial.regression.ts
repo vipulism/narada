@@ -343,6 +343,18 @@ const CASES: RegressionCase[] = [
         },
     },
     {
+        id: "idfc-wealth-payment-ack",
+        address: "JD-IDFCFB-S",
+        body: "Thank you for payment of INR 3,290.70 towards your FIRST Wealth Credit Card XX4346 on 03 Sep 2026. IDFC FIRST Bank",
+        expect: {
+            category: SmsCategory.FINANCIAL,
+            subcategory: "bill",
+            cashFlow: "NEUTRAL",
+            amount: 3290.7,
+            accountLast4: "4346",
+        },
+    },
+    {
         id: "indusind-stmt-total-due",
         address: "VM-INDUSB",
         body: "22/08/26 Stmt Alert: Total Amount Due on your IndusInd Bank Credit Card XXXX2988 is INR 2407.00 and Minimum Amount Due is INR 100.00, payable by 11/09/26. Payment to be made immediately if previous statement dues are unpaid or Card account is overlimit. Click https://pay.billdesk.com/cardnet-instapay/induscard to pay now - IndusInd Bank",
@@ -1725,6 +1737,7 @@ function ownedFixture(): KnownAccountIndex {
         { name: "SBI BP", bank: "State Bank of India", last4: "8561", type: "credit_card" },
         { name: "SBI Home Loan", bank: "State Bank of India", last4: "9751", type: "loan" },
         { name: "HSBC Credit Card", bank: "HSBC", last4: "4433", type: "credit_card" },
+        { name: "IDFC FIRST Wealth", bank: "IDFC First Bank", last4: "4346", type: "credit_card" },
         { name: "Yes Bank savings", bank: "YES Bank", last4: "0592", type: "savings" },
         { name: "FD – YES Bank", bank: "YES Bank", last4: "6636", type: "investment" },
         { name: "FD – ICICI Bank", bank: "ICICI Bank", last4: "2222", type: "investment" },
@@ -1964,6 +1977,61 @@ function runDhanResolveRegression(): void {
 
     if (sbiCards.event.counterpartyLast4 !== "8561") {
         failures.push(`SBI CARDS dest ${sbiCards.event.counterpartyLast4} != 8561`);
+    }
+
+    const cheq3290Body =
+        "ICICI Bank Acct XX412 debited for Rs 3290.70 on 03-Sep-26; CheQ credited. UPI:660504435795. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const idfcDue = {
+        smsId: 18954,
+        occurredAt: new Date("2026-08-24T13:32:00+05:30"),
+        dueDate: "2026-09-06",
+        accountLast4: "4346",
+        bank: "IDFC First Bank",
+        amount: 3290.7,
+    };
+    const cheqWithoutOwnedCard = stampDhanAccount(
+        {
+            ...stubEvent(19039, "bill", 3290.7, "1412", new Date("2026-09-03T12:00:00+05:30")),
+            merchant: "CheQ",
+            bank: "ICICI Bank",
+        },
+        new KnownAccountIndex([
+            { name: "ICICI savings", bank: "ICICI Bank", last4: "1412", type: "savings" },
+        ]),
+        cheq3290Body,
+        [idfcDue]
+    );
+
+    if (cheqWithoutOwnedCard.event.counterpartyLast4 !== "4346") {
+        failures.push(
+            `CheQ ₹3290.7 dest ${cheqWithoutOwnedCard.event.counterpartyLast4} != 4346 when IDFC is not in accounts`
+        );
+    }
+
+    const idfcAck = {
+        smsId: 19040,
+        occurredAt: new Date("2026-09-03T18:00:00+05:30"),
+        accountLast4: "4346",
+        amount: 3290.7,
+    };
+    const cheqFromAck = stampDhanAccount(
+        {
+            ...stubEvent(19039, "bill", 3290.7, "1412", new Date("2026-09-03T12:00:00+05:30")),
+            merchant: "CheQ",
+            bank: "ICICI Bank",
+        },
+        new KnownAccountIndex([
+            { name: "ICICI savings", bank: "ICICI Bank", last4: "1412", type: "savings" },
+        ]),
+        cheq3290Body,
+        [],
+        [idfcAck]
+    );
+
+    if (cheqFromAck.event.counterpartyLast4 !== "4346") {
+        failures.push(
+            `CheQ dest from IDFC thank-you ${cheqFromAck.event.counterpartyLast4} != 4346`
+        );
     }
 
     if (failures.length > 0) {
@@ -2788,6 +2856,51 @@ function runDueFeedRegression(): void {
 
     if (credMinOnly.get(19001) === "paid") {
         failures.push("CRED min-due ₹100 must not clear a ₹3290 statement");
+    }
+
+    const idfcWealthDue = {
+        smsId: 18954,
+        occurredAt: new Date("2026-08-24T13:32:00+05:30"),
+        dueDate: "2026-09-06",
+        accountLast4: "4346",
+        bank: "IDFC First Bank",
+        amount: 3290.7,
+    };
+    const idfcThankYou =
+        "Thank you for payment of INR 3,290.70 towards your FIRST Wealth Credit Card XX4346 on 03 Sep 2026. IDFC FIRST Bank";
+
+    if (!isCardPaymentAckRow("bill", "NEUTRAL", idfcThankYou)) {
+        failures.push("IDFC thank-you should load as a due payment ack");
+    }
+
+    if (toFinancialEvent({
+        smsId: 19039,
+        occurredAt: new Date("2026-09-03T12:00:00+05:30"),
+        body: idfcThankYou,
+        category: "FINANCIAL",
+        subcategory: "bill",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: { amount: 3290.7, cashFlow: "OUTFLOW", accountLast4: "4346" },
+    })) {
+        failures.push("IDFC thank-you must not become a posted Firefly event");
+    }
+
+    const idfcPaid = settleDueStatuses(
+        [idfcWealthDue],
+        [
+            {
+                smsId: 19039,
+                occurredAt: new Date("2026-09-03T12:00:00+05:30"),
+                accountLast4: "4346",
+                amount: 3290.7,
+            },
+        ],
+        "2026-09-04"
+    );
+
+    if (idfcPaid.get(18954) !== "paid") {
+        failures.push(`IDFC thank-you ₹3290.7 should pay 4346, got ${idfcPaid.get(18954)}`);
     }
 
     const credFarAmount = settleDueStatuses(
@@ -4281,6 +4394,28 @@ function runAttentionDigestRegression(): void {
 
     if (toFinancialEvent(staleCredClub)?.kind !== "bill") {
         failures.push(`stale CredClub expense should rebuild as bill, got ${toFinancialEvent(staleCredClub)?.kind}`);
+    }
+
+    const idfcThankYouBody =
+        "Thank you for payment of INR 3,290.70 towards your FIRST Wealth Credit Card XX4346 on 03 Sep 2026. IDFC FIRST Bank";
+    const staleIdfcAck: AnalysisEventSource = {
+        smsId: 19039,
+        occurredAt: new Date("2026-09-03T12:00:00+05:30"),
+        body: idfcThankYouBody,
+        category: "FINANCIAL",
+        subcategory: "bill",
+        classifier: "regex-financial",
+        classifierVersion: "1.3.25",
+        extractedData: {
+            amount: 3290.7,
+            cashFlow: "OUTFLOW",
+            accountLast4: "4346",
+            bank: "IDFC First Bank",
+        },
+    };
+
+    if (toFinancialEvent(staleIdfcAck) !== undefined) {
+        failures.push("IDFC thank-you payment ack must not rebuild as a Dhan bill post");
     }
 
     const cardBillSpend = groupExpenseTotals([
