@@ -1,5 +1,5 @@
 import { CLASSIFIERS } from "../classifiers/classifier.registry";
-import { todayIstDate } from "../classifiers/financial/financial.due";
+import { isDueInLookback } from "../classifiers/financial/financial.due";
 import { DueMarkRepository } from "../db/repositories/dueMark.repository";
 import { SmsDueRepository, type DueAnalysisSource } from "../importers/sms/smsDue.repository";
 import {
@@ -23,6 +23,8 @@ const marks = new DueMarkRepository();
  * CRED/CheQ/SBI Cards/Axis bill-pay from savings, IGL confirmation / IGL
  * merchant spend, and Home `POST /knowledge/:id/paid`.
  * Default status omits paid (Telegram too) and lists one unpaid cycle per card.
+ * Daily digest / alerts pass Home's 6-month `from` so Jan/Feb stale overdue
+ * stay off Telegram the same way they stay off the default Home list.
  *
  * @param options - Optional last4, bank, from/to, status, and search
  */
@@ -70,32 +72,22 @@ export async function loadSettledDueKnowledge(options?: {
             : keepCurrentCardDueKnowledgeItems(settled);
 
     return filterDueKnowledgeItems(forDisplay, options?.status)
-        .filter((item) => dueInTimeWindow(item, options?.from, options?.to))
+        .filter((item) =>
+            item.type !== "due" ||
+            isDueInLookback(
+                {
+                    dueDate: item.payload.dueDate,
+                    occurredAt:
+                        item.occurredAt instanceof Date
+                            ? item.occurredAt
+                            : new Date(item.occurredAt),
+                },
+                options?.from,
+                options?.to
+            )
+        )
         .filter((item) => matchesKnowledgeQuery(item, options?.q, bodies.get(item.id)))
         .sort(compareDueAttention);
-}
-
-function dueInTimeWindow(item: KnowledgeItem, from?: Date, to?: Date): boolean {
-    if (item.type !== "due" || (!from && !to)) {
-        return true;
-    }
-
-    const dueDay = item.payload.dueDate?.slice(0, 10);
-    const day =
-        dueDay ||
-        todayIstDate(
-            item.occurredAt instanceof Date ? item.occurredAt : new Date(item.occurredAt)
-        );
-
-    if (from && day < todayIstDate(from)) {
-        return false;
-    }
-
-    if (to && day > todayIstDate(to)) {
-        return false;
-    }
-
-    return true;
 }
 
 /**

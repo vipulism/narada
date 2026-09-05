@@ -12,7 +12,7 @@ import { FireflyOpenings, dhanApplyUnpushedReason } from "../../connectors/firef
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueIdentityFromAnalysis, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency, distinctMinDue, uniqueCardBillPayDestLast4 } from "./financial.due";
+import { attentionDueLookbackStart, dueBillerAlias, dueIdentityFromAnalysis, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isDueInLookback, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency, distinctMinDue, todayIstDate, uniqueCardBillPayDestLast4 } from "./financial.due";
 import { cardBillPayNamedBank, isCardBillPayMessage, isIglPendingReminder } from "./financial.kind";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { dhanLastMonthComparable, formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
@@ -3577,6 +3577,45 @@ function runAttentionDigestRegression(): void {
 
     if (unpaidDueAlerts([paidAxis, overdueYes]).length !== 1) {
         failures.push("Telegram unpaidDueAlerts must drop Home mark-paid");
+    }
+
+    const digestFrom = attentionDueLookbackStart("2026-09-05");
+
+    if (todayIstDate(digestFrom) !== "2026-03-05") {
+        failures.push(`digest lookback ${todayIstDate(digestFrom)} != 2026-03-05`);
+    }
+
+    const yes0592Overdue = {
+        dueDate: "2026-02-02",
+        occurredAt: new Date("2026-01-15T10:00:00+05:30"),
+    };
+    const hdfc3671Overdue = {
+        dueDate: "2026-01-29",
+        occurredAt: new Date("2026-01-10T10:00:00+05:30"),
+    };
+    const indusindOpen = {
+        dueDate: "2026-09-11",
+        occurredAt: new Date("2026-08-23T10:01:00+05:30"),
+    };
+    const iglCurrent = {
+        dueDate: null as string | null,
+        occurredAt: new Date("2026-08-28T14:29:00+05:30"),
+    };
+    const iglEmptyOld = {
+        dueDate: null as string | null,
+        occurredAt: new Date("2025-12-01T10:00:00+05:30"),
+    };
+
+    if (isDueInLookback(yes0592Overdue, digestFrom) || isDueInLookback(hdfc3671Overdue, digestFrom)) {
+        failures.push("Jan/Feb overdue must stay off the 6-month Telegram digest");
+    }
+
+    if (!isDueInLookback(indusindOpen, digestFrom) || !isDueInLookback(iglCurrent, digestFrom)) {
+        failures.push("current IndusInd / IGL must stay on the 6-month digest");
+    }
+
+    if (isDueInLookback(iglEmptyOld, digestFrom)) {
+        failures.push("undated old IGL must stay off the 6-month digest");
     }
 
     const mixedDigest = formatDueDigest("Dues", [paidAxis, overdueYes], "2026-08-22");
