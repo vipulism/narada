@@ -1,4 +1,4 @@
-import { attentionDueLookbackStart, todayIstDate } from "../classifiers/financial/financial.due";
+import { todayIstDate } from "../classifiers/financial/financial.due";
 import {
     collectPushExceptions,
     isFireflyConfigured,
@@ -81,8 +81,7 @@ export interface DailyDigestSendResult {
 }
 
 /**
- * Sends today's unpaid dues (open + overdue) in Home's 6-month window,
- * Dhan income/expense, and SMS spend buckets.
+ * Sends today's unpaid dues (open + overdue), Dhan income/expense, and SMS spend buckets.
  * Home mark-paid and payment-ack cycles are omitted.
  *
  * @param options - `force` skips the 08:00 window and already-sent check
@@ -154,10 +153,7 @@ export async function maybeRunDailyAttentionDigest(now = new Date()): Promise<vo
 }
 
 async function loadDues(): Promise<DueAlert[]> {
-    const items = await loadSettledDueKnowledge({
-        status: "unpaid",
-        from: attentionDueLookbackStart(),
-    });
+    const items = await loadSettledDueKnowledge({ status: "unpaid" });
 
     return items.flatMap((item) => {
         if (item.type !== "due" || item.payload.status === "paid") {
