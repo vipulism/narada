@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { SmsImportResult } from "./sms.model";
-import { isCompletedUnchangedBackup } from "./smsImport.model";
+import { isCompletedUnchangedBackup, shouldReparseStaleUnchangedBackup } from "./smsImport.model";
 import { SmsRepository } from "./sms.repository";
 import { SmsImportRepository } from "./smsImport.repository";
 import { loadSmsXml, peekSmsXmlHeader } from "./smsXmlParser";
@@ -46,16 +46,29 @@ export class SmsImportService {
                     xmlBackupDate,
                 })
             ) {
+                const newest = await this.repository.newestReceivedAt();
+
+                if (
+                    !shouldReparseStaleUnchangedBackup({
+                        newestReceivedAt: newest,
+                        lastCompletedAt: existing?.completedAt,
+                    })
+                ) {
+                    console.info(
+                        `⏭️ Unchanged ${filePath} (${fileSize} bytes, xml count=${xmlCount ?? "?"}), skip parse`
+                    );
+                    return {
+                        imported: 0,
+                        attempted: 0,
+                        skipped: 0,
+                        sourceFile: filePath,
+                        durationMs: Date.now() - startedMs,
+                    };
+                }
+
                 console.info(
-                    `⏭️ Unchanged ${filePath} (${fileSize} bytes, xml count=${xmlCount ?? "?"}), skip parse`
+                    `📥 Re-parse ${filePath} (newest SMS ${newest?.toISOString() ?? "none"} is stale)`
                 );
-                return {
-                    imported: 0,
-                    attempted: 0,
-                    skipped: 0,
-                    sourceFile: filePath,
-                    durationMs: Date.now() - startedMs,
-                };
             }
             if (existing?.status === "completed") {
                 console.info(

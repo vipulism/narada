@@ -22,12 +22,15 @@ export function extractFireflyAccountLast4(
  * Indexes Firefly ledger accounts by last4. Duplicate last4s are conflicts.
  */
 export class FireflyLast4Index {
+    private readonly accounts: FireflyAccount[];
     private readonly byLast4 = new Map<string, FireflyAccount[]>();
 
     /**
      * @param accounts - Firefly asset + liability accounts
      */
     constructor(accounts: FireflyAccount[]) {
+        this.accounts = accounts;
+
         for (const account of accounts) {
             const last4 = extractFireflyAccountLast4(account.accountNumber);
 
@@ -71,6 +74,35 @@ export class FireflyLast4Index {
 
         return matches.length > 1 ? matches : [];
     }
+
+    /**
+     * Unique Firefly account whose name contains (or is contained by) `hint`.
+     * Used when a card exists in Dhan but `account_number` is not last4 yet.
+     *
+     * @param hint - Owned account name (e.g. IDFC FIRST Wealth)
+     */
+    resolveUniqueByName(hint: string | undefined): FireflyAccount | undefined {
+        const needle = normalizeAccountName(hint);
+
+        if (needle.length < 6) {
+            return undefined;
+        }
+
+        const matches = this.accounts.filter((account) => {
+            const name = normalizeAccountName(account.name);
+
+            return name.includes(needle) || needle.includes(name);
+        });
+
+        return matches.length === 1 ? matches[0] : undefined;
+    }
+}
+
+function normalizeAccountName(value: string | undefined): string {
+    return (value ?? "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, " ")
+        .trim();
 }
 
 export interface OwnedFireflyMapRow {

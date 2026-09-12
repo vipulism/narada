@@ -42,7 +42,7 @@ export function planFireflyTransaction(
     }
 
     if (event.kind === "transfer" || event.kind === "investment" || event.kind === "bill") {
-        return planTransfer(event, sourceLast4, firefly);
+        return planTransfer(event, sourceLast4, firefly, owned);
     }
 
     if (!sourceLast4) {
@@ -89,7 +89,8 @@ export function planFireflyTransaction(
 function planTransfer(
     event: FinancialEvent,
     sourceLast4: string | undefined,
-    firefly: FireflyLast4Index
+    firefly: FireflyLast4Index,
+    owned: KnownAccountIndex
 ): FireflyDryRunRow {
     const destLast4 = event.counterpartyLast4;
 
@@ -112,7 +113,7 @@ function planTransfer(
         return blocked(event, source.reason);
     }
 
-    const dest = resolveLeg(destLast4, firefly, "destination");
+    const dest = resolveDestLeg(destLast4, firefly, owned);
 
     if (!dest.ok) {
         return blocked(event, dest.reason);
@@ -125,6 +126,49 @@ function planTransfer(
             destinationId: dest.account.id,
         }),
     };
+}
+
+/**
+ * Destination last4, or the unique Firefly account whose name matches the
+ * owned card when Dhan has no account_number yet.
+ *
+ * @param last4 - Card last4 stamped on the bill-pay
+ * @param firefly - Dhan last4 + name index
+ * @param owned - Local owned accounts
+ */
+export function resolveDestLeg(
+    last4: string,
+    firefly: FireflyLast4Index,
+    owned: KnownAccountIndex
+): { ok: true; account: { id: string } } | { ok: false; reason: string } {
+    const byLast4 = resolveLeg(last4, firefly, "destination");
+
+    if (byLast4.ok) {
+        return byLast4;
+    }
+
+    const ownedDest = owned.resolve(last4);
+    const named = ownedDest ? firefly.resolveUniqueByName(ownedDest.name) : undefined;
+
+    if (named) {
+        return { ok: true, account: named };
+    }
+
+    return { ok: false, reason: missingDestAccountReason(last4, ownedDest?.name) };
+}
+
+/**
+ * Home / Telegram copy when Dhan has no destination account for a card last4.
+ *
+ * @param last4 - Destination card last4
+ * @param ownedName - Local account name when known
+ */
+export function missingDestAccountReason(last4: string, ownedName?: string): string {
+    if (ownedName) {
+        return `no Firefly account for destination last4 ${last4} — add ${ownedName} in Dhan with account number ${last4}`;
+    }
+
+    return `no Firefly account for destination last4 ${last4}`;
 }
 
 function resolveLeg(

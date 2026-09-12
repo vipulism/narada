@@ -9,7 +9,7 @@ export interface SmsXmlHeader {
     xmlBackupDate?: number;
 }
 
-const HEADER_BYTES = 8192;
+const HEADER_BYTES = 65536;
 
 export interface SmsXmlNode {
   protocol?: string;

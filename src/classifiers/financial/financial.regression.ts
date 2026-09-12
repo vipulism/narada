@@ -4,7 +4,7 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
-import { orderFireflyPushEvents, planFireflyTransaction, shouldProbePostedBillPay, shouldRewritePostedBillPay } from "../../connectors/firefly/firefly.dryRun";
+import { missingDestAccountReason, orderFireflyPushEvents, planFireflyTransaction, shouldProbePostedBillPay, shouldRewritePostedBillPay } from "../../connectors/firefly/firefly.dryRun";
 import { listSmsForMerchantKey, recoverUnknownMerchantTotals, groupExpenseTotals } from "../../server/merchant.catalog";
 import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
@@ -18,7 +18,7 @@ import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerch
 import { dhanLastMonthComparable, formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
 import { applyManualDueMarks, filterDueKnowledgeItems, keepCurrentCardDueKnowledgeItems, knowledgeDueReminderKey, settleDueKnowledgeItems, type KnowledgeItem } from "../../server/knowledge.mapper";
 import { runDockerSnapshotRegression } from "../../sources/docker/dockerSnapshot";
-import { isCompletedUnchangedBackup } from "../../importers/sms/smsImport.model";
+import { isCompletedUnchangedBackup, shouldReparseStaleUnchangedBackup } from "../../importers/sms/smsImport.model";
 import { parseSmsXmlHeader } from "../../importers/sms/smsXmlParser";
 
 interface ExpectedFacts {
@@ -2308,6 +2308,36 @@ function runFireflyMapRegression(): void {
         failures.push(`push order ${queued.map((event) => event.smsId)} must be unpushed first`);
     }
 
+    const credToIdfc = stubEvent(
+        19039,
+        "bill",
+        3290.7,
+        "1412",
+        new Date("2026-09-03T12:00:00+05:30")
+    );
+    credToIdfc.counterpartyLast4 = "4346";
+    credToIdfc.merchant = "CRED Club";
+    const idfcMissing = planFireflyTransaction(credToIdfc, iciciLedger, ownedFixture());
+
+    if (idfcMissing.ok) {
+        failures.push("CRED → 4346 must block when Dhan has no IDFC card");
+    } else if (
+        idfcMissing.reason !==
+        missingDestAccountReason("4346", "IDFC FIRST Wealth")
+    ) {
+        failures.push(`4346 block reason ${idfcMissing.reason}`);
+    }
+
+    const idfcByName = new FireflyLast4Index([
+        { id: "1412id", name: "ICICI savings", type: "asset", accountNumber: "1412" },
+        { id: "idfc-wealth", name: "IDFC FIRST Wealth Credit Card", type: "liability" },
+    ]);
+    const idfcNamed = planFireflyTransaction(credToIdfc, idfcByName, ownedFixture());
+
+    if (!idfcNamed.ok || idfcNamed.plan.destinationId !== "idfc-wealth") {
+        failures.push("CRED → 4346 should use unique Dhan card named IDFC FIRST Wealth");
+    }
+
     const blockedEx = toPushException(noDest, blockedInvest);
 
     if (!blockedEx || blockedEx.status !== "blocked") {
@@ -3444,6 +3474,39 @@ function runSmsImportSkipRegression(): void {
     }
     if (isCompletedUnchangedBackup(completed, { fileSize: 1_000 })) {
         failures.push("size-only snapshot without XML header must re-parse");
+    }
+
+    const now = new Date("2026-09-12T10:00:00+05:30");
+    const sept6 = new Date("2026-09-06T12:00:00+05:30");
+
+    if (
+        !shouldReparseStaleUnchangedBackup({
+            newestReceivedAt: sept6,
+            lastCompletedAt: sept6,
+            now,
+        })
+    ) {
+        failures.push("6+ day stale newest SMS should re-parse an unchanged file");
+    }
+
+    if (
+        shouldReparseStaleUnchangedBackup({
+            newestReceivedAt: new Date("2026-09-12T08:00:00+05:30"),
+            lastCompletedAt: sept6,
+            now,
+        })
+    ) {
+        failures.push("fresh newest SMS must not force re-parse");
+    }
+
+    if (
+        shouldReparseStaleUnchangedBackup({
+            newestReceivedAt: sept6,
+            lastCompletedAt: new Date("2026-09-12T08:00:00+05:30"),
+            now,
+        })
+    ) {
+        failures.push("stale SMS already re-parsed this morning must wait 6h");
     }
 
     const header = parseSmsXmlHeader(

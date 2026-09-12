@@ -55,6 +55,44 @@ export function isCompletedUnchangedBackup(
     return true;
 }
 
+/** Re-parse when the newest stored SMS is older than this (36h). */
+export const STALE_SMS_REPARSE_AFTER_MS = 36 * 60 * 60 * 1000;
+
+/** At most one stale re-parse in this window so a stuck backup is not parsed every 10 min. */
+export const STALE_SMS_REPARSE_EVERY_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * True when the SMS folder looks unchanged but Narada's newest SMS is stale.
+ * Catches a skip fingerprint that missed a rolling backup, without parsing
+ * a frozen file every ingest.
+ *
+ * @param options - Newest stored SMS and last completed import for this file
+ */
+export function shouldReparseStaleUnchangedBackup(options: {
+    newestReceivedAt?: Date | null;
+    lastCompletedAt?: Date | null;
+    now?: Date;
+}): boolean {
+    const now = options.now ?? new Date();
+    const newest = options.newestReceivedAt;
+
+    if (!newest || Number.isNaN(newest.getTime())) {
+        return true;
+    }
+
+    if (now.getTime() - newest.getTime() < STALE_SMS_REPARSE_AFTER_MS) {
+        return false;
+    }
+
+    const lastCompleted = options.lastCompletedAt;
+
+    if (!lastCompleted || Number.isNaN(lastCompleted.getTime())) {
+        return true;
+    }
+
+    return now.getTime() - lastCompleted.getTime() >= STALE_SMS_REPARSE_EVERY_MS;
+}
+
 /** One XML import attempt persisted for GET /imports. */
 export interface SmsImportRecord {
     id: number;

@@ -106,6 +106,28 @@ export class SmsRepository {
   }
 
     /**
+     * Newest `sms_messages.received_at`, if any row exists.
+     */
+    async newestReceivedAt(): Promise<Date | undefined> {
+        const db = getDb();
+        const [rows] = await db.query<RowDataPacket[]>(
+            `
+            SELECT MAX(received_at) AS newest
+            FROM sms_messages
+            `
+        );
+        const value = rows[0]?.newest;
+
+        if (value == null) {
+            return undefined;
+        }
+
+        const newest = new Date(value);
+
+        return Number.isNaN(newest.getTime()) ? undefined : newest;
+    }
+
+    /**
      * Lists SMS newest-first with preferred classifier analysis joined.
      *
      * @param options - Page, filters, and preferred classifier identity
