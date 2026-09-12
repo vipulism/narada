@@ -13,6 +13,7 @@ export interface SmsBackupSnapshot {
  * Size-only skip misses rolling SMS Backup windows (22–23 Aug can replace
  * 20–21 Aug at nearly the same byte size while mtime stays frozen). XML
  * `count` / `backup_date` must also match; missing stored headers re-parse once.
+ * An empty peek (`<smses` past the first 8 KiB) must not skip on size alone.
  *
  * @param existing - Prior `sms_imports` row for this path + mtime, if any
  * @param snapshot - Current file size and SMS Backup root attributes
@@ -29,6 +30,10 @@ export function isCompletedUnchangedBackup(
     }
 
     if (Number(existing.fileSize) !== snapshot.fileSize) {
+        return false;
+    }
+
+    if (snapshot.xmlCount == null && snapshot.xmlBackupDate == null) {
         return false;
     }
 
