@@ -12,7 +12,7 @@ import { FireflyOpenings, dhanApplyUnpushedReason } from "../../connectors/firef
 import { KnownAccountIndex } from "./knownAccounts";
 import { KnownAccount } from "./knownAccount.model";
 import { resolveDhanAccount, stampDhanAccount } from "./financial.dhanMap";
-import { dueBillerAlias, dueIdentityFromAnalysis, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency, distinctMinDue, uniqueCardBillPayDestLast4 } from "./financial.due";
+import { dueBillerAlias, dueIdentityFromAnalysis, dueReminderKey, isCardPaymentAckRow, isDueKnowledgeRow, isUtilityDuePaymentRow, hasPayableDueAmount, isUnpaidDueAttention, keepCurrentCardCycles, keepLatestDueReminders, parseDueAmounts, parseDueDate, settleDueStatuses, daysUntilDue, formatRemainingDays, compareDueUrgency, distinctMinDue, uniqueCardBillPayDestLast4, uniqueCardBillPayDestLast4AnyCycle, uniqueUtilityBillPayMerchant } from "./financial.due";
 import { cardBillPayNamedBank, isCardBillPayMessage, isIglPendingReminder } from "./financial.kind";
 import { buildSpendMonthStats, buildMerchantCatalog, isSpendBucket, matchesMerchantQuery, merchantCatalogKey, ownSmsMerchantKey, ownSmsMerchantLabel, parseMerchantSort, parseNewSpendBucket, resolveMerchantAlias, resolveSpendBucket, sortMerchantCatalog, spendBucket, spendBucketKeyFromLabel, spendBucketLabel, spendBucketOptions, spendMerchantLabel } from "./financial.spend";
 import { dhanLastMonthComparable, formatDailyAttentionDigest, formatDhanMonthStats, formatDueDigest, formatSpendMonthStats, isDailyDigestDue, istComparableMonthRanges, monthOverMonthPhrase, unpaidDueAlerts } from "../../notifiers/attention.digest";
@@ -1963,6 +1963,63 @@ function runDhanResolveRegression(): void {
         failures.push("CRED Club without a unique due must not guess dest last4");
     }
 
+    const credAfterCycleBody =
+        "ICICI Bank Acct XX412 debited for Rs 10965.25 on 11-Sep-26; CRED Club credited. UPI:660504435800. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const sbiPaidDue = {
+        smsId: 19040,
+        occurredAt: new Date("2026-08-05T10:00:00+05:30"),
+        dueDate: "2026-08-15",
+        accountLast4: "8561",
+        bank: "State Bank of India",
+        amount: 10965.25,
+    };
+    const credAfterCycle = stampDhanAccount(
+        {
+            ...stubEvent(19086, "bill", 10965.25, "1412", new Date("2026-09-11T12:00:00+05:30")),
+            merchant: "CRED Club",
+            bank: "ICICI Bank",
+        },
+        accounts,
+        credAfterCycleBody,
+        [sbiPaidDue, credDue]
+    );
+
+    if (credAfterCycle.event.counterpartyLast4 !== "8561") {
+        failures.push(`CRED after new SBI cycle dest ${credAfterCycle.event.counterpartyLast4} != 8561`);
+    }
+
+    const credIglBody =
+        "ICICI Bank Acct XX412 debited for Rs 2676.78 on 10-Sep-26; CRED Club credited. UPI:660504435801. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
+    const iglPendingDue = {
+        smsId: 19060,
+        occurredAt: new Date("2026-09-01T10:00:00+05:30"),
+        dueDate: null as string | null,
+        accountLast4: null as string | null,
+        merchant: "IGL",
+        dueParty: "igl",
+        amount: 2676.78,
+    };
+    const credIgl = stampDhanAccount(
+        {
+            ...stubEvent(19066, "bill", 2676.78, "1412", new Date("2026-09-10T12:00:00+05:30")),
+            merchant: "CRED Club",
+            bank: "ICICI Bank",
+        },
+        accounts,
+        credIglBody,
+        [iglPendingDue]
+    );
+
+    if (credIgl.event.kind !== "expense" || credIgl.event.merchant !== "IGL") {
+        failures.push(
+            `CRED IGL ₹2676.78 should post as IGL expense, got ${credIgl.event.kind}/${credIgl.event.merchant}`
+        );
+    }
+
+    if (credIgl.event.counterpartyLast4) {
+        failures.push("CRED IGL expense must not invent a card dest last4");
+    }
+
     const sbiCardsBody =
         "ICICI Bank Acct XX412 debited for Rs 1590.23 on 10-Nov-22; SBI CARDS credited. UPI:231490020071. Call 18002662 for dispute. SMS BLOCK 412 to 9215676766.";
     const sbiCards = stampDhanAccount(
@@ -2884,6 +2941,48 @@ function runDueFeedRegression(): void {
 
     if (ambiguousDest) {
         failures.push(`two ICICI cards at ₹11079.79 must not guess dest, got ${ambiguousDest}`);
+    }
+
+    const sbiPriorDue = {
+        smsId: 19040,
+        occurredAt: new Date("2026-08-05T10:00:00+05:30"),
+        dueDate: "2026-08-15",
+        accountLast4: "8561",
+        bank: "State Bank of India",
+        amount: 10965.25,
+    };
+    const sbiPayAfterCycle = {
+        smsId: 19086,
+        occurredAt: new Date("2026-09-11T12:00:00+05:30"),
+        accountLast4: null as string | null,
+        amount: 10965.25,
+        matchCardDuesByAmount: true,
+    };
+
+    if (uniqueCardBillPayDestLast4(sbiPayAfterCycle, [sbiPriorDue, iciciCurrentDue])) {
+        failures.push("in-cycle dest must not use an expired SBI due");
+    }
+
+    if (uniqueCardBillPayDestLast4AnyCycle(sbiPayAfterCycle, [sbiPriorDue, iciciCurrentDue]) !== "8561") {
+        failures.push("Dhan dest should still use the unique prior SBI amount after a new cycle");
+    }
+
+    const iglDueForCred = {
+        smsId: 19060,
+        occurredAt: new Date("2026-09-01T10:00:00+05:30"),
+        dueDate: null as string | null,
+        accountLast4: null as string | null,
+        merchant: "IGL",
+        dueParty: "igl",
+        amount: 2676.78,
+    };
+
+    if (uniqueUtilityBillPayMerchant({ amount: 2676.78 }, [iglDueForCred, sbiPriorDue]) !== "IGL") {
+        failures.push("CRED ₹2676.78 should uniquely match the IGL due");
+    }
+
+    if (uniqueUtilityBillPayMerchant({ amount: 10965.25 }, [iglDueForCred, sbiPriorDue])) {
+        failures.push("card amount must not become an IGL merchant");
     }
 
     const credIdentity = dueIdentityFromAnalysis({

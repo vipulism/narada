@@ -16,7 +16,14 @@ import {
     isSgbMessage,
     isZerodhaFundingMessage,
 } from "./financial.kind";
-import { uniqueCardBillPayDestLast4, uniqueIssuerAckDestLast4, type CardPaymentAck, type DueReminderIdentity } from "./financial.due";
+import {
+    uniqueCardBillPayDestLast4,
+    uniqueCardBillPayDestLast4AnyCycle,
+    uniqueIssuerAckDestLast4,
+    uniqueUtilityBillPayMerchant,
+    type CardPaymentAck,
+    type DueReminderIdentity,
+} from "./financial.due";
 
 export type DhanMapBucket = "mapped" | "unique-bank" | "unmapped";
 
@@ -106,7 +113,7 @@ export function resolveInvestmentDestination(
 
 /**
  * Card last4 the bill-pay SMS funded: unique named-bank CC (SBI Cards / Axis),
- * else the unique due or issuer-ack last4 that matches amount ±₹1.
+ * else the unique due (in-cycle, then any cycle) or issuer-ack last4 at ±₹1.
  * The last4 is returned even when it is not in the local account list so Dhan
  * can block with "no Firefly account" instead of hiding the dest.
  *
@@ -147,7 +154,9 @@ export function resolveCardBillPayDestLast4(
     };
 
     if (dues?.length) {
-        const dueLast4 = uniqueCardBillPayDestLast4(payment, dues);
+        const dueLast4 =
+            uniqueCardBillPayDestLast4(payment, dues) ??
+            uniqueCardBillPayDestLast4AnyCycle(payment, dues);
 
         if (dueLast4) {
             return dueLast4;
@@ -205,6 +214,13 @@ export function stampDhanAccount(
 
         if (destLast4) {
             next.counterpartyLast4 = destLast4;
+        } else if (body && isCardBillPayMessage(body) && dues?.length) {
+            const utility = uniqueUtilityBillPayMerchant(next, dues);
+
+            if (utility) {
+                next.kind = "expense";
+                next.merchant = utility;
+            }
         }
     }
 

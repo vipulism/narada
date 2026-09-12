@@ -937,10 +937,59 @@ export function uniqueCardBillPayDestLast4(
     payment: CardPaymentAck,
     dues: DueReminderIdentity[]
 ): string | undefined {
+    return uniqueLast4(cardBillPayAmountMatches(payment, dues, true));
+}
+
+/**
+ * Same ±₹1 unique last4 as {@link uniqueCardBillPayDestLast4}, but any billing
+ * cycle. A new statement SMS must not hide dest last4 for the bill just paid.
+ *
+ * @param payment - Savings UPI that paid a card bill
+ * @param dues - Card due reminders (all cycles)
+ */
+export function uniqueCardBillPayDestLast4AnyCycle(
+    payment: CardPaymentAck,
+    dues: DueReminderIdentity[]
+): string | undefined {
+    return uniqueLast4(cardBillPayAmountMatches(payment, dues, false));
+}
+
+/**
+ * Utility merchant (IGL) when a CRED/CheQ debit uniquely matches that due
+ * amount (±₹1) and is not a card last4. Posts as a withdrawal, not a transfer.
+ *
+ * @param payment - Savings UPI amount
+ * @param dues - Due reminders including utility bills
+ */
+export function uniqueUtilityBillPayMerchant(
+    payment: Pick<CardPaymentAck, "amount">,
+    dues: DueReminderIdentity[]
+): string | undefined {
+    if (payment.amount == null) {
+        return undefined;
+    }
+
+    const matches = dues.filter((due) => {
+        if (!dueSettleParty(due) || due.amount == null) {
+            return false;
+        }
+
+        return Math.abs(payment.amount! - due.amount) <= 1;
+    });
+    const parties = new Set(matches.map((due) => dueSettleParty(due)));
+
+    if (parties.size !== 1) {
+        return undefined;
+    }
+
+    const merchant = matches[0]?.merchant?.trim();
+
+    return merchant || "IGL";
+}
+
+function uniqueLast4(dues: DueReminderIdentity[]): string | undefined {
     const last4s = new Set(
-        cardBillPayAmountMatches(payment, dues)
-            .map((due) => due.accountLast4?.trim() ?? "")
-            .filter((last4) => last4.length > 0)
+        dues.map((due) => due.accountLast4?.trim() ?? "").filter((last4) => last4.length > 0)
     );
 
     return last4s.size === 1 ? [...last4s][0] : undefined;
@@ -1067,7 +1116,8 @@ export function dueIdentityFromAnalysis(source: {
 
 function cardBillPayAmountMatches(
     payment: CardPaymentAck,
-    dues: DueReminderIdentity[]
+    dues: DueReminderIdentity[],
+    requireCycleWindow = true
 ): DueReminderIdentity[] {
     return dues.filter((due) => {
         if (!due.accountLast4?.trim() || dueSettleParty(due)) {
@@ -1078,7 +1128,7 @@ function cardBillPayAmountMatches(
             return false;
         }
 
-        if (!paymentInCycleWindow(due, payment)) {
+        if (requireCycleWindow && !paymentInCycleWindow(due, payment)) {
             return false;
         }
 
