@@ -4,7 +4,7 @@ import { isPersistableTransfer, filterPostedEvents } from "./financial.eventFilt
 import { AnalysisEventSource, toFinancialEvent } from "./financial.event";
 import { FinancialEvent } from "./financial.model";
 import { extractFireflyAccountLast4, FireflyLast4Index } from "../../connectors/firefly/firefly.accountMap";
-import { planFireflyTransaction, shouldRewritePostedBillPay } from "../../connectors/firefly/firefly.dryRun";
+import { orderFireflyPushEvents, planFireflyTransaction, shouldProbePostedBillPay, shouldRewritePostedBillPay } from "../../connectors/firefly/firefly.dryRun";
 import { listSmsForMerchantKey, recoverUnknownMerchantTotals, groupExpenseTotals } from "../../server/merchant.catalog";
 import { pushedExpensesForMerchant } from "../../connectors/firefly/firefly.recategorize";
 import { toPushException } from "../../connectors/firefly/firefly.exceptions";
@@ -2280,6 +2280,34 @@ function runFireflyMapRegression(): void {
         failures.push("CRED Club already a transfer must not rewrite");
     }
 
+    credBill.fireflyTransactionId = "ff-old";
+    credBill.fireflyPushedAt = new Date("2026-09-04T12:00:00+05:30");
+
+    if (!shouldProbePostedBillPay(credBill, true)) {
+        failures.push("pre-#122 CRED Club withdrawal should still be probed");
+    }
+
+    credBill.fireflyPushedAt = new Date("2026-09-06T12:00:00+05:30");
+
+    if (shouldProbePostedBillPay(credBill, true)) {
+        failures.push("bill-pay posted after #122 must not GET Firefly every ingest");
+    }
+
+    if (shouldProbePostedBillPay(credBill, false)) {
+        failures.push("blocked bill-pay must not probe Firefly");
+    }
+
+    const queued = orderFireflyPushEvents([
+        { smsId: 1, fireflyTransactionId: "old" },
+        { smsId: 2 },
+        { smsId: 3, fireflyTransactionId: "older" },
+        { smsId: 4 },
+    ]);
+
+    if (queued.map((event) => event.smsId).join(",") !== "2,4,1,3") {
+        failures.push(`push order ${queued.map((event) => event.smsId)} must be unpushed first`);
+    }
+
     const blockedEx = toPushException(noDest, blockedInvest);
 
     if (!blockedEx || blockedEx.status !== "blocked") {
@@ -3413,6 +3441,9 @@ function runSmsImportSkipRegression(): void {
     }
     if (isCompletedUnchangedBackup(null, same)) {
         failures.push("missing row should parse");
+    }
+    if (isCompletedUnchangedBackup(completed, { fileSize: 1_000 })) {
+        failures.push("size-only snapshot without XML header must re-parse");
     }
 
     const header = parseSmsXmlHeader(

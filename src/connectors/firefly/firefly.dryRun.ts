@@ -199,6 +199,68 @@ function basePlan(
 }
 
 /**
+ * #122 started posting card bill-pays as transfers (5 Sep 2026 IST).
+ * Rows pushed after this do not need a Firefly type GET.
+ */
+export const BILL_PAY_TRANSFER_SINCE_MS = Date.parse("2026-09-05T00:00:00+05:30");
+
+/** Max Firefly GETs per ingest for leftover pre-#122 withdrawals. */
+export const BILL_PAY_REWRITE_GET_LIMIT = 8;
+
+/**
+ * True when a posted card bill-pay might still be a withdrawal in Dhan
+ * and is worth one Firefly GET this run.
+ *
+ * @param event - Row from financial_events
+ * @param planOk - Dry-run can build a transfer payload
+ */
+export function shouldProbePostedBillPay(
+    event: Pick<
+        FinancialEvent,
+        "kind" | "counterpartyLast4" | "fireflyTransactionId" | "fireflyPushedAt"
+    >,
+    planOk: boolean
+): boolean {
+    if (!planOk || !event.fireflyTransactionId) {
+        return false;
+    }
+
+    if (event.kind !== "bill" || !event.counterpartyLast4) {
+        return false;
+    }
+
+    if (event.fireflyPushedAt && event.fireflyPushedAt.getTime() >= BILL_PAY_TRANSFER_SINCE_MS) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Unpushed events first so rewrite GETs cannot starve new Dhan posts.
+ * `listAll` is oldest-first, so already-pushed bills were checked before
+ * anything dated after 6 Sep.
+ *
+ * @param events - Oldest-first `financial_events`
+ */
+export function orderFireflyPushEvents<T extends { fireflyTransactionId?: string }>(
+    events: readonly T[]
+): T[] {
+    const unpushed: T[] = [];
+    const pushed: T[] = [];
+
+    for (const event of events) {
+        if (event.fireflyTransactionId) {
+            pushed.push(event);
+        } else {
+            unpushed.push(event);
+        }
+    }
+
+    return [...unpushed, ...pushed];
+}
+
+/**
  * True when a posted card bill-pay already sits in Dhan as a withdrawal and
  * should become a savings→card transfer.
  *
