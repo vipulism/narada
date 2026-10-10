@@ -29,6 +29,7 @@ export const saveReceivedEvent = async (event: NaradaEvent) => {
       service_critical
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE id = VALUES(id)
   `;
 
   const values = [
@@ -45,6 +46,7 @@ export const saveReceivedEvent = async (event: NaradaEvent) => {
     event.service?.critical ?? null,
   ];
 
+  // A retry after a lost DB response must not fail forever on the same event ID.
   await db.execute(sql, values);
 
   return event.id;
@@ -85,7 +87,6 @@ export const markEventFailed = async (eventId: string, error: unknown) => {
 
   await db.execute(sql, [errorMessage, eventId]);
 };
-
 
 
 
@@ -217,4 +218,3 @@ function rowToTimelineEvent(row: Record<string, unknown>): TimelineEventRow {
       row.service_critical == null ? null : Boolean(row.service_critical),
   };
 }
-
